@@ -1,0 +1,23 @@
+version: '3.8'
+
+networks:
+  shared-network:
+    external: true
+    name: my-shared-network
+
+services:
+  assets-manager-linebot:
+    build: .
+    container_name: assets-manager-linebot-service
+    ports:
+      - "8088:8088"
+    # 關鍵：告訴 Docker 啟動時去載入同目錄下的 .env 密碼檔
+    env_file:
+      - .env
+    environment:
+      - CLOUD_STORAGE_API_URL=http://cloudstorage-service:8090
+      # 這裡改用 ${變訊名稱} 來動態讀取 .env 內部的數值
+      - LINE_BOT_CHANNEL_TOKEN=${LINE_BOT_CHANNEL_TOKEN}
+      - LINE_BOT_CHANNEL_SECRET=${LINE_BOT_CHANNEL_SECRET}
+    networks:
+      - shared-network
