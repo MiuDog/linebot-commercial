@@ -22,7 +22,7 @@ import java.util.List;
  * @param contentType 原始 MIME 型態，決定副檔名與回傳標頭
  * @param fileSize    檔案位元組數
  * @param createdAt   收錄時間
- * @param tags        關聯的資產編號與標籤；未載入時為空集合
+ * @param tags        關聯的資產編號與標籤，第一個是主要編號；未載入時為空集合
  */
 public record Asset(
         Long id,
@@ -38,15 +38,24 @@ public record Asset(
         List<String> tags) {
 
     /**
-     * 目前歸屬的分類資料夾，也就是 {@code filePath} 的第一段。
+     * 檔案落在哪一天的資料夾，也就是 {@code filePath} 的第一段。
      *
-     * <p>對已歸檔的資產而言就是資產編號（例如 {@code zd12345}），
-     * 尚未歸檔時則是 {@code 未分類}。
+     * <p>磁碟上只依日期分層，資產編號不是資料夾而是標籤，
+     * 因此這個值純粹反映收錄日期，與分類無關。
      *
-     * @return 分類資料夾名稱
+     * @return 日期資料夾名稱，形如 {@code 20260727}
      */
-    public String category() {
+    public String dateFolder() {
         int slash = filePath.indexOf('/');
         return slash > 0 ? filePath.substring(0, slash) : filePath;
+    }
+
+    /**
+     * 主要的資產編號，也就是第一個標籤。
+     *
+     * @return 第一個標籤；尚未打標籤時為 null
+     */
+    public String primaryTag() {
+        return tags.isEmpty() ? null : tags.get(0);
     }
 }

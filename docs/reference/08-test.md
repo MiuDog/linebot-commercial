@@ -32,11 +32,15 @@
 
 | 測試 | 驗證內容 |
 |---|---|
-| `chineseTagBecomesPhysicalFolderAndIsSearchable()` | 收錄 → 中文標籤 → 實體搬移 → 查詢的完整往返。確認中文資料夾在磁碟與 SQLite 兩端都不走樣，路徑符合 `{分類}/{yyyyMMdd}/{時間戳}.jpg`，AND 語意正確，跨群組查不到。 |
+| `imageLandsInDateFolderAndTaggingNeverMovesIt()` | 路徑符合 `{yyyyMMdd}/{時間戳}.jpg`；打標籤後路徑**一個字都沒變**，且磁碟路徑不含任何標籤名稱。 |
+| `searchesByTagWithAndSemanticsScopedToGroup()` | 多關鍵字是 AND 語意，跨群組查不到。 |
+| `oneImageCanBelongToMultipleAssetCodes()` | 同一張圖掛上兩個編號後，兩個編號都查得到，磁碟上仍只有一份檔案。 |
 | `duplicateWebhookEventIsNotIngestedTwice()` | 同一個 `messageId` 重送不會存成兩份。 |
-| `pathTraversalCharactersInTagsAreStripped()` | `../../etc/passwd` → `etcpasswd`，`機房/設備` → `機房設備`，空白 → `未分類`。 |
+| `rejectsPathsThatEscapeTheAssetsRoot()` | `resolve("../../etc/passwd")` 拋出例外。 |
 
-第一個測試特別驗證 `onDisk.toString()` 含中文——這是**在 Windows 開發機與 Linux 容器上都必須成立**的條件，也是 Dockerfile 不能用 Alpine 的原因。
+第一個測試是這次設計的核心保證：**打標籤絕不搬動檔案**。有人改動 `AssetService.tag()` 時，這個測試就是防線。
+
+中文標籤在 SQLite 的往返也一併驗證——這是**在 Windows 開發機與 Linux 容器上都必須成立**的條件，也是 Dockerfile 不能用 Alpine 的原因。
 
 ---
 

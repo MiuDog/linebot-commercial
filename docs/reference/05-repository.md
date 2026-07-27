@@ -17,7 +17,6 @@
 | `Long insert(Asset asset)` | 寫入新索引，回傳流水號。 |
 | `Optional<Asset> findByMessageId(String messageId)` | 以 LINE 訊息 id 取出，**含標籤**。 |
 | `Optional<Asset> findByShareToken(String shareToken)` | 以對外權杖取出，不含標籤（取圖端點用不到）。 |
-| `void updateFilePath(long assetId, String filePath)` | 更新指向，於檔案被搬移後呼叫。 |
 | `long upsertTag(String name)` | 取得或建立標籤 id。 |
 | `void linkTag(long assetId, long tagId)` | 建立關聯，重複掛不會出錯。 |
 | `List<String> findTagNames(long assetId)` | 取出標籤，**順序即掛上順序**。 |
@@ -43,7 +42,7 @@ HAVING COUNT(DISTINCT t.name) = ?
 
 ### 標籤順序有意義
 
-`findTagNames` 的 `ORDER BY at.rowid` 保證回傳順序等於掛上的順序，因此**第一個標籤就是決定實體資料夾的資產編號**。`Asset.category()` 與這個順序是一組的，改動其中一邊必須同時檢查另一邊。
+`findTagNames` 的 `ORDER BY at.rowid` 保證回傳順序等於掛上的順序，因此**第一個標籤就是主要的資產編號**。`Asset.primaryTag()` 與這個順序是一組的，改動其中一邊必須同時檢查另一邊。
 
 ### `wasNull()` 的必要性
 
@@ -61,5 +60,7 @@ asset_tag   (asset_id→asset, tag_id→tag)   PK(asset_id, tag_id), ON DELETE C
 ```
 
 索引：`idx_asset_source(source_id)`、`idx_asset_tag_tag(tag_id)`
+
+> **`file_path` 寫入後不會再變**：檔案落地之後不搬動，因此沒有更新路徑的方法。若未來要支援搬遷，記得同時處理「搬到一半失敗」的狀態。
 
 > **變更資料表時**：目前沒有 migration 工具。欄位異動需自行寫 `ALTER TABLE` 並確保對既有 `assets.db` 可重複執行。若異動變頻繁，應導入 Flyway。

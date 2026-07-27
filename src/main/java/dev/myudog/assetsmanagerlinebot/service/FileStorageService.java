@@ -14,32 +14,35 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * 【職責】圖片本體在磁碟上的落地、搬移與路徑安全。
+ * 【職責】圖片本體在磁碟上的落地與路徑安全。
  *
  * <p>對外只回傳「相對於資產庫根目錄、以 / 分隔」的路徑，資料庫也只存這個，
  * 因此整個資產庫連同 assets.db 可以整包搬到別台機器而不失效。
  *
- * <p><b>實體結構</b>：{@code {根目錄}/{資產編號}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg}
+ * <p><b>實體結構</b>：{@code {根目錄}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg}
  *
  * <pre>
  * F:\資產庫\
  * ├─ assets.db
- * ├─ 未分類\
- * │  └─ 20260727\
- * │     └─ 20260727-224530123.jpg
- * └─ zd12345\
- *    └─ 20260727\
- *       └─ 20260727-224612456.jpg
+ * ├─ 20260727\
+ * │  ├─ 20260727-224530123.jpg
+ * │  └─ 20260727-224612456.jpg
+ * └─ 20260728\
+ *    └─ 20260728-091502001.jpg
  * </pre>
+ *
+ * <p><b>磁碟上只有日期，沒有資產編號。</b> 分類完全交給資料庫的標籤，
+ * 檔案落地之後就不再搬動——這是「指標法」的核心：磁碟負責保存，
+ * 資料庫負責組織，兩者職責不重疊。
+ *
+ * <p>好處是使用者改標籤時檔案路徑永遠不變，備份與外部引用不會失效；
+ * 而且同一張圖可以同時屬於多個編號，不必在磁碟上複製或做連結。
  *
  * <p>根目錄由 {@code ASSETS_ROOT} 環境變數指定，可以是任意路徑
  * （例如 {@code F:/資產庫}），與專案目錄無關。
  */
 @Service
 public class FileStorageService {
-
-    /** 尚未歸檔的圖片先放這裡，引用回覆打上資產編號時再搬到對應資料夾。 */
-    public static final String UNCLASSIFIED = "未分類";
 
     /** 日期資料夾，例如 20260727。 */
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -70,7 +73,7 @@ public class FileStorageService {
     public record StoredFile(String relativePath, long size, String contentType) {}
 
     /**
-     * 將 LINE 下載回來的串流寫入 {@code 未分類/{yyyyMMdd}/} 底下，缺少的目錄會自動建立。
+     * 將 LINE 下載回來的串流寫入當天的日期資料夾，缺少的目錄會自動建立。
      *
      * <p>檔名採純時間戳，直接看資料夾就能依時間排序。毫秒仍碰撞時
      * （同一毫秒兩張圖）由 {@link #uniquePath} 補上流水序號。
@@ -82,13 +85,12 @@ public class FileStorageService {
      */
     public StoredFile save(InputStream inputStream, String contentType) throws IOException {
         ZonedDateTime now = ZonedDateTime.now(ZONE);
-        String relativeDir = UNCLASSIFIED + "/" + DAY.format(now);
-        String extension = extensionFor(contentType);
+        String relativeDir = DAY.format(now);
 
         Path directory = resolve(relativeDir);
         Files.createDirectories(directory);
 
-        Path target = uniquePath(directory, STAMP.format(now), extension);
+        Path target = uniquePath(directory, STAMP.format(now), extensionFor(contentType));
         try (inputStream) {
             long size = Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
             return new StoredFile(relativeDir + "/" + target.getFileName(), size, contentType);
@@ -96,43 +98,11 @@ public class FileStorageService {
     }
 
     /**
-     * 把已落地的圖片搬到指定的資產編號資料夾，日期層與檔名保持不變。
-     *
-     * <p>目標資料夾不存在時會自動建立，這正是「引用圖片輸入 zd 編號就自動開資料夾」
-     * 的實作位置。
-     *
-     * @param relativePath 目前的相對路徑
-     * @param category     目標資料夾名稱，會先經過 {@link #sanitize}
-     * @return 搬移後的相對路徑；來源檔不存在或目標與現況相同時回傳原路徑
-     * @throws IOException 建立目錄或搬移失敗
-     */
-    public String moveToCategory(String relativePath, String category) throws IOException {
-        Path source = resolve(relativePath);
-        if (!Files.exists(source)) {
-            return relativePath;
-        }
-
-        String[] segments = relativePath.split("/");
-        // 形如 分類/yyyyMMdd/檔名，保留後兩段
-        String tail = segments.length >= 3
-                ? segments[segments.length - 2] + "/" + segments[segments.length - 1]
-                : segments[segments.length - 1];
-        String newRelativePath = sanitize(category) + "/" + tail;
-        if (newRelativePath.equals(relativePath)) {
-            return relativePath;
-        }
-
-        Path target = resolve(newRelativePath);
-        Files.createDirectories(target.getParent());
-        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        return newRelativePath;
-    }
-
-    /**
      * 將相對路徑還原成實體路徑。
      *
-     * <p>正規化後會檢查結果仍位於資產庫根目錄之內，作為路徑穿越的最後一道防線
-     * ——即使資料庫內容被竄改，也讀不到資產庫以外的檔案。
+     * <p>正規化後會檢查結果仍位於資產庫根目錄之內。使用者輸入現在完全不會
+     * 進入路徑，這道檢查是針對資料庫內容的防線——即使 assets.db 被竄改，
+     * 也讀不到資產庫以外的檔案。
      *
      * @param relativePath 相對路徑
      * @return 對應的絕對路徑
@@ -174,22 +144,6 @@ public class FileStorageService {
             sequence++;
         }
         return candidate;
-    }
-
-    /**
-     * 把使用者輸入的標籤洗成安全的資料夾名稱。
-     *
-     * <p>標籤直接來自群組訊息，未經處理當資料夾名會有路徑穿越與非法字元風險。
-     * 中文完整保留，只移除檔案系統不接受的字元與開頭的點。
-     *
-     * @param name 原始標籤
-     * @return 可安全當作資料夾名的字串；洗完為空時退回「未分類」
-     */
-    public static String sanitize(String name) {
-        String cleaned = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "").trim();
-        // 去掉開頭的點，避免產生 .. 或隱藏資料夾
-        cleaned = cleaned.replaceAll("^\\.+", "").trim();
-        return cleaned.isEmpty() ? UNCLASSIFIED : cleaned;
     }
 
     /**

@@ -37,7 +37,8 @@ public class AssetService {
     }
 
     /**
-     * 收錄一張從群組傳來的圖片：先寫檔，再建立索引，圖片一律先落在「未分類」。
+     * 收錄一張從群組傳來的圖片：先寫檔，再建立索引。圖片依收錄日期落地，
+     * 之後不論怎麼打標籤都不會再搬動。
      *
      * <p>LINE 在未收到 200 回應時會重送 webhook，因此以 messageId 做冪等判斷，
      * 重複事件直接略過，不會產生第二份檔案。
@@ -70,19 +71,18 @@ public class AssetService {
     }
 
     /**
-     * 對被引用的那則圖片訊息掛上標籤，並把檔案歸檔到對應資料夾。
+     * 對被引用的那則圖片訊息掛上標籤。
      *
-     * <p>第一個標籤（實務上就是 {@code zd} 開頭的資產編號）決定實體資料夾名稱，
-     * 資料夾不存在會自動建立。只有圖片還停在「未分類」時才會搬動，
-     * 之後補掛標籤不會讓檔案在資料夾之間來回搬移。
+     * <p><b>不會搬動檔案。</b> 磁碟只依日期分層，分類完全由標籤承擔，
+     * 因此改標籤時檔案路徑永遠不變，備份與外部引用不會失效；
+     * 同一張圖也可以同時屬於多個資產編號，不需要在磁碟上複製。
      *
      * @param quotedMessageId 被引用的圖片訊息 id
-     * @param tags            要掛上的標籤，第一個決定資料夾
-     * @return 歸檔後的資產；找不到對應圖片或標籤為空時回傳空
-     * @throws IOException 搬移檔案失敗
+     * @param tags            要掛上的標籤，第一個視為主要資產編號
+     * @return 掛上標籤後的資產；找不到對應圖片或標籤為空時回傳空
      */
     @Transactional
-    public Optional<Asset> tag(String quotedMessageId, List<String> tags) throws IOException {
+    public Optional<Asset> tag(String quotedMessageId, List<String> tags) {
         Optional<Asset> found = repository.findByMessageId(quotedMessageId);
         if (found.isEmpty() || tags.isEmpty()) {
             return Optional.empty();
@@ -92,14 +92,7 @@ public class AssetService {
         for (String tag : tags) {
             repository.linkTag(asset.id(), repository.upsertTag(tag));
         }
-
-        if (FileStorageService.UNCLASSIFIED.equals(asset.category())) {
-            String newPath = fileStorage.moveToCategory(asset.filePath(), tags.get(0));
-            if (!newPath.equals(asset.filePath())) {
-                repository.updateFilePath(asset.id(), newPath);
-                System.out.println("[分類] 資產 #" + asset.id() + " 搬移至：" + newPath);
-            }
-        }
+        System.out.println("[標籤] 資產 #" + asset.id() + " 掛上：" + String.join("、", tags));
 
         return repository.findByMessageId(quotedMessageId);
     }

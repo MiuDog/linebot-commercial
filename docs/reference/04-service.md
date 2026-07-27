@@ -20,8 +20,8 @@
 
 | 方法 | 說明 |
 |---|---|
-| `Optional<Asset> ingest(messageId, sourceType, sourceId, uploaderId, content, contentType)` | 收錄圖片：先寫檔、再建索引，一律先落在「未分類」。重複 `messageId` 直接略過。 |
-| `Optional<Asset> tag(String quotedMessageId, List<String> tags)` | 掛標籤並歸檔。第一個標籤決定實體資料夾。 |
+| `Optional<Asset> ingest(messageId, sourceType, sourceId, uploaderId, content, contentType)` | 收錄圖片：先寫檔、再建索引，依收錄日期落地。重複 `messageId` 直接略過。 |
+| `Optional<Asset> tag(String quotedMessageId, List<String> tags)` | 掛標籤。**不搬動檔案。** 第一個標籤視為主要資產編號。 |
 | `List<Asset> search(String sourceId, List<String> tags, int limit)` | 依關鍵字查詢，多個關鍵字為 AND。 |
 | `Map<String,Integer> tagCounts(String sourceId)` | 標籤與數量統計。 |
 | `int countBySource(String sourceId)` | 該群組收錄總數。 |
@@ -33,9 +33,15 @@
 
 LINE 在未收到 200 回應時會重送 webhook，因此 `ingest` 以 `messageId` 做冪等判斷。少了這道判斷，一次網路抖動就會讓同一張圖存成好幾份。
 
-### 為什麼歸檔只搬一次
+### 打標籤絕不搬動檔案
 
-`tag()` 只在圖片還停在「未分類」時才搬動檔案。之後補掛標籤不會讓檔案在資料夾之間來回搬移——否則使用者每改一次標籤，磁碟上的路徑就變一次，備份與外部引用全部失效。
+`tag()` 只寫資料庫。磁碟只依日期分層，分類完全由標籤承擔，因此：
+
+- 使用者改標籤時檔案路徑**永遠不變**，備份與外部引用不會失效
+- 同一張圖可以**同時屬於多個資產編號**，不必在磁碟上複製或做連結
+- 不存在「檔案搬到一半失敗、資料庫指向不存在的路徑」這種狀態
+
+這也是 `tag()` 不再宣告 `throws IOException` 的原因——它根本不碰檔案系統。
 
 ---
 
@@ -45,24 +51,31 @@ LINE 在未收到 200 回應時會重送 webhook，因此 `ingest` 以 `messageI
 
 **職責**：圖片本體在磁碟上的落地、搬移與路徑安全。
 
-**實體結構**：`{ASSETS_ROOT}/{資產編號}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg`
+**實體結構**：`{ASSETS_ROOT}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg`
 
 ```
 F:\資產庫\
 ├─ assets.db
-├─ 未分類\20260727\20260727-224530123.jpg
-└─ zd12345\20260727\20260727-224612456.jpg
+├─ 20260727\
+│  ├─ 20260727-224530123.jpg
+│  └─ 20260727-224612456.jpg
+└─ 20260728\
+   └─ 20260728-091502001.jpg
 ```
 
 | 方法 | 說明 |
 |---|---|
-| `StoredFile save(InputStream, String contentType)` | 寫入 `未分類/{yyyyMMdd}/` 底下，缺少的目錄自動建立。 |
-| `String moveToCategory(String relativePath, String category)` | 搬到指定的資產編號資料夾，**目標不存在時自動建立**。 |
+| `StoredFile save(InputStream, String contentType)` | 寫入當天的日期資料夾，缺少的目錄自動建立。 |
 | `Path resolve(String relativePath)` | 相對路徑還原成實體路徑，並擋下逃出資產庫根目錄的路徑。 |
 | `Path root()` | 資產庫根目錄的絕對路徑，供疑難排解使用。 |
 | `Path uniquePath(...)` | private，同一毫秒兩張圖時補上流水序號避免覆蓋。 |
-| `static String sanitize(String name)` | 把使用者輸入洗成安全的資料夾名，中文完整保留。 |
 | `static String extensionFor(String contentType)` | 由 MIME 決定副檔名，未知一律當 JPEG。 |
+
+### 磁碟上沒有資產編號
+
+檔案落地之後就**不再搬動**。分類完全交給資料庫的標籤——磁碟負責保存，資料庫負責組織，兩者職責不重疊。這是「指標法」的核心。
+
+因此本類別沒有搬移檔案的方法，也沒有 `sanitize()`：使用者輸入完全不會進入路徑，標籤的正規化由 `CommandService.normalizeTag` 負責。
 
 ### 相對路徑，不是絕對路徑
 
@@ -70,10 +83,7 @@ F:\資產庫\
 
 ### 路徑穿越防線
 
-標籤直接來自群組訊息。若不處理，有人輸入 `../../etc` 就能讓程式在任意位置建立資料夾。防線有兩層：
-
-1. `sanitize()` 移除 `\ / : * ? " < > |`、控制字元與開頭的點。
-2. `resolve()` 正規化後檢查結果仍位於資產庫根目錄之內。
+現在使用者輸入完全不會進入路徑（路徑只由時間戳組成），所以攻擊面本來就關閉了。`resolve()` 的根目錄檢查保留下來當第二道防線：即使 `assets.db` 被竄改，也讀不到資產庫以外的檔案。
 
 ### 時區固定台北
 
@@ -95,17 +105,18 @@ F:\資產庫\
 |---|---|---|
 | `void handleText(text, quotedMessageId, sourceId, replyToken)` | public | 總入口，先判斷是指令還是歸檔。 |
 | `void handleCommand(body, quotedMessageId, sourceId, replyToken)` | private | 井字號指令分派。未知指令**不回應**。 |
-| `void archiveQuotedImage(text, quotedMessageId, replyToken)` | private | 需求 ①：把被引用的圖片歸檔到 `zd` 編號資料夾。 |
+| `void archiveQuotedImage(text, quotedMessageId, replyToken)` | private | 需求 ①：把被引用的圖片登記到 `zd` 編號底下。 |
 | `void replyQuotation(quotedMessageId, replyToken)` | private | 需求 ②：對被引用的規格圖跑報價流程。 |
 | `void replySearch(sourceId, tags, replyToken)` | private | 查詢並把圖片貼回群組。 |
 | `void replyTagList(sourceId, replyToken)` | private | 列出編號與數量。 |
 | `static List<String> extraTags(text, assetCode)` | private | 取出編號以外的附加標籤。 |
+| `static String normalizeTag(String token)` | package | 去掉開頭井字號與控制字元，中文完整保留。 |
 
 ### 指令一覽
 
 | 輸入 | 需要引用圖片 | 效果 |
 |---|---|---|
-| `zd12345` | ✅ | 歸檔到 `zd12345` 資料夾，資料夾不存在會自動建立 |
+| `zd12345` | ✅ | 登記到資產編號 `zd12345`（檔案不搬動） |
 | `zd12345 台北 機房` | ✅ | 同上，額外字詞存成附加標籤 |
 | `#查 zd12345` | ❌ | 取出圖片貼回群組 |
 | `#標籤`／`#清單` | ❌ | 列出本群組所有編號與數量 |
@@ -118,7 +129,11 @@ F:\資產庫\
 
 ### 編號正規化
 
-`(?i)\bzd\d+\b` 大小寫皆可輸入，內部一律轉小寫。Windows 檔名不分大小寫但 Linux 分——不正規化的話，`ZD123` 與 `zd123` 在公司 Linux 伺服器上會變成兩個不同的資料夾。
+`(?i)\bzd\d+\b` 大小寫皆可輸入，內部一律轉小寫。不正規化的話，`ZD123` 與 `zd123` 會在資料庫裡變成兩個不同的標籤，查詢時對不起來。
+
+### 標籤不需要防路徑穿越
+
+標籤只進資料庫、不會變成檔案路徑，所以 `normalizeTag` 只去掉開頭井字號與控制字元，中文完整保留。
 
 ---
 

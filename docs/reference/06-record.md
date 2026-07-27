@@ -26,13 +26,16 @@
 | `contentType` | `String` | 原始 MIME 型態 |
 | `fileSize` | `Long` | 位元組數 |
 | `createdAt` | `Instant` | 收錄時間 |
-| `tags` | `List<String>` | 編號與標籤；未載入時為空集合 |
+| `tags` | `List<String>` | 編號與標籤，**第一個是主要編號**；未載入時為空集合 |
 
 | 方法 | 說明 |
 |---|---|
-| `String category()` | 目前歸屬的分類資料夾，即 `filePath` 的第一段。已歸檔者是資產編號，未歸檔者是「未分類」。 |
+| `String dateFolder()` | 檔案落在哪一天的資料夾，即 `filePath` 的第一段，形如 `20260727`。 |
+| `String primaryTag()` | 主要資產編號，也就是第一個標籤；尚未打標籤時為 null。 |
 
 `filePath` 用相對路徑且固定 `/` 分隔，是為了讓同一份 `assets.db` 在 Windows 與 Linux 容器之間搬移時不會失效。
+
+**磁碟路徑只反映收錄日期，與分類無關。** 資產編號存在 `tags` 裡而不是路徑裡，所以 `dateFolder()` 拿到的永遠是日期，要知道歸屬哪個編號請看 `primaryTag()`。
 
 ---
 

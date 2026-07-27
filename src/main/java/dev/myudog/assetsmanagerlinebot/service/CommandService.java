@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  *
  * <p>支援的兩種輸入型態：
  * <pre>
- *   ① 引用某張圖片 + 「zd12345」   → 該圖歸檔到 zd12345 資料夾（資料夾不存在會自動建立）
+ *   ① 引用某張圖片 + 「zd12345」   → 該圖掛上 zd12345 這個資產編號
  *      引用某張圖片 + 「zd12345 台北 機房」→ 額外的字詞會一併存成標籤
  *
  *   ② 井字號指令
@@ -48,11 +48,11 @@ public class CommandService {
     private static final String HELP = """
             📦 資產管理機器人用法
 
-            ① 收錄：直接把圖片傳進群組，會先存到「未分類」。
-            ② 歸檔：長按該張圖片 →「引用」→ 輸入資產編號，例如
+            ① 收錄：直接把圖片傳進群組，會依日期自動存檔。
+            ② 登記：長按該張圖片 →「引用」→ 輸入資產編號，例如
                zd12345
-               系統會自動建立 zd12345 資料夾並把圖片搬進去。
                後面可再加字詞當額外標籤：zd12345 台北 機房
+               同一張圖可以登記到多個編號底下。
             ③ 取用：#查 zd12345
                （給多個關鍵字時是「同時符合」的意思）
             ④ 盤點：#標籤 列出目前所有編號與數量
@@ -178,10 +178,11 @@ public class CommandService {
     }
 
     /**
-     * 需求 ①：把被引用的圖片歸檔到資產編號對應的資料夾。
+     * 需求 ①：把被引用的圖片登記到某個資產編號底下。
      *
      * <p>文字裡必須出現 {@code zd+數字} 才會動作，否則使用者只是在引用圖片閒聊。
-     * 該編號同時成為實體資料夾名稱與第一個標籤，其餘字詞存為附加標籤。
+     * 該編號成為第一個標籤（主要編號），其餘字詞存為附加標籤。
+     * 檔案本身不會搬動——磁碟只依日期分層，分類由標籤承擔。
      *
      * @param text            使用者輸入，例如「zd12345 台北 機房」
      * @param quotedMessageId 被引用的圖片訊息 id
@@ -199,28 +200,23 @@ public class CommandService {
         tags.add(assetCode);
         tags.addAll(extraTags(text, assetCode));
 
-        try {
-            Optional<Asset> archived = assetService.tag(quotedMessageId, tags);
-            if (archived.isEmpty()) {
-                lineService.replyText(replyToken,
-                        "找不到這張圖片的收錄紀錄，可能是機器人加入群組之前傳的，請重新上傳一次。");
-                return;
-            }
-            Asset asset = archived.get();
-            StringBuilder reply = new StringBuilder("✅ 已歸檔到資料夾「" + asset.category() + "」");
-            if (asset.tags().size() > 1) {
-                reply.append("\n標籤：").append(String.join("、", asset.tags()));
-            }
-            lineService.replyText(replyToken, reply.toString());
-        } catch (IOException e) {
-            System.err.println("[指令] 歸檔時搬移檔案失敗，quotedMessageId=" + quotedMessageId);
-            e.printStackTrace();
-            lineService.replyText(replyToken, "編號已記錄，但檔案搬移失敗，請查看伺服器記錄。");
+        Optional<Asset> archived = assetService.tag(quotedMessageId, tags);
+        if (archived.isEmpty()) {
+            lineService.replyText(replyToken,
+                    "找不到這張圖片的收錄紀錄，可能是機器人加入群組之前傳的，請重新上傳一次。");
+            return;
         }
+
+        Asset asset = archived.get();
+        StringBuilder reply = new StringBuilder("✅ 已登記到「" + assetCode + "」");
+        if (asset.tags().size() > 1) {
+            reply.append("\n標籤：").append(String.join("、", asset.tags()));
+        }
+        lineService.replyText(replyToken, reply.toString());
     }
 
     /**
-     * 取出資產編號以外的字詞當附加標籤，並濾掉會破壞路徑的字元。
+     * 取出資產編號以外的字詞當附加標籤。
      *
      * @param text      原始輸入
      * @param assetCode 已經認出來的資產編號（需排除，避免重複）
@@ -229,16 +225,26 @@ public class CommandService {
     private static List<String> extraTags(String text, String assetCode) {
         List<String> tags = new ArrayList<>();
         for (String token : text.split("[\\s,，、]+")) {
-            String tag = FileStorageService.sanitize(token.replaceAll("^#+", ""));
-            if (tag.isEmpty()
-                    || tag.equalsIgnoreCase(assetCode)
-                    || FileStorageService.UNCLASSIFIED.equals(tag)
-                    || tags.contains(tag)) {
+            String tag = normalizeTag(token);
+            if (tag.isEmpty() || tag.equalsIgnoreCase(assetCode) || tags.contains(tag)) {
                 continue;
             }
             tags.add(tag);
         }
         return tags;
+    }
+
+    /**
+     * 把使用者輸入的一個字詞洗成標籤。
+     *
+     * <p>標籤只進資料庫、不會變成檔案路徑，所以不需要處理路徑穿越；
+     * 這裡只去掉開頭的井字號與控制字元，中文完整保留。
+     *
+     * @param token 原始字詞
+     * @return 正規化後的標籤，可能為空字串
+     */
+    static String normalizeTag(String token) {
+        return token.replaceAll("^#+", "").replaceAll("\\p{Cntrl}", "").trim();
     }
 
     /**

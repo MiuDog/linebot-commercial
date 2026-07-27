@@ -14,12 +14,24 @@
 
 | 項目 | 位置 |
 |---|---|
-| 圖片本體 | `{ASSETS_ROOT}/{資產編號}/{yyyyMMdd}/` |
+| 圖片本體 | `{ASSETS_ROOT}/{yyyyMMdd}/{時間戳}.jpg` |
 | 資產索引 | `{ASSETS_ROOT}/assets.db`（SQLite，同一個目錄） |
 | 對外取圖 | 容器內 `GET /media/{token}` |
 | Webhook | 容器內 `POST /callback` |
 
 **資產庫位置完全由你決定**：`.env` 的 `ASSETS_ROOT` 可以指向任意路徑，例如 `F:/資產庫`，不需要放在專案目錄內。用 docker compose 啟動時，該主機路徑會被掛到容器的 `/data/assets`。
+
+```
+F:\資產庫\
+├─ assets.db
+├─ 20260727\
+│  ├─ 20260727-224530123.jpg
+│  └─ 20260727-224612456.jpg
+└─ 20260728\
+   └─ 20260728-091502001.jpg
+```
+
+磁碟上**只依日期分層**，資產編號是資料庫裡的標籤而不是資料夾——因此打標籤不會搬動檔案，同一張圖也能同時屬於多個編號。
 
 > **歷史說明**：早期版本規劃把檔案串流轉發到獨立的 `cloudstorage-service`，並掛在共享網路 `my-shared-network` 上。**該設計已完全移除**——本服務不依賴任何外部服務，也不需要預先建立 Docker 網路。若你看到舊文件提到 `CLOUD_STORAGE_API_URL` 或 `docker network create`，那是過時的。
 

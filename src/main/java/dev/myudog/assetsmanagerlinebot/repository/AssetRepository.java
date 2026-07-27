@@ -85,18 +85,6 @@ public class AssetRepository {
     }
 
     /**
-     * 更新指向磁碟檔案的路徑，於圖片被搬進資產編號資料夾後呼叫。
-     *
-     * @param assetId  資產流水號
-     * @param filePath 搬移後的相對路徑
-     */
-    public void updateFilePath(long assetId, String filePath) {
-        jdbc.sql("UPDATE asset SET file_path = ? WHERE id = ?")
-                .params(filePath, assetId)
-                .update();
-    }
-
-    /**
      * 取得標籤 id，不存在就建立。標籤名稱以 UTF-8 存入，中文與資產編號同樣適用。
      *
      * @param name 標籤名稱
