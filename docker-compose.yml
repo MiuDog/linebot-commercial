@@ -1,4 +1,9 @@
-version: '3.8'
+# ============================================================
+# 測試階段： docker compose --profile dev up --build -d   （含 ngrok 隧道）
+# 部署階段： docker compose up --build -d                 （不啟 ngrok）
+#
+# 所有機密都從同目錄的 .env 讀入，請先 cp .env.example .env 並填值。
+# ============================================================
 
 networks:
   shared-network:
@@ -6,18 +11,54 @@ networks:
     name: my-shared-network
 
 services:
-  assets-manager-linebot:
+  # ----------------------------------------------------------
+  # LINE Bot 本體
+  # ----------------------------------------------------------
+  linebot:
+    image: assets-manager-linebot
     build: .
     container_name: assets-manager-linebot-service
-    ports:
-      - "8088:8088"
-    # 關鍵：告訴 Docker 啟動時去載入同目錄下的 .env 密碼檔
+    networks:
+      - shared-network
+    volumes:
+      # 圖片本體與 assets.db 都落在這裡，容器重建不會遺失資料
+      - "./downloads:/app/downloads"
+    # .env 內所有變數會整批帶進容器，新增 AI_* 等變數時不必回來改這個檔案
     env_file:
       - .env
     environment:
-      - CLOUD_STORAGE_API_URL=http://cloudstorage-service:8090
-      # 這裡改用 ${變訊名稱} 來動態讀取 .env 內部的數值
-      - LINE_BOT_CHANNEL_TOKEN=${LINE_BOT_CHANNEL_TOKEN}
-      - LINE_BOT_CHANNEL_SECRET=${LINE_BOT_CHANNEL_SECRET}
+      # 唯一需要覆寫的一項：容器內的路徑與主機不同
+      - LOCAL_STORAGE_PATH=/app/downloads
+    ports:
+      - "8088:8088"
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # 外網穿透（僅測試階段）
+  #
+  # 掛在 dev profile 底下，部署到公司伺服器時不會被啟動——
+  # 正式環境應該用固定網域加反向代理，而不是 ngrok。
+  # ----------------------------------------------------------
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: assets-manager-ngrok-tunnel
+    profiles:
+      - dev
     networks:
       - shared-network
+    command:
+      - "http"
+      - "linebot:8088"   # 走內部網路直接穿透 linebot 容器
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"      # ngrok 本地控制台，可從這裡看到當前公開網址
+    depends_on:
+      - linebot
+    restart: always

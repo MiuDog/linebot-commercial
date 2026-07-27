@@ -36,3 +36,17 @@ build/
 .env
 .env.*
 *.local
+# 但範本檔要進版控，它只有說明與空白值
+!.env.example
+
+### 資產資料 ###
+# 圖片本體與 SQLite 索引屬於營運資料，不進版控。
+# 目錄本身由 docker-compose 掛載、程式啟動時自動建立。
+/downloads/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+### 報價單產出 ###
+/quotations/

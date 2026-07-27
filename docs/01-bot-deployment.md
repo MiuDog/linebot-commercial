@@ -1,35 +1,162 @@
-# Doc 1: LINE Bot 前端服務部署與外部串接指南
+# Doc 1: 部署與外部串接指南
 
-本文件詳細說明如何在全新電腦上，將 `assets-manager-linebot` 透過 Docker 部署，並與獨立運行的 `cloudstorage` 服務在內網中完成綁定。
+適用版本：`@assets-manager-linebot@0.1.0`
 
-## 1. 啟動前的依賴檢查
+本文件說明如何在一台全新機器上把 `assets-manager-linebot` 跑起來。
 
-本專案採用方案 B（完全去耦合）架構。在啟動本服務前，請確保以下兩點已完成：
-1. 全域共享網路 `my-shared-network` 已經建立。
-2. 隔壁的 `cloud-storage` 服務已經在運行中，且其容器名稱為 `cloudstorage-service`。
+> 各階段的差異、驗收清單與安全注意事項在 [02-linebot-rules.md](02-linebot-rules.md)，本文只講「怎麼架起來」。
 
-*(若尚未完成上述準備，請先至 `cloud-storage` 專案目錄下參閱其說明文件。)*
+---
 
-## 2. LINE Webhook 外部公網串接 (Ngrok)
+## 1. 架構
 
-由於 LINE 伺服器必須透過 HTTPS 公網 URL 將訊息推送到你的本機容器（8088 Port），在全新環境下，建議使用 Ngrok 進行對外盲穿：
+本服務是**自給自足**的單一容器，不依賴其他應用服務：
 
-1. 前往 [Ngrok 官網](https://ngrok.com/) 下載對應作業系統的執行檔。
-2. 在終端機執行以下指令開啟隧道（對應本容器的 8088 Port）：
-   ```bash
-   ngrok http 8088
+| 項目 | 位置 |
+|---|---|
+| 圖片本體 | 主機的 `./downloads/`，掛載到容器 `/app/downloads` |
+| 資產索引 | `./downloads/assets.db`（SQLite，同一個目錄） |
+| 對外取圖 | 容器內 `GET /media/{token}` |
+| Webhook | 容器內 `POST /callback` |
 
-```
+> **歷史說明**：早期版本規劃把檔案串流轉發到獨立的 `cloudstorage-service`，該設計已移除，改為完全本地儲存。若你看到舊文件或 `CLOUD_STORAGE_API_URL` 之類的設定，那是過時的。
 
-3. 複製 Ngrok 生成的 `https://xxxx.ngrok-free.app` 網址。
-4. 回到 LINE Developers 後台，將 Webhook URL 修改為：
-`https://xxxx.ngrok-free.app/callback` 并點擊 Verify 驗證。
+`docker-compose.yml` 仍掛在外部網路 `my-shared-network` 上，方便與你其他容器共存，但本服務本身不需要網路上的其他成員。
 
-## 3. 內網通訊驗證
+---
 
-當本容器啟動後，它會自動將收到的檔案透過 `http://cloudstorage-service:8090/api/storage/upload` 串流轉發。你可以透過查看 Bot 容器的 Log 來確認通訊是否正常：
+## 2. 前置需求
+
+| 項目 | 說明 |
+|---|---|
+| Docker 與 Docker Compose | — |
+| LINE Channel | Messaging API Channel，取得 token 與 secret |
+| 對外 HTTPS 網址 | 測試用 ngrok；正式用固定網域 |
+| 磁碟空間 | 圖片會持續累積，確認 `downloads/` 所在磁碟足夠 |
+
+建立共享網路（只需一次）：
 
 ```bash
-docker logs -f assets-manager-linebot-service
+docker network create my-shared-network
+```
+
+---
+
+## 3. 設定環境變數
+
+```bash
+cp .env.example .env
+```
+
+`.env.example` 內每一項都有說明。最少要填的是：
+
+| 變數 | 必填 | 說明 |
+|---|---|---|
+| `LINE_BOT_CHANNEL_TOKEN` | ✅ | Console → Messaging API |
+| `LINE_BOT_CHANNEL_SECRET` | ✅ | Console → Basic settings |
+| `PUBLIC_BASE_URL` | ✅ | 對外 HTTPS 網址，**結尾不帶斜線** |
+| `NGROK_AUTHTOKEN` | 測試階段 | ngrok dashboard |
+| `AI_API_URL` / `AI_API_KEY` / `AI_MODEL` | 用 `#報價` 才需要 | 三項缺一就不啟用 |
+
+`.env` **絕不進版控**，已列在 `.gitignore`。
+
+---
+
+## 4. 啟動
+
+**測試階段**（含 ngrok 隧道）：
+
+```bash
+docker compose --profile dev up --build -d
+```
+
+**部署階段**（不啟 ngrok）：
+
+```bash
+docker compose up --build -d
+```
+
+確認狀態：
+
+```bash
+docker compose ps
+```
+
+`STATUS` 應為 `Up (healthy)`。健康檢查打的是 `/actuator/health`，`start_period` 給了 40 秒讓 JVM 起來。
+
+---
+
+## 5. 設定 Webhook
+
+到 LINE Developers Console → Messaging API → Webhook URL，填入：
 
 ```
+{PUBLIC_BASE_URL}/callback
+```
+
+按 **Verify**，並確認 **Use webhook** 已啟用。
+
+同時確認：`Auto-reply messages` 設為 **Disabled**（否則官方罐頭訊息會蓋掉 Bot 的回覆），`Allow bot to join group chats` 設為 **Enabled**。
+
+---
+
+## 6. Docker 映像說明
+
+多階段建置：
+
+| 階段 | 映像 | 用途 |
+|---|---|---|
+| build | `maven:3.9.16-eclipse-temurin-25-alpine` | 編譯打包，產出 `app.jar` |
+| runtime | `eclipse-temurin:25-jre` | 執行 |
+
+兩個關鍵設計，改 Dockerfile 時請保留：
+
+1. **執行階段不用 Alpine。** musl 沒有 UTF-8 locale，JVM 的 `sun.jnu.encoding` 會退化成 ASCII，中文分類資料夾會全部變成問號。編譯階段不碰中文檔名，可以繼續用 Alpine。
+2. **產出檔名固定為 `app.jar`**（由 `pom.xml` 的 `<finalName>` 指定），升版本號時不需要回頭改 Dockerfile。
+
+依賴下載獨立成一層（`mvn dependency:go-offline`），只要 `pom.xml` 沒變，改 Java 原始碼時會直接命中快取。
+
+---
+
+## 7. 常用指令
+
+看即時記錄：
+
+```bash
+docker compose logs -f linebot
+```
+
+重啟：
+
+```bash
+docker compose restart linebot
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
+`docker compose down` **不會**刪除 `downloads/`，資料安全。
+
+---
+
+## 8. 疑難排解
+
+| 症狀 | 可能原因 |
+|---|---|
+| Webhook Verify 失敗 | `PUBLIC_BASE_URL` 錯、容器沒起來、網址少了 `/callback` |
+| 記錄出現「簽章驗證失敗」 | `LINE_BOT_CHANNEL_SECRET` 填錯 |
+| 傳圖沒反應 | 看記錄是否有 `[收錄]`；沒有的話是 webhook 沒進來 |
+| 圖片存了但 `#查` 沒回圖 | `PUBLIC_BASE_URL` 沒設或 LINE 連不到（ngrok 換網址了？） |
+| 中文資料夾變成問號 | 執行階段映像被改成 Alpine，或 `LANG` 沒設 |
+| 啟動失敗 `path does not exist` | storage 目錄權限不足，掛載點無法建立 |
+
+---
+
+## 相關文件
+
+- [LINE Bot 規則與各階段處理](02-linebot-rules.md)
+- [版本、Release 與 Push SOP](03-versioning-release-sop.md)
+- [類別索引](reference/index.md)
