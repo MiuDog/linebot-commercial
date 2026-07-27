@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "app.storage.path=${java.io.tmpdir}/assets-manager-ai-test",
+        "app.storage.root=${java.io.tmpdir}/assets-manager-ai-test",
         "spring.datasource.url=jdbc:sqlite:${java.io.tmpdir}/assets-manager-ai-test/test.db",
         "app.ai.api-key=test-key",
         "app.ai.model=test-model",

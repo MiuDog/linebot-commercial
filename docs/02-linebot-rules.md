@@ -110,12 +110,9 @@ cp .env.example .env
 | `LINE_BOT_CHANNEL_SECRET` | Console → Basic settings → Channel secret |
 | `NGROK_AUTHTOKEN` | https://dashboard.ngrok.com/get-started/your-authtoken |
 | `PUBLIC_BASE_URL` | 先留空，下一步取得後回填 |
+| `ASSETS_ROOT` | 資產庫根目錄，例如 `F:/資產庫`；留空則用 `./assets-store` |
 
 ### 2.2 啟動（含 ngrok 隧道）
-
-```bash
-docker network create my-shared-network
-```
 
 ```bash
 docker compose --profile dev up --build -d
@@ -144,8 +141,8 @@ docker compose --profile dev up -d
 
 | # | 動作 | 預期 |
 |---|---|---|
-| 1 | 傳一張圖 | 不回話。`downloads/未分類/{yyyy-MM}/` 出現檔案 |
-| 2 | 引用該圖，輸入 `zd12345` | 回「已歸檔到資料夾「zd12345」」，檔案搬到 `downloads/zd12345/{yyyy-MM}/` |
+| 1 | 傳一張圖 | 不回話。`{ASSETS_ROOT}/未分類/20260727/20260727-224530123.jpg` 出現 |
+| 2 | 引用該圖，輸入 `zd12345` | 回「已歸檔到資料夾「zd12345」」，檔案搬到 `{ASSETS_ROOT}/zd12345/20260727/` |
 | 3 | 輸入 `#查 zd12345` | 回傳該張圖片 |
 | 4 | 輸入 `#標籤` | 列出 `zd12345　1 張` |
 | 5 | 輸入 `#說明` | 顯示用法 |
@@ -189,9 +186,9 @@ docker compose logs -f linebot
 ### 3.2 前置作業
 
 1. **網域與憑證**：準備 `https://assets.example.com` 之類的網域，前面掛 Nginx／Caddy 反向代理處理 TLS，轉發到容器的 8088。
-2. **建立共享網路**：`docker network create my-shared-network`
-3. **`.env`**：`PUBLIC_BASE_URL` 填正式網域（結尾不帶斜線），`NGROK_AUTHTOKEN` 可留空。
-4. **確認 `downloads/` 所在磁碟有足夠空間**，並納入既有備份機制。
+2. **`.env`**：`PUBLIC_BASE_URL` 填正式網域（結尾不帶斜線），`NGROK_AUTHTOKEN` 可留空。
+3. **`ASSETS_ROOT`**：填該伺服器上要存放資產的路徑，例如 `F:/資產庫` 或 `/data/assets`。確認該磁碟已掛載、空間足夠、且執行 Docker 的帳號有寫入權限。
+4. **把 `ASSETS_ROOT` 納入既有備份機制。**
 
 ### 3.3 啟動
 
@@ -218,11 +215,11 @@ Console → Messaging API → Webhook URL 改為 `https://assets.example.com/cal
 | `/media/{token}` **對公網開放** | 安全性完全建立在權杖不可預測（32 字元隨機值）。若公司政策更嚴，應在反向代理加 LINE IP 白名單 |
 | `/actuator` | 只暴露 `health`，不要開放 `env`、`configprops` 等會洩漏金鑰的端點 |
 | `.env` | 檔案權限設 `600`，且**絕不進版控**（已在 `.gitignore`） |
-| 資料備份 | `downloads/` 含圖片與 `assets.db`，**整個目錄一起備份**才有意義——只備份 DB 會得到一堆指向不存在檔案的紀錄 |
+| 資料備份 | `ASSETS_ROOT` 含圖片與 `assets.db`，**整個目錄一起備份**才有意義——只備份 DB 會得到一堆指向不存在檔案的紀錄 |
 
 ### 3.6 資料搬遷
 
-`assets.db` 存的是**相對路徑**，因此把整個 `downloads/` 目錄打包搬到新機器即可，不需要改資料庫內容。
+`assets.db` 存的是**相對路徑**，因此把整個 `ASSETS_ROOT` 目錄打包搬到新機器、再把新機器的 `ASSETS_ROOT` 指過去即可，資料庫內容一個字都不用改。從 `F:/資產庫` 搬到 `/data/assets` 也一樣。
 
 搬遷後檢查：檔案數量是否與 `SELECT COUNT(*) FROM asset` 相符，中文資料夾名是否完整（若變成問號，代表新環境的 locale 沒設 UTF-8）。
 

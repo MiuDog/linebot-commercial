@@ -41,8 +41,9 @@ build/
 
 ### 資產資料 ###
 # 圖片本體與 SQLite 索引屬於營運資料，不進版控。
-# 目錄本身由 docker-compose 掛載、程式啟動時自動建立。
-/downloads/
+# 正式環境的資產庫由 ASSETS_ROOT 指向專案外的路徑（例如 F:/資產庫），
+# 這裡排除的是未設定 ASSETS_ROOT 時的預設位置。
+/assets-store/
 *.db
 *.db-journal
 *.db-wal

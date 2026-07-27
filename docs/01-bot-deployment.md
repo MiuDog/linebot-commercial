@@ -14,14 +14,14 @@
 
 | 項目 | 位置 |
 |---|---|
-| 圖片本體 | 主機的 `./downloads/`，掛載到容器 `/app/downloads` |
-| 資產索引 | `./downloads/assets.db`（SQLite，同一個目錄） |
+| 圖片本體 | `{ASSETS_ROOT}/{資產編號}/{yyyyMMdd}/` |
+| 資產索引 | `{ASSETS_ROOT}/assets.db`（SQLite，同一個目錄） |
 | 對外取圖 | 容器內 `GET /media/{token}` |
 | Webhook | 容器內 `POST /callback` |
 
-> **歷史說明**：早期版本規劃把檔案串流轉發到獨立的 `cloudstorage-service`，該設計已移除，改為完全本地儲存。若你看到舊文件或 `CLOUD_STORAGE_API_URL` 之類的設定，那是過時的。
+**資產庫位置完全由你決定**：`.env` 的 `ASSETS_ROOT` 可以指向任意路徑，例如 `F:/資產庫`，不需要放在專案目錄內。用 docker compose 啟動時，該主機路徑會被掛到容器的 `/data/assets`。
 
-`docker-compose.yml` 仍掛在外部網路 `my-shared-network` 上，方便與你其他容器共存，但本服務本身不需要網路上的其他成員。
+> **歷史說明**：早期版本規劃把檔案串流轉發到獨立的 `cloudstorage-service`，並掛在共享網路 `my-shared-network` 上。**該設計已完全移除**——本服務不依賴任何外部服務，也不需要預先建立 Docker 網路。若你看到舊文件提到 `CLOUD_STORAGE_API_URL` 或 `docker network create`，那是過時的。
 
 ---
 
@@ -32,13 +32,9 @@
 | Docker 與 Docker Compose | — |
 | LINE Channel | Messaging API Channel，取得 token 與 secret |
 | 對外 HTTPS 網址 | 測試用 ngrok；正式用固定網域 |
-| 磁碟空間 | 圖片會持續累積，確認 `downloads/` 所在磁碟足夠 |
+| 磁碟空間 | 圖片會持續累積，確認 `ASSETS_ROOT` 所在磁碟足夠 |
 
-建立共享網路（只需一次）：
-
-```bash
-docker network create my-shared-network
-```
+不需要預先建立 Docker 網路，compose 會自行處理。
 
 ---
 
@@ -55,6 +51,7 @@ cp .env.example .env
 | `LINE_BOT_CHANNEL_TOKEN` | ✅ | Console → Messaging API |
 | `LINE_BOT_CHANNEL_SECRET` | ✅ | Console → Basic settings |
 | `PUBLIC_BASE_URL` | ✅ | 對外 HTTPS 網址，**結尾不帶斜線** |
+| `ASSETS_ROOT` | 建議 | 資產庫根目錄，例如 `F:/資產庫`；留空則用 `./assets-store` |
 | `NGROK_AUTHTOKEN` | 測試階段 | ngrok dashboard |
 | `AI_API_URL` / `AI_API_KEY` / `AI_MODEL` | 用 `#報價` 才需要 | 三項缺一就不啟用 |
 
@@ -138,7 +135,7 @@ docker compose restart linebot
 docker compose down
 ```
 
-`docker compose down` **不會**刪除 `downloads/`，資料安全。
+`docker compose down` **不會**刪除 `ASSETS_ROOT` 底下的資料，圖片與 `assets.db` 都安全。
 
 ---
 
@@ -151,7 +148,8 @@ docker compose down
 | 傳圖沒反應 | 看記錄是否有 `[收錄]`；沒有的話是 webhook 沒進來 |
 | 圖片存了但 `#查` 沒回圖 | `PUBLIC_BASE_URL` 沒設或 LINE 連不到（ngrok 換網址了？） |
 | 中文資料夾變成問號 | 執行階段映像被改成 Alpine，或 `LANG` 沒設 |
-| 啟動失敗 `path does not exist` | storage 目錄權限不足，掛載點無法建立 |
+| 啟動失敗 `path does not exist` | `ASSETS_ROOT` 權限不足或磁碟未掛載，目錄無法建立 |
+| 圖片存到意料之外的位置 | `.env` 的 `ASSETS_ROOT` 沒填，落到預設的 `./assets-store` |
 
 ---
 

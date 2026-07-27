@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "app.storage.path=${java.io.tmpdir}/assets-manager-test",
+        "app.storage.root=${java.io.tmpdir}/assets-manager-test",
         "spring.datasource.url=jdbc:sqlite:${java.io.tmpdir}/assets-manager-test/test.db"
 })
 class AssetServiceTest {
@@ -57,6 +57,8 @@ class AssetServiceTest {
         assertThat(onDisk).exists();
         assertThat(Files.readAllBytes(onDisk)).isEqualTo(fakeImage);
         assertThat(onDisk.toString()).contains("機房設備");
+        // 結構為 {分類}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg
+        assertThat(tagged.get().filePath()).matches("機房設備/\\d{8}/\\d{8}-\\d{9}(-\\d+)?\\.jpg");
         // 舊位置應該已經清空
         assertThat(fileStorage.resolve(ingested.get().filePath())).doesNotExist();
 

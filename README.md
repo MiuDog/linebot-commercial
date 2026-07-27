@@ -10,29 +10,34 @@
 
 | 你在群組做的事 | 系統的反應 |
 |---|---|
-| 傳一張圖 | 自動下載存到 `downloads/未分類/2026-07/` |
-| 引用該圖，輸入 `zd12345` | 自動建立 `downloads/zd12345/` 並把檔案搬進去 |
+| 傳一張圖 | 自動下載存到 `{ASSETS_ROOT}/未分類/20260727/20260727-224530123.jpg` |
+| 引用該圖，輸入 `zd12345` | 自動建立 `{ASSETS_ROOT}/zd12345/20260727/` 並把檔案搬進去 |
 | 引用該圖，輸入 `zd12345 台北 機房` | 同上，多的字詞存成附加標籤 |
 | 輸入 `#查 zd12345` | 把該編號的圖片貼回群組 |
 | 輸入 `#標籤` | 列出所有編號與各自張數 |
 | 引用規格圖，輸入 `#報價` | AI 讀出規格欄位（公式與 PDF 模板待補） |
 | 輸入 `#說明` | 顯示用法 |
 
-**核心設計是「指標法」**：圖片本體永遠留在磁碟，資料庫只存指向它的相對路徑。所以整個 `downloads/` 目錄連同 `assets.db` 可以整包搬到別台機器而不失效。
+**核心設計是「指標法」**：圖片本體永遠留在磁碟，資料庫只存指向它的相對路徑。所以整個資產庫連同 `assets.db` 可以整包搬到別台機器而不失效。
+
+資產庫位置由 `.env` 的 `ASSETS_ROOT` 指定，可以是任意路徑：
+
+```
+F:\資產庫\
+├─ assets.db
+├─ 未分類\20260727\20260727-224530123.jpg
+└─ zd12345\20260727\20260727-224612456.jpg
+```
 
 ---
 
 ## 快速開始
 
 ```bash
-docker network create my-shared-network
-```
-
-```bash
 cp .env.example .env
 ```
 
-填入 `LINE_BOT_CHANNEL_TOKEN`、`LINE_BOT_CHANNEL_SECRET`、`NGROK_AUTHTOKEN`，然後：
+填入 `LINE_BOT_CHANNEL_TOKEN`、`LINE_BOT_CHANNEL_SECRET`、`NGROK_AUTHTOKEN`、`ASSETS_ROOT`，然後：
 
 ```bash
 docker compose --profile dev up --build -d
@@ -49,6 +54,7 @@ docker compose --profile dev up --build -d
 | 文件 | 什麼時候看 |
 |---|---|
 | [文件樹入口](docs/README.md) | 不確定該看哪份 |
+| [04 LINE Bot 建置流程](docs/04-linebot-build-guide.md) | 第一次從零建立 LINE Bot |
 | [01 部署與外部串接](docs/01-bot-deployment.md) | 要在新機器上架起來 |
 | [02 LINE Bot 規則與各階段處理](docs/02-linebot-rules.md) | 動訊息收發的程式碼前；測試或部署卡住 |
 | [03 版本、Release 與 Push SOP](docs/03-versioning-release-sop.md) | 要 commit、發版本、部署或回滾 |

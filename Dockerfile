@@ -30,8 +30,9 @@ ENV LANG=C.UTF-8 \
 # 升版本號時不需要回來改這一行
 COPY --from=build /app/target/app.jar app.jar
 
-# 圖片與 SQLite 索引的掛載點
-VOLUME /app/downloads
+# 資產庫掛載點：圖片與 SQLite 索引都在這裡
+# 主機端的實際位置由 docker-compose 的 ASSETS_ROOT 決定
+VOLUME /data/assets
 
 EXPOSE 8088
 

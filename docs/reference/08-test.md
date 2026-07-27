@@ -32,7 +32,7 @@
 
 | 測試 | 驗證內容 |
 |---|---|
-| `chineseTagBecomesPhysicalFolderAndIsSearchable()` | 收錄 → 中文標籤 → 實體搬移 → 查詢的完整往返。確認中文資料夾在磁碟與 SQLite 兩端都不走樣，AND 語意正確，跨群組查不到。 |
+| `chineseTagBecomesPhysicalFolderAndIsSearchable()` | 收錄 → 中文標籤 → 實體搬移 → 查詢的完整往返。確認中文資料夾在磁碟與 SQLite 兩端都不走樣，路徑符合 `{分類}/{yyyyMMdd}/{時間戳}.jpg`，AND 語意正確，跨群組查不到。 |
 | `duplicateWebhookEventIsNotIngestedTwice()` | 同一個 `messageId` 重送不會存成兩份。 |
 | `pathTraversalCharactersInTagsAreStripped()` | `../../etc/passwd` → `etcpasswd`，`機房/設備` → `機房設備`，空白 → `未分類`。 |
 
@@ -62,5 +62,5 @@
 
 1. **測試方法名用英文**。中文方法名可以執行，但 Windows 主控台的預設編碼會把失敗訊息印成亂碼，排查時看不出是哪個測試掛了。
 2. **測試內容用中文沒問題**，而且該用——中文標籤、中文資料夾正是本專案要保證的行為。
-3. **儲存路徑一律指向 `java.io.tmpdir`**，透過 `@TestPropertySource` 覆寫 `app.storage.path` 與 `spring.datasource.url`。
+3. **資產庫根目錄一律指向 `java.io.tmpdir`**，透過 `@TestPropertySource` 覆寫 `app.storage.root` 與 `spring.datasource.url`。
 4. **不要在測試裡放真實憑證**。需要外部服務時，用 `HttpServer` 起一個假的。

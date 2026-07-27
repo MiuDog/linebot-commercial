@@ -22,9 +22,9 @@ import java.nio.file.Paths;
 public class StorageConfig {
 
     @Bean
-    public DataSource dataSource(@Value("${app.storage.path}") String storagePath,
+    public DataSource dataSource(@Value("${app.storage.root}") String assetsRoot,
                                  @Value("${spring.datasource.url}") String jdbcUrl) throws IOException {
-        Path root = Paths.get(storagePath).toAbsolutePath().normalize();
+        Path root = Paths.get(assetsRoot).toAbsolutePath().normalize();
         Files.createDirectories(root);
 
         HikariDataSource dataSource = new HikariDataSource();

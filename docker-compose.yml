@@ -2,13 +2,11 @@
 # 測試階段： docker compose --profile dev up --build -d   （含 ngrok 隧道）
 # 部署階段： docker compose up --build -d                 （不啟 ngrok）
 #
-# 所有機密都從同目錄的 .env 讀入，請先 cp .env.example .env 並填值。
+# 所有設定都從同目錄的 .env 讀入，請先 cp .env.example .env 並填值。
+#
+# 資產庫位置由 .env 的 ASSETS_ROOT 指定（主機路徑），
+# 例如 F:/資產庫 或 /data/assets。容器內固定掛在 /data/assets。
 # ============================================================
-
-networks:
-  shared-network:
-    external: true
-    name: my-shared-network
 
 services:
   # ----------------------------------------------------------
@@ -18,17 +16,16 @@ services:
     image: assets-manager-linebot
     build: .
     container_name: assets-manager-linebot-service
-    networks:
-      - shared-network
     volumes:
-      # 圖片本體與 assets.db 都落在這裡，容器重建不會遺失資料
-      - "./downloads:/app/downloads"
+      # 主機的資產庫目錄掛進容器。圖片與 assets.db 都落在這裡，
+      # 容器重建、甚至換一台機器都不會遺失資料。
+      - "${ASSETS_ROOT:-./assets-store}:/data/assets"
     # .env 內所有變數會整批帶進容器，新增 AI_* 等變數時不必回來改這個檔案
     env_file:
       - .env
     environment:
-      # 唯一需要覆寫的一項：容器內的路徑與主機不同
-      - LOCAL_STORAGE_PATH=/app/downloads
+      # 容器內的路徑與主機不同，這是唯一需要覆寫的一項
+      - ASSETS_ROOT=/data/assets
     ports:
       - "8088:8088"
     restart: always
@@ -50,11 +47,9 @@ services:
     container_name: assets-manager-ngrok-tunnel
     profiles:
       - dev
-    networks:
-      - shared-network
     command:
       - "http"
-      - "linebot:8088"   # 走內部網路直接穿透 linebot 容器
+      - "linebot:8088"   # 走 compose 預設網路直接穿透 linebot 容器
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     ports:

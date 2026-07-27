@@ -45,30 +45,43 @@ LINE 在未收到 200 回應時會重送 webhook，因此 `ingest` 以 `messageI
 
 **職責**：圖片本體在磁碟上的落地、搬移與路徑安全。
 
-**實體結構**：`{root}/{資產編號}/{yyyy-MM}/{yyyyMMdd-HHmmss}_{messageId}.jpg`
+**實體結構**：`{ASSETS_ROOT}/{資產編號}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg`
+
+```
+F:\資產庫\
+├─ assets.db
+├─ 未分類\20260727\20260727-224530123.jpg
+└─ zd12345\20260727\20260727-224612456.jpg
+```
 
 | 方法 | 說明 |
 |---|---|
-| `StoredFile save(InputStream, String messageId, String contentType)` | 寫入 `未分類/` 底下，缺少的目錄自動建立。 |
-| `String moveToCategory(String relativePath, String category)` | 搬到指定分類資料夾，**目標不存在時自動建立**。 |
-| `Path resolve(String relativePath)` | 相對路徑還原成實體路徑，並擋下逃出 storage root 的路徑。 |
+| `StoredFile save(InputStream, String contentType)` | 寫入 `未分類/{yyyyMMdd}/` 底下，缺少的目錄自動建立。 |
+| `String moveToCategory(String relativePath, String category)` | 搬到指定的資產編號資料夾，**目標不存在時自動建立**。 |
+| `Path resolve(String relativePath)` | 相對路徑還原成實體路徑，並擋下逃出資產庫根目錄的路徑。 |
+| `Path root()` | 資產庫根目錄的絕對路徑，供疑難排解使用。 |
+| `Path uniquePath(...)` | private，同一毫秒兩張圖時補上流水序號避免覆蓋。 |
 | `static String sanitize(String name)` | 把使用者輸入洗成安全的資料夾名，中文完整保留。 |
 | `static String extensionFor(String contentType)` | 由 MIME 決定副檔名，未知一律當 JPEG。 |
 
 ### 相對路徑，不是絕對路徑
 
-對外只回傳「相對於 storage root、以 `/` 分隔」的路徑，資料庫也只存這個。因此整個 storage 目錄連同 `assets.db` 可以整包搬到別台機器而不失效——從你的 Windows 開發機搬到公司 Linux 伺服器時，這點就是關鍵。
+對外只回傳「相對於資產庫根目錄、以 `/` 分隔」的路徑，資料庫也只存這個。因此整個資產庫連同 `assets.db` 可以整包搬到別台機器而不失效——從 Windows 開發機的 `F:/資產庫` 搬到 Linux 伺服器的 `/data/assets`，資料庫內容一個字都不用改。
 
 ### 路徑穿越防線
 
 標籤直接來自群組訊息。若不處理，有人輸入 `../../etc` 就能讓程式在任意位置建立資料夾。防線有兩層：
 
 1. `sanitize()` 移除 `\ / : * ? " < > |`、控制字元與開頭的點。
-2. `resolve()` 正規化後檢查結果仍位於 storage root 之內。
+2. `resolve()` 正規化後檢查結果仍位於資產庫根目錄之內。
 
 ### 時區固定台北
 
-`ZoneId.of("Asia/Taipei")` 是寫死的。跟著容器時區跑的話，月份資料夾會在不同機器上跳動，同一批照片被拆到兩個月份底下。
+`ZoneId.of("Asia/Taipei")` 是寫死的。跟著容器時區跑的話，日期資料夾會在不同機器上跳動，同一天的照片被拆到兩個日期底下。
+
+### 檔名為什麼帶到毫秒
+
+檔名是純時間戳（`20260727-224530123.jpg`），直接看資料夾就能依時間排序。毫秒仍碰撞時（同一毫秒兩張圖）由 `uniquePath` 補上 `-1`、`-2`，避免後者覆蓋前者。
 
 ---
 

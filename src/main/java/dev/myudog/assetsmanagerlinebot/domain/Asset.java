@@ -9,7 +9,7 @@ import java.util.List;
  * <p>這個專案採「指標法」：圖片本體永遠留在磁碟，資料庫只保存指向它的
  * {@code filePath}。因此本紀錄本身不含任何影像位元組。
  *
- * <p>{@code filePath} 是相對於 {@code app.storage.path} 的路徑，且一律以 "/" 分隔，
+ * <p>{@code filePath} 是相對於 {@code app.storage.root}（ASSETS_ROOT）的路徑，且一律以 "/" 分隔，
  * 讓同一份 assets.db 在 Windows 與 Linux 容器之間搬移時不會失效。
  *
  * @param id          資料庫流水號；尚未寫入時為 null

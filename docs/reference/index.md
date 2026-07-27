@@ -75,7 +75,7 @@ flowchart TD
     end
 
     DB[(SQLite assets.db)]
-    DISK[/磁碟 downloads//]
+    DISK[/磁碟 ASSETS_ROOT//]
     MODEL[AI 模型端點]
 
     LINE -->|Webhook| WH

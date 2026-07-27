@@ -18,7 +18,7 @@ Spring bean 定義與基礎設施組裝。
 
 ### 為什麼不用 auto-configuration
 
-SQLite **不會**幫忙建立資料庫檔案的父目錄。若 `app.storage.path` 指向的目錄還不存在，連線會直接以 `path to '...' does not exist` 失敗，整個應用程式起不來——在全新機器上第一次部署必然踩到。
+SQLite **不會**幫忙建立資料庫檔案的父目錄。若 `app.storage.root`（`ASSETS_ROOT`）指向的目錄還不存在，連線會直接以 `path to '...' does not exist` 失敗，整個應用程式起不來——把 `ASSETS_ROOT` 指向一顆全新磁碟（例如 `F:/資產庫`）時必然踩到。
 
 自行定義 bean 才能保證「先 `Files.createDirectories()`、再開連線」的順序；交給 auto-configuration 無法插入這個步驟。
 

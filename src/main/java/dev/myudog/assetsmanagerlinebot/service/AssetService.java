@@ -60,7 +60,7 @@ public class AssetService {
             return Optional.empty();
         }
 
-        FileStorageService.StoredFile stored = fileStorage.save(content, messageId, contentType);
+        FileStorageService.StoredFile stored = fileStorage.save(content, contentType);
         Asset asset = new Asset(null, messageId, UUID.randomUUID().toString().replace("-", ""),
                 sourceType, sourceId, uploaderId, stored.relativePath(), stored.contentType(),
                 stored.size(), Instant.now(), List.of());
