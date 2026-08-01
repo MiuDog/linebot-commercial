@@ -3,6 +3,8 @@ package dev.myudog.assetsmanagerlinebot.controller;
 import dev.myudog.assetsmanagerlinebot.domain.Asset;
 import dev.myudog.assetsmanagerlinebot.service.AssetService;
 import dev.myudog.assetsmanagerlinebot.service.FileStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
@@ -22,39 +24,59 @@ import java.util.Optional;
  *
  * <p>這個端點必然對公網開放（LINE 才抓得到圖），所以路徑用的是每筆資產獨立、
  * 不可預測的 shareToken，而不是流水號或檔名——否則等於把整個資產庫公開。
+ *
+ * <p><b>事件呼叫鏈：</b>
+ * {@code LINE 圖片伺服器 → RequestCorrelationFilter
+ * → GET /media/{shareToken} → serve
+ * → AssetService.findByShareToken → AssetRepository.findByShareToken
+ * → FileStorageService.resolve → FileSystemResource}。
+ * 查無索引或實體檔案不可讀時都回傳 404。
  */
 @RestController
 public class MediaController {
 
-    private final AssetService assetService;
-    private final FileStorageService fileStorage;
+	private static final Logger log = LoggerFactory.getLogger(MediaController.class);
 
-    public MediaController(AssetService assetService, FileStorageService fileStorage) {
-        this.assetService = assetService;
-        this.fileStorage = fileStorage;
-    }
+	private final AssetService assetService;
+	private final FileStorageService fileStorage;
 
-    @GetMapping("/media/{shareToken}")
-    public ResponseEntity<Resource> serve(@PathVariable String shareToken) {
-        Optional<Asset> found = assetService.findByShareToken(shareToken);
-        if (found.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
+	// 方法：初始化 MediaController。
+	public MediaController(AssetService assetService, FileStorageService fileStorage) {
+		this.assetService = assetService;
+		this.fileStorage = fileStorage;
+	}
 
-        Asset asset = found.get();
-        Path file = fileStorage.resolve(asset.filePath());
-        if (!Files.isReadable(file)) {
-            System.err.println("[媒體] 資料庫指向的檔案不存在：" + asset.filePath());
-            return ResponseEntity.notFound().build();
-        }
+	// 方法：執行 serve 方法的處理流程。
+	@GetMapping("/media/{shareToken}")
+	public ResponseEntity<Resource> serve(@PathVariable String shareToken) {
+		// 步驟 1：依公開權杖查詢資產，查無資料時透過 Spring HTTP API 回覆 404。
+		Optional<Asset> found = assetService.findByShareToken(shareToken);
 
-        MediaType contentType = asset.contentType() == null
-                ? MediaType.IMAGE_JPEG
-                : MediaType.parseMediaType(asset.contentType().split(";")[0].trim());
+		// 外部呼叫：透過 Spring HTTP 回應 API 表達找不到對應資產。
+		if (found.isEmpty()) return ResponseEntity.notFound().build();
 
-        return ResponseEntity.ok()
-                .contentType(contentType)
-                .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePrivate())
-                .body(new FileSystemResource(file));
-    }
+		// 步驟 2：使用 Java NIO 確認實體檔案仍可讀取。
+		Asset asset = found.get();
+		Path file = fileStorage.resolve(asset.filePath());
+
+		// 外部呼叫：使用 Java NIO 驗證媒體檔案仍可由服務讀取。
+		if (!Files.isReadable(file)) {
+			// 日誌：記錄媒體檔案不存在。
+			log.warn("event=media_file_missing assetId={}", asset.id());
+
+			// 外部呼叫：透過 Spring HTTP 回應 API 表達實體媒體已不存在。
+			return ResponseEntity.notFound().build();
+		}
+
+		// 步驟 3：使用 Spring MediaType API 將資料庫 MIME 型態轉成 HTTP 內容型態。
+		MediaType contentType = asset.contentType() == null
+			? MediaType.IMAGE_JPEG
+			: MediaType.parseMediaType(asset.contentType().split(";")[0].trim());
+
+		// 步驟 4：使用 Spring Resource 與 HTTP API 回傳具私有快取設定的圖片。
+		return ResponseEntity.ok()
+			.contentType(contentType)
+			.cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePrivate())
+			.body(new FileSystemResource(file));
+	}
 }

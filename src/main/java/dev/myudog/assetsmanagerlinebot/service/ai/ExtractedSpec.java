@@ -13,44 +13,51 @@ import java.util.Map;
  * <p>{@code rawResponse} 保留模型的原始輸出，出問題時可以直接看它回了什麼，
  * 不必重跑一次呼叫。
  *
+ * <p><b>資料流：</b>
+ * {@code AiExtractionService.extract → ExtractedSpec
+ * → QuotationService → QuotationCalculator／QuotationPdfService}。
+ * 目前計算與輸出仍是佔位，因此成功的 AI 欄位會先由
+ * {@code CommandService} 回覆給使用者確認。
+ *
  * @param fields      欄位名稱到值的對應，值可能是字串、數字或巢狀結構
  * @param rawResponse 模型回應原文，供除錯用
  */
 public record ExtractedSpec(Map<String, Object> fields, String rawResponse) {
 
-    /**
-     * 以字串取出某個欄位。
-     *
-     * @param key 欄位名稱
-     * @return 欄位值的字串形式；欄位不存在時為 null
-     */
-    public String text(String key) {
-        Object value = fields.get(key);
-        return value == null ? null : String.valueOf(value);
-    }
+	/**
+	 * 以字串取出某個欄位。
+	 *
+	 * @param key 欄位名稱
+	 * @return 欄位值的字串形式；欄位不存在時為 null
+	 */
+	// 方法：執行 text 方法的處理流程。
+	public String text(String key) {
+		Object value = fields.get(key);
+		return value == null ? null : String.valueOf(value);
+	}
 
-    /**
-     * 以數值取出某個欄位，供計算公式使用。
-     *
-     * <p>模型有時把數字放在字串裡（例如 "1,200 mm"），所以這裡會先濾掉
-     * 數字與小數點以外的字元再轉換。
-     *
-     * @param key 欄位名稱
-     * @return 欄位的數值；欄位不存在或無法解析為數字時為 null
-     */
-    public BigDecimal number(String key) {
-        String raw = text(key);
-        if (raw == null) {
-            return null;
-        }
-        String digits = raw.replaceAll("[^0-9.\\-]", "");
-        if (digits.isBlank() || "-".equals(digits) || ".".equals(digits)) {
-            return null;
-        }
-        try {
-            return new BigDecimal(digits);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
+	/**
+	 * 以數值取出某個欄位，供計算公式使用。
+	 *
+	 * <p>模型有時把數字放在字串裡（例如 "1,200 mm"），所以這裡會先濾掉
+	 * 數字與小數點以外的字元再轉換。
+	 *
+	 * @param key 欄位名稱
+	 * @return 欄位的數值；欄位不存在或無法解析為數字時為 null
+	 */
+	// 方法：執行 number 方法的處理流程。
+	public BigDecimal number(String key) {
+		String raw = text(key);
+		if (raw == null) return null;
+
+		String digits = raw.replaceAll("[^0-9.\\-]", "");
+		if (digits.isBlank() || "-".equals(digits) || ".".equals(digits)) return null;
+
+		try {
+			return new BigDecimal(digits);
+		}
+		catch (NumberFormatException e) {
+			return null;
+		}
+	}
 }

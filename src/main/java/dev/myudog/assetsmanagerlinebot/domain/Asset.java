@@ -25,37 +25,40 @@ import java.util.List;
  * @param tags        關聯的資產編號與標籤，第一個是主要編號；未載入時為空集合
  */
 public record Asset(
-        Long id,
-        String messageId,
-        String shareToken,
-        String sourceType,
-        String sourceId,
-        String uploaderId,
-        String filePath,
-        String contentType,
-        Long fileSize,
-        Instant createdAt,
-        List<String> tags) {
+	Long id,
+	String messageId,
+	String shareToken,
+	String sourceType,
+	String sourceId,
+	String uploaderId,
+	String filePath,
+	String contentType,
+	Long fileSize,
+	Instant createdAt,
+	List<String> tags
+) {
 
-    /**
-     * 檔案落在哪一天的資料夾，也就是 {@code filePath} 的第一段。
-     *
-     * <p>磁碟上只依日期分層，資產編號不是資料夾而是標籤，
-     * 因此這個值純粹反映收錄日期，與分類無關。
-     *
-     * @return 日期資料夾名稱，形如 {@code 20260727}
-     */
-    public String dateFolder() {
-        int slash = filePath.indexOf('/');
-        return slash > 0 ? filePath.substring(0, slash) : filePath;
-    }
+	/**
+	 * 檔案落在哪一天的資料夾，也就是 {@code filePath} 的第一段。
+	 *
+	 * <p>磁碟上只依日期分層，資產編號不是資料夾而是標籤，
+	 * 因此這個值純粹反映收錄日期，與分類無關。
+	 *
+	 * @return 日期資料夾名稱，形如 {@code 20260727}
+	 */
+	// 方法：執行 dateFolder 方法的處理流程。
+	public String dateFolder() {
+		int slash = filePath.indexOf('/');
+		return slash > 0 ? filePath.substring(0, slash) : filePath;
+	}
 
-    /**
-     * 主要的資產編號，也就是第一個標籤。
-     *
-     * @return 第一個標籤；尚未打標籤時為 null
-     */
-    public String primaryTag() {
-        return tags.isEmpty() ? null : tags.get(0);
-    }
+	/**
+	 * 主要的資產編號，也就是第一個標籤。
+	 *
+	 * @return 第一個標籤；尚未打標籤時為 null
+	 */
+	// 方法：執行 primaryTag 方法的處理流程。
+	public String primaryTag() {
+		return tags.isEmpty() ? null : tags.get(0);
+	}
 }

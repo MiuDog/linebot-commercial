@@ -22,6 +22,11 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
+# 健康檢查需要 HTTP 用戶端；基礎 JRE 映像本身未附 wget/curl。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 中文檔名的第一道保險：作業系統層的 locale
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
@@ -38,7 +43,7 @@ EXPOSE 8088
 
 # 容器健康檢查，讓 docker compose ps 能直接看出服務是否就緒
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD wget -qO- http://localhost:8088/actuator/health || exit 1
+    CMD curl --fail --silent --show-error http://localhost:8088/actuator/health || exit 1
 
 # 中文檔名的第二道保險：把 JVM 的檔案／路徑編碼釘死成 UTF-8
 ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8", "-jar", "app.jar"]

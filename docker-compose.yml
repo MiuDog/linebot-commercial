@@ -4,8 +4,8 @@
 #
 # 所有設定都從同目錄的 .env 讀入，請先 cp .env.example .env 並填值。
 #
-# 資產庫位置由 .env 的 ASSETS_ROOT 指定（主機路徑），
-# 例如 F:/資產庫 或 /data/assets。容器內固定掛在 /data/assets。
+# 圖片資產預設位於專案根目錄的 ./圖片資產。
+# 容器內固定掛在 /data/assets。
 # ============================================================
 
 services:
@@ -19,18 +19,20 @@ services:
     volumes:
       # 主機的資產庫目錄掛進容器。圖片與 assets.db 都落在這裡，
       # 容器重建、甚至換一台機器都不會遺失資料。
-      - "${ASSETS_ROOT:-./assets-store}:/data/assets"
+      - "${ASSETS_ROOT:-./圖片資產}:/data/assets"
+      - "${QUOTATION_ROOT_PATH:-./quotation-output}:/data/quotation-root"
     # .env 內所有變數會整批帶進容器，新增 AI_* 等變數時不必回來改這個檔案
     env_file:
       - .env
     environment:
       # 容器內的路徑與主機不同，這是唯一需要覆寫的一項
       - ASSETS_ROOT=/data/assets
+      - QUOTATION_ROOT_PATH=/data/quotation-root
     ports:
       - "8088:8088"
-    restart: always
+    restart: no
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8088/actuator/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8088/actuator/health"]
       interval: 30s
       timeout: 5s
       start_period: 40s
@@ -56,4 +58,4 @@ services:
       - "4040:4040"      # ngrok 本地控制台，可從這裡看到當前公開網址
     depends_on:
       - linebot
-    restart: always
+    restart: no

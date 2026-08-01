@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "1.0",
+  "templates": [
+    {
+      "schemeCode": "CNS",
+      "sheetName": "CNS",
+      "summaryOnly": false,
+      "taxRate": 0.05,
+      "detail": {
+        "firstRow": 11,
+        "lastRow": 28,
+        "columns": {
+          "lineNumber": "A",
+          "itemName": "B",
+          "specification": "C",
+          "quantity": "D",
+          "unit": "E",
+          "unitPrice": "F",
+          "lineAmount": "G",
+          "remark": "H"
+        }
+      },
+      "totals": {
+        "subtotal": "G29",
+        "preTax": "G30",
+        "tax": "G31",
+        "total": "G32"
+      },
+      "image": {
+        "placement": "UNUSED_DETAIL_ROWS",
+        "firstColumn": "A",
+        "lastColumn": "C",
+        "minimumUnusedRows": 4,
+        "fit": "CONTAIN"
+      }
+    },
+    {
+      "schemeCode": "GENERAL",
+      "sheetName": "一般架",
+      "summaryOnly": false,
+      "taxRate": 0.05,
+      "detail": {
+        "firstRow": 11,
+        "lastRow": 30,
+        "columns": {
+          "lineNumber": "A",
+          "itemName": "B",
+          "specification": "C",
+          "quantity": "D",
+          "unit": "E",
+          "unitPrice": "F",
+          "lineAmount": "G",
+          "remark": "H"
+        }
+      },
+      "totals": {
+        "subtotal": "G31",
+        "preTax": "G32",
+        "tax": "G33",
+        "total": "G34"
+      },
+      "image": {
+        "placement": "UNUSED_DETAIL_ROWS",
+        "firstColumn": "A",
+        "lastColumn": "C",
+        "minimumUnusedRows": 4,
+        "fit": "CONTAIN"
+      }
+    },
+    {
+      "schemeCode": "MARINE",
+      "sheetName": "船用",
+      "summaryOnly": true,
+      "taxRate": 0.05,
+      "detail": {
+        "firstRow": 11,
+        "lastRow": 23,
+        "columns": {
+          "lineNumber": "A",
+          "itemName": "B",
+          "specification": "C",
+          "quantity": "D",
+          "unit": "E",
+          "unitPrice": "F",
+          "lineAmount": "G",
+          "remark": "H"
+        }
+      },
+      "totals": {
+        "subtotal": "G24",
+        "preTax": "G25",
+        "tax": "G26",
+        "total": "G27"
+      },
+      "image": {
+        "placement": "UNUSED_DETAIL_ROWS",
+        "firstColumn": "A",
+        "lastColumn": "C",
+        "minimumUnusedRows": 4,
+        "fit": "CONTAIN"
+      }
+    }
+  ]
+}

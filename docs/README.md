@@ -12,6 +12,8 @@
 | [02 LINE Bot 規則與各階段處理](02-linebot-rules.md) | 動任何跟訊息收發有關的程式碼之前；測試或部署卡住時 |
 | [03 版本、Release 與 Push SOP](03-versioning-release-sop.md) | 要 commit、push、發版本、部署或回滾 |
 | [04 LINE Bot 建置流程](04-linebot-build-guide.md) | 第一次從零建立 LINE Bot，或要重新建一個 Channel |
+| [05 Excel 報價規格](05-quotation-excel-spec.md) | 要理解報價資料表、AI 契約與三種 Excel 模板 |
+| [06 事件起點與完整呼叫鏈](06-event-call-chains.md) | 要從 LINE／HTTP／啟動事件一路追到資料庫、磁碟與外部 API |
 | [類別索引](reference/index.md) | 要改程式碼，想先知道該動哪個檔案 |
 
 ---
@@ -25,6 +27,8 @@ docs/
 ├── 02-linebot-rules.md            LINE 平台規則、測試階段、部署階段
 ├── 03-versioning-release-sop.md   版本編號、Push SOP、Release SOP
 ├── 04-linebot-build-guide.md      從零建立 LINE Bot 的完整流程
+├── 05-quotation-excel-spec.md     Excel 報價資料層與模板規格
+├── 06-event-call-chains.md        由事件起點追蹤所有功能呼叫鏈
 └── reference/                     類別參考（內部維護）
     ├── index.md                   ← Navigator，所有類別由此進入
     ├── 01-application.md          Application
@@ -53,21 +57,25 @@ docs/
 
 LINE 群組是資產的收件與取件窗口：
 
-1. 群組傳圖 → 自動下載到 `{ASSETS_ROOT}/20260727/`，SQLite 記一筆**指向該檔案的路徑**
-2. 引用該圖輸入 `zd12345` → 在資料庫掛上這個資產編號（**檔案不搬動**）
-3. 輸入 `#查 zd12345` → 從資料庫查出指向，透過對外端點把圖片貼回群組
-4. 引用規格圖輸入 `#報價` → AI 讀出規格欄位（公式與 PDF 模板待補）
+1. 群組傳圖 → 先下載到 `{ASSETS_ROOT}/.pending/`，並記錄 LINE `imageSet`
+2. 引用其中一張輸入 `zd20260728` → 檢查整組圖片是否收齊，等待使用者確認
+3. 輸入「確定」→ 整組存入 `{ASSETS_ROOT}/20260728/`，SQLite 建立資產並掛上 `zd20260728`
+4. 輸入 `#查 zd20260728` → 從資料庫查出指向，透過對外端點把圖片貼回群組
+5. 引用規格圖輸入 `#報價` → AI 讀出規格欄位（公式與報價檔輸出待補）
 
-核心設計是「**指標法**」：**磁碟只負責保存，資料庫負責組織**。圖片依日期落地後永遠不再搬動，分類完全由標籤承擔，兩者職責不重疊。
+核心設計仍是「**指標法**」：**磁碟只負責保存，資料庫負責組織**。
+圖片確認歸檔後不再因標籤變更而搬動；完整方法級呼叫順序見
+[事件起點與完整呼叫鏈](06-event-call-chains.md)。
 
 資產庫位置由 `ASSETS_ROOT` 指定，可以是任意路徑，例如 `F:/資產庫`：
 
 ```
 F:\資產庫\
 ├─ assets.db
+├─ .pending\
 ├─ 20260727\
-│  ├─ 20260727-224530123.jpg
-│  └─ 20260727-224612456.jpg
+│  ├─ 20260727-001.jpg
+│  └─ 20260727-002.jpg
 └─ 20260728\
-   └─ 20260728-091502001.jpg
+   └─ 20260728-001.jpg
 ```

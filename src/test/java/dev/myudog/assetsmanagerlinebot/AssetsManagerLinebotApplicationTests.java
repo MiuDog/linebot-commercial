@@ -7,7 +7,5 @@ import org.springframework.boot.test.context.SpringBootTest;
 class AssetsManagerLinebotApplicationTests {
 
 	@Test
-	void contextLoads() {
-	}
-
+	void contextLoads() {}
 }
