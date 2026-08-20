@@ -45,8 +45,9 @@ class UnifiedEnvironmentConfigurationTest {
 			.doesNotContain("VOLUME /data/assets");
 	}
 
+	// 方法：報價 AI 只使用共同的三個設定；語音任務屬於文書機器人，此產品不得殘留其設定。
 	@Test
-	void sharesTheCommonAiSettingsWithVoiceCommands() throws IOException {
+	void sharesTheCommonAiSettingsAndKeepsNoVoiceConfiguration() throws IOException {
 		String environment = read(".env.example");
 		String properties = read("src/main/resources/application.properties");
 
@@ -56,18 +57,15 @@ class UnifiedEnvironmentConfigurationTest {
 			.contains("AI_MODEL=")
 			.contains("AI_TIMEOUT_SECONDS=60")
 			.doesNotContain("OPENAI_API_KEY=")
-			.doesNotContain("OPENAI_API_BASE_URL=")
-			.doesNotContain("VOICE_TASK_MODEL=")
-			.doesNotContain("VOICE_AI_TIMEOUT_SECONDS=");
+			.doesNotContain("OPENAI_API_BASE_URL=");
 		assertThat(properties)
-			.contains("app.voice.openai-base-url=${AI_API_URL:https://api.openai.com/v1}")
-			.contains("app.voice.openai-api-key=${AI_API_KEY:}")
-			.contains("app.voice.task-model=${AI_MODEL:gpt-5.6-terra}")
-			.contains("app.voice.timeout-seconds=${AI_TIMEOUT_SECONDS:60}")
+			.contains("app.ai.api-url=${AI_API_URL:}")
+			.contains("app.ai.api-key=${AI_API_KEY:}")
+			.contains("app.ai.model=${AI_MODEL:}")
+			.contains("app.ai.timeout-seconds=${AI_TIMEOUT_SECONDS:60}")
+			.doesNotContain("app.voice.")
 			.doesNotContain("OPENAI_API_KEY")
-			.doesNotContain("OPENAI_API_BASE_URL")
-			.doesNotContain("VOICE_TASK_MODEL")
-			.doesNotContain("VOICE_AI_TIMEOUT_SECONDS");
+			.doesNotContain("OPENAI_API_BASE_URL");
 	}
 
 	@Test

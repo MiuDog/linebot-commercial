@@ -9,7 +9,6 @@ import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineWorkflowEx
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineWorkflowService;
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationPostbackException;
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationReplyOutboxService;
-import dev.myudog.assetsmanagerlinebot.service.voice.VoiceCommandService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +61,6 @@ public class LineWebhookController {
 	private final LineStorageService lineService;
 	private final QuotationLineWorkflowService quotationWorkflow;
 	private final QuotationReplyOutboxService replyOutbox;
-	private final VoiceCommandService voiceCommandService;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	//#region 初始化與 Webhook 入口
@@ -74,15 +72,13 @@ public class LineWebhookController {
 		ImageArchiveService imageArchiveService,
 		LineStorageService lineService,
 		QuotationLineWorkflowService quotationWorkflow,
-		QuotationReplyOutboxService replyOutbox,
-		VoiceCommandService voiceCommandService
+		QuotationReplyOutboxService replyOutbox
 	) {
 		this.commandService = commandService;
 		this.imageArchiveService = imageArchiveService;
 		this.lineService = lineService;
 		this.quotationWorkflow = quotationWorkflow;
 		this.replyOutbox = replyOutbox;
-		this.voiceCommandService = voiceCommandService;
 	}
 
 	// 方法：保留控制器聚焦測試使用的無 outbox 建構介面。
@@ -92,37 +88,9 @@ public class LineWebhookController {
 		LineStorageService lineService,
 		QuotationLineWorkflowService quotationWorkflow
 	) {
-		this(commandService, imageArchiveService, lineService, quotationWorkflow, null, null);
+		this(commandService, imageArchiveService, lineService, quotationWorkflow, null);
 	}
 
-	// 方法：保留既有 outbox 控制器測試建構介面。
-	LineWebhookController(
-		CommandService commandService,
-		ImageArchiveService imageArchiveService,
-		LineStorageService lineService,
-		QuotationLineWorkflowService quotationWorkflow,
-		QuotationReplyOutboxService replyOutbox
-	) {
-		this(commandService, imageArchiveService, lineService, quotationWorkflow, replyOutbox, null);
-	}
-
-	// 方法：保留包含語音服務的控制器聚焦測試建構介面。
-	LineWebhookController(
-		CommandService commandService,
-		ImageArchiveService imageArchiveService,
-		LineStorageService lineService,
-		QuotationLineWorkflowService quotationWorkflow,
-		VoiceCommandService voiceCommandService
-	) {
-		this(
-			commandService,
-			imageArchiveService,
-			lineService,
-			quotationWorkflow,
-			null,
-			voiceCommandService
-		);
-	}
 
 	// 方法：執行 handleWebhook 方法的處理流程。
 	@PostMapping
@@ -256,16 +224,7 @@ public class LineWebhookController {
 				uploaderId,
 				replyToken
 			);
-			case "audio" -> {
-				if ("group".equals(sourceType) && voiceCommandService != null) {
-					voiceCommandService.handleGroupAudio(
-						getSafeText(message, "id"),
-						sourceId,
-						replyToken
-					);
-				}
-			}
-			default -> { /* 貼圖、影片、位置等目前不收錄 */
+			default -> { /* 語音、貼圖、影片、位置等目前不收錄 */
 			}
 		}
 	}

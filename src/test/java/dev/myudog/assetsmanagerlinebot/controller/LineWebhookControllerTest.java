@@ -7,7 +7,7 @@ import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineMessage;
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineWorkflowService;
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationReplyOutboxService;
 import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationAiException;
-import dev.myudog.assetsmanagerlinebot.service.voice.VoiceCommandService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,9 +53,6 @@ class LineWebhookControllerTest {
 	@Mock
 	QuotationReplyOutboxService replyOutbox;
 
-	@Mock
-	VoiceCommandService voiceCommandService;
-
 	LineWebhookController controller;
 
 	@BeforeEach
@@ -65,13 +62,14 @@ class LineWebhookControllerTest {
 			archiveService,
 			lineService,
 			quotationWorkflow,
-			voiceCommandService
+			null
 		);
 		ReflectionTestUtils.setField(controller, "channelSecret", CHANNEL_SECRET);
 	}
 
+	// 方法：語音任務屬於文書機器人，本產品收到群組語音必須安靜忽略。
 	@Test
-	void routesGroupAudioToTheVoiceCommandService() throws Exception {
+	void ignoresGroupAudioBecauseVoiceBelongsToTheDocumentBot() throws Exception {
 		String payload = """
 			{"events":[{
 			  "type":"message",
@@ -84,23 +82,7 @@ class LineWebhookControllerTest {
 		var response = controller.handleWebhook(signature(payload), payload);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-		verify(voiceCommandService).handleGroupAudio("A1", "C1", "reply-token");
-	}
-
-	@Test
-	void ignoresDirectAudioBecauseVoiceCommandsAreGroupOnly() throws Exception {
-		String payload = """
-			{"events":[{
-			  "type":"message",
-			  "replyToken":"reply-token",
-			  "source":{"type":"user","userId":"U1"},
-			  "message":{"id":"A1","type":"audio","duration":3500}
-			}]}
-			""";
-
-		controller.handleWebhook(signature(payload), payload);
-
-		verifyNoInteractions(voiceCommandService);
+		verifyNoInteractions(quotationWorkflow);
 	}
 
 	@Test
@@ -230,8 +212,7 @@ class LineWebhookControllerTest {
 			archiveService,
 			lineService,
 			quotationWorkflow,
-			replyOutbox,
-			voiceCommandService
+			replyOutbox
 		);
 		ReflectionTestUtils.setField(reliableController, "channelSecret", CHANNEL_SECRET);
 		List<QuotationLineMessage> firstReply = java.util.List.of(

@@ -31,7 +31,7 @@ class CommandServicePingTest {
 
 	@BeforeEach
 	void setUp() {
-		commandService = new CommandService(assetService, lineService, quotationService, archiveService);
+		commandService = new CommandService(lineService);
 	}
 
 	@Test
