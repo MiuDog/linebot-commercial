@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>dev.myudog</groupId>
 	<artifactId>assets-manager-linebot</artifactId>
-	<version>0.1.0</version>
+	<version>0.1.1</version>
 	<name>assets-manager-linebot</name>
 	<description>LINE 群組資產收錄與取用機器人</description>
 	<url/>

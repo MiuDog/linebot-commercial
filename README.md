@@ -1,6 +1,6 @@
 # Assets Manager LINE Bot
 
-`@assets-manager-linebot@0.1.0`
+`@assets-manager-linebot@0.1.1`
 
 把 LINE 群組當成圖片資產的收件與取件窗口：群組上傳圖片後，引用圖片並輸入合法資料夾代碼即可直接歸檔；SQLite 保存圖片組與正式檔案索引。
 
@@ -69,19 +69,21 @@ Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
 | 未設定簽章憑證（目前） | 略過商用欄位與 Authenticode 閘門，Release 標記為 **pre-release**，Notes 附 SmartScreen 說明與 SHA-256 |
 | 已設定簽章憑證 | 套用商用欄位閘門、簽章並驗證 Authenticode，全部通過才建立正式 Release |
 
-版本號取自 tag，必須與 `pom.xml` 一致。本 repo 目前是 private，因此 Release 只有具備存取權的人看得到。
+版本號取自 tag，**必須先把 `pom.xml` 的 `<version>` 改成同一個版本並合併進 main**，否則 `build-windows-installer.ps1` 會以「Maven 版本與 Setup 版本不一致」中止。tag 也必須打在已包含該版本號的 commit 上。
+
+本 repo 目前是 private，因此 Release 只有具備存取權的人看得到。推 tag 時 `dry-run` job 會顯示 skipped，這是正常的：它只在手動 `workflow_dispatch` 時執行。
 
 建立個人使用的 Setup：
 
 ```powershell
-powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.0
+powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.1
 ```
 
 完整安裝、修復、預設保留資料與明確清除驗收：
 
 ```powershell
 powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 `
-	-InstallerPath dist\AssetsManagerLinebot-Setup-0.1.0.exe `
+	-InstallerPath dist\AssetsManagerLinebot-Setup-0.1.1.exe `
 	-ExecuteLifecycle `
 	-TestPurge
 ```
