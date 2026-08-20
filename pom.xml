@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>dev.miudog</groupId>
 	<artifactId>linebot-commercial</artifactId>
-	<version>0.2.0</version>
+	<version>0.2.1</version>
 	<name>linebot-commercial</name>
 	<description>LINE 群組資產收錄與取用機器人</description>
 	<url/>

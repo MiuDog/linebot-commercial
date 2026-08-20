@@ -1,6 +1,6 @@
 # Assets Manager LINE Bot
 
-`@linebot-commercial@0.2.0`
+`@linebot-commercial@0.2.1`
 
 把 LINE 群組當成圖片資產的收件與取件窗口：群組上傳圖片後，引用圖片並輸入合法資料夾代碼即可直接歸檔；SQLite 保存圖片組與正式檔案索引。
 
