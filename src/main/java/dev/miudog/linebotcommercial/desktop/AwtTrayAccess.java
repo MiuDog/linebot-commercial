@@ -2,6 +2,7 @@ package dev.miudog.linebotcommercial.desktop;
 
 import java.awt.AWTException;
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
@@ -21,6 +22,8 @@ public final class AwtTrayAccess implements DesktopTrayAccess {
 
 	private static final Logger log = LoggerFactory.getLogger(AwtTrayAccess.class);
 
+	private static final Font MENU_FONT = resolveMenuFont();
+
 	private TrayIcon trayIcon;
 
 	//#endregion
@@ -33,6 +36,7 @@ public final class AwtTrayAccess implements DesktopTrayAccess {
 		if (!SystemTray.isSupported()) return false;
 
 		PopupMenu menu = new PopupMenu();
+		menu.setFont(MENU_FONT);
 		MenuItem showItem = menuItem("顯示", actions.show());
 		MenuItem settingsItem = menuItem("設定", actions.settings());
 		MenuItem restartItem = menuItem("重新啟動", actions.restart());
@@ -87,10 +91,19 @@ public final class AwtTrayAccess implements DesktopTrayAccess {
 		Runnable action
 	) {
 		MenuItem item = new MenuItem(label);
+		item.setFont(MENU_FONT);
 
 		item.addActionListener(event -> SwingUtilities.invokeLater(action));
 
 		return item;
+	}
+
+	// 方法：解析適用於 Windows 系統匣選單的中文字型，避免預設字型遺失 CJK 字形而顯示方塊。
+	private static Font resolveMenuFont() {
+		Font font = new Font("Microsoft JhengHei UI", Font.PLAIN, 12);
+		if (font.canDisplay('顯')) return font;
+
+		return new Font(Font.DIALOG, Font.PLAIN, 12);
 	}
 
 	// 方法：建立開發階段使用的中性程式圖示，正式素材可直接替換。
