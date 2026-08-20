@@ -46,7 +46,9 @@ powershell.exe -NoProfile -File scripts\package-windows-app.ps1 -Version 0.1.0
 powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.0
 
 # 執行安裝器驗收測試
-powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 -InstallerPath dist\AssetsManagerLinebot-Setup-0.1.0.exe
+# 不帶開關只做靜態檢查；-ExecuteLifecycle 才會實際安裝、解除安裝並驗證資料保留，
+# -TestPurge 另外驗證明確清除。缺少開關時證據檔的生命週期欄位會是 false 而 exit code 仍為 0。
+powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 -InstallerPath dist\AssetsManagerLinebot-Setup-0.1.0.exe -ExecuteLifecycle -TestPurge
 ```
 
 ## Project Structure

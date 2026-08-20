@@ -13,8 +13,9 @@
 
 1. 在 GitHub Actions 手動執行 `Windows Release`。
 2. Dry run 只建立未簽章 Actions artifact，不建立 GitHub Release，也不讀取簽章 secrets。
-3. 下載 artifact 後執行 `scripts/test-windows-installer.ps1`，確認安裝、修復、預設保留與 purge。
-4. 保存 workflow URL、commit、Setup SHA-256 與 installer evidence。
+3. 下載 artifact 後執行 `scripts/test-windows-installer.ps1 -InstallerPath <setup> -ExecuteLifecycle -TestPurge`，確認安裝、修復、預設保留與 purge。不帶 `-ExecuteLifecycle` 只會做靜態檢查，證據檔的 `lifecycleExecuted` 會是 `false` 而 exit code 仍為 `0`，不可據此宣稱已驗收。
+4. `-TestPurge` 在產品資料目錄已存在時會拒絕執行，避免刪除使用者資料；請改用乾淨 VM 或先確認該目錄無實際設定。
+5. 保存 workflow URL、commit、Setup SHA-256 與 installer evidence。
 
 ## 正式發佈
 
