@@ -85,6 +85,10 @@ public final class DesktopUi {
 			logTailService = null;
 		}
 
+		// 從未建立視窗與系統匣時不可觸碰 Swing：invokeAndWait 會啟動非 daemon 的 AWT EDT，
+		// 使 --shutdown 這類不顯示 UI 的流程在 main 返回後仍留住 JVM 而成為背景殭屍程序。
+		if (window == null && trayController == null) return;
+
 		runOnEdtAndWait(() -> {
 			if (trayController != null) trayController.close();
 
