@@ -89,10 +89,29 @@ try {
 		throw "App image 自帶 Runtime smoke test 失敗：$($Process.ExitCode)"
 	}
 
-	# 步驟三：保存不含機密的自帶 Runtime 驗收證據。
+	# 步驟三：launcher 會另外啟動 JVM child process，父程序結束不代表 App 已停止；
+	# 必須確認 app image 沒有留下背景程序，否則升級與解除安裝會被鎖住的檔案擋下。
+	$ResidualDeadline = (Get-Date).AddSeconds(10)
+	$Residual = @()
+
+	do {
+		$Residual = @(Get-Process -ErrorAction SilentlyContinue |
+			Where-Object { $_.Path -and $_.Path.StartsWith($ResolvedAppImage, [StringComparison]::OrdinalIgnoreCase) })
+
+		if ($Residual.Count -eq 0) { break }
+
+		Start-Sleep -Milliseconds 500
+	} while ((Get-Date) -lt $ResidualDeadline)
+
+	if ($Residual.Count -gt 0) {
+		throw "desktop shutdown 後仍有 $($Residual.Count) 個 app image 程序存活：$($Residual.Id -join ',')"
+	}
+
+	# 步驟四：保存不含機密的自帶 Runtime 驗收證據。
 	$Evidence = [ordered]@{
 		appImage = $ResolvedAppImage
 		exitCode = $Process.ExitCode
+		residualProcesses = 0
 		javaHomeRemoved = $true
 		jdkHomeRemoved = $true
 		pathContainsJava = $false
