@@ -17,44 +17,143 @@ class QuotationContractTest {
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@Test
-	void aiContractAcceptsOnlyKnownSchemesAndNeverLetsAiSetPrices() throws IOException {
+	void aiContractDefinesTheCompleteTwoPointZeroPatchShapeForAllSchemes() throws IOException {
 		JsonNode schema = readJson("/ai/quotation-request.schema.json");
 
 		JsonNode properties = schema.path("properties");
-		Set<String> schemeCodes = StreamSupport.stream(properties.path("schemeCode").path("enum").spliterator(), false)
+		Set<String> schemeCodes = StreamSupport.stream(
+			properties.path("schemeCode").path("oneOf").get(0).path("enum").spliterator(),
+			false
+		)
 			.map(JsonNode::asString)
 			.collect(Collectors.toSet());
-		JsonNode itemProperties = properties.path("items").path("items").path("properties");
+		Set<String> nextActions = StreamSupport.stream(properties.path("nextAction").path("enum").spliterator(), false)
+			.map(JsonNode::asString)
+			.collect(Collectors.toSet());
+		JsonNode headerProperties = properties.path("headerPatch").path("properties");
 
-		assertThat(schemeCodes).containsExactlyInAnyOrder("CNS", "GENERAL", "MARINE");
-		assertThat(itemProperties.has("quantity")).isTrue();
-		assertThat(itemProperties.has("price")).isFalse();
-		assertThat(itemProperties.has("unitPrice")).isFalse();
-		assertThat(itemProperties.has("lineAmount")).isFalse();
+		assertThat(properties.path("schemaVersion").path("const").asString()).isEqualTo("2.0");
+		assertThat(schemeCodes).containsExactlyInAnyOrder(
+			"CNS",
+			"GENERAL",
+			"MARINE",
+			"BLANK",
+			"SALES"
+		);
+		assertThat(headerProperties.propertyNames()).containsExactlyInAnyOrder(
+			"companyName",
+			"workName",
+			"contactName",
+			"phone",
+			"fax",
+			"email",
+			"projectLocation",
+			"salesRepresentative",
+			"additionalHeader"
+		);
+		assertThat(schema.path("$defs").path("missingBaseField").path("properties")
+			.path("field").path("enum"))
+			.extracting(JsonNode::asString)
+			.contains("salesRepresentative");
+		assertThat(nextActions).containsExactlyInAnyOrder(
+			"REQUEST_BASE_FIELDS",
+			"REQUEST_ITEM_FIELDS",
+			"REQUEST_IMAGE_DECISION",
+			"SHOW_PREVIEW"
+		);
+		assertThat(schema.path("required")).extracting(JsonNode::asString).containsExactlyInAnyOrder(
+			"schemaVersion",
+			"schemeCode",
+			"schemeConfidence",
+			"headerPatch",
+			"standardItemIntents",
+			"customItems",
+			"removedItemCodes",
+			"imageAssessments",
+			"selectedImageMessageId",
+			"imageDeclined",
+			"missingBaseFields",
+			"missingItemFields",
+			"nextAction",
+			"warnings"
+		);
 	}
 
 	@Test
-	void aiContractBoundsModelControlledCollectionsAndText() throws IOException {
+	void aiContractSeparatesStandardAndCustomItemsWithoutAllowingCalculatedAmounts() throws IOException {
 		JsonNode schema = readJson("/ai/quotation-request.schema.json");
 		JsonNode properties = schema.path("properties");
+		JsonNode standardProperties = properties.path("standardItemIntents").path("items").path("properties");
+		JsonNode customProperties = properties.path("customItems").path("items").path("properties");
 
-		assertThat(schema.path("required")).anySatisfy(field -> assertThat(field.asString()).isEqualTo("quotationName"));
-		assertThat(properties.path("quotationName").path("maxLength").asInt()).isBetween(1, 200);
-		assertThat(properties.path("items").path("maxItems").asInt()).isBetween(1, 100);
-		assertThat(properties.path("items").path("items").path("properties").path("sourceText").path("maxLength").asInt())
+		assertThat(standardProperties.propertyNames()).containsExactlyInAnyOrder(
+			"itemCode",
+			"matchedName",
+			"quantity",
+			"sourceText",
+			"confidence"
+		);
+		assertThat(standardProperties.has("specification")).isFalse();
+		assertThat(standardProperties.has("unit")).isFalse();
+		assertThat(standardProperties.has("unitPrice")).isFalse();
+		assertThat(standardProperties.has("remark")).isFalse();
+		assertThat(standardProperties.has("lineAmount")).isFalse();
+		assertThat(customProperties.propertyNames()).contains(
+			"clientItemId",
+			"kind",
+			"itemName",
+			"specification",
+			"unit",
+			"unitPrice",
+			"quantity",
+			"remark"
+		);
+		assertThat(customProperties.has("lineAmount")).isFalse();
+		assertThat(properties.has("subtotal")).isFalse();
+		assertThat(properties.has("taxAmount")).isFalse();
+		assertThat(properties.has("totalAmount")).isFalse();
+		assertThat(properties.path("standardItemIntents").path("maxItems").asInt()).isBetween(1, 100);
+		assertThat(standardProperties.path("sourceText").path("maxLength").asInt())
 			.isBetween(1, 2000);
+		assertThat(standardProperties.path("quantity").path("anyOf").get(0).path("maximum").decimalValue())
+			.isEqualByComparingTo("1000000000");
+		assertThat(customProperties.path("quantity").path("$ref").asString())
+			.isEqualTo("#/$defs/nullablePositiveExplicitDecimal");
+		assertThat(properties.path("customItems").path("maxItems").asInt()).isEqualTo(200);
 		assertThat(properties.path("imageAssessments").path("maxItems").asInt()).isBetween(1, 50);
+		assertThat(properties.path("selectedImageMessageId").path("description").asString())
+			.contains("highest distinctiveness score");
 		assertThat(properties.path("warnings").path("maxItems").asInt()).isBetween(1, 50);
+		assertThat(properties.path("missingBaseFields").path("maxItems").asInt()).isBetween(1, 50);
+		assertThat(properties.path("missingItemFields").path("maxItems").asInt()).isBetween(1, 50);
 	}
 
 	@Test
-	void templateDefinitionsMatchTheThreeExtractedWorksheets() throws IOException {
+	void templateDefinitionsMatchTheFiveExtractedWorksheets() throws IOException {
 		JsonNode definitions = readJson("/quotation/template-definitions.json");
 
-		assertThat(definitions.path("templates")).hasSize(3);
-		assertTemplate(definitions, "CNS", "CNS", 11, 28, "G32", false);
+		assertThat(definitions.path("templates")).hasSize(5);
+		assertTemplate(definitions, "CNS", "CNS", 11, 31, "G35", false);
 		assertTemplate(definitions, "GENERAL", "一般架", 11, 30, "G34", false);
 		assertTemplate(definitions, "MARINE", "船用", 11, 23, "G27", true);
+		assertTemplate(definitions, "BLANK", "空白", 11, 28, "G32", false);
+		assertTemplate(definitions, "SALES", "銷售報價單(報價單號前會多一個S)", 11, 28, "G32", false);
+	}
+
+	@Test
+	void richMenuDefinesSixNonOverlappingMessageActions() throws IOException {
+		JsonNode richMenu = readJson("/line/rich-menu.json");
+
+		assertThat(richMenu.path("size").path("width").asInt()).isEqualTo(2500);
+		assertThat(richMenu.path("size").path("height").asInt()).isEqualTo(1686);
+		assertThat(richMenu.path("selected").asBoolean()).isTrue();
+		assertThat(richMenu.path("chatBarText").asString().length()).isLessThanOrEqualTo(14);
+		assertThat(richMenu.path("areas")).hasSize(6);
+		assertThat(richMenu.path("areas"))
+			.allSatisfy(area -> assertThat(area.path("action").path("type").asString()).isEqualTo("message"));
+		assertThat(richMenu.path("areas"))
+			.extracting(area -> area.path("action").path("text").asString())
+			.containsExactly("建立報價", "我的草稿", "選擇報價類型", "上傳圖片", "使用說明", "取消操作");
 	}
 
 	private void assertTemplate(
@@ -72,6 +171,8 @@ class QuotationContractTest {
 			.orElseThrow();
 
 		assertThat(template.path("sheetName").asString()).isEqualTo(sheetName);
+		assertThat(template.path("workbookPath").asString())
+			.isEqualTo("outputs/excel-templates/quotation-template-" + schemeCode + ".xlsx");
 		assertThat(template.path("detail").path("firstRow").asInt()).isEqualTo(firstRow);
 		assertThat(template.path("detail").path("lastRow").asInt()).isEqualTo(lastRow);
 		assertThat(template.path("totals").path("total").asString()).isEqualTo(totalCell);
