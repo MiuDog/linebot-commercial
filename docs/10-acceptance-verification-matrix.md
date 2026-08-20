@@ -86,10 +86,20 @@ Task 17 的實作、文件同步、自動驗證與打包已完成。上述外部
 | 桌面設定與 DPAPI | 通過 | `AppConfiguration*Test`、`DpapiSecretStoreTest`、`DesktopSpringPropertiesTest`；一般 properties 不含秘密原文。 |
 | 單一執行個體與背景視窗 | 部分通過 | IPC、nonce、FileLock、EDT、系統匣 fallback 與 Log viewer 自動測試通過；實體鍵盤、系統匣恢復與真 webhook 背景持續仍待人工。 |
 | ngrok | 部分通過 | process、local API、HTTPS URL 注入、timeout 與只停止 child process 測試通過；真實專用 Token callback 尚未執行。 |
-| 自帶 Java app image | 部分通過 | `test-windows-app-image.ps1` 已移除 `JAVA_HOME`／`JDK_HOME` 並從 PATH 排除 Java，使用 app image Runtime 執行 `--shutdown`，exit code 0 且無殘留程序；尚待無系統 Java 的乾淨 VM 複驗。 |
+| 自帶 Java app image | 部分通過 | `test-windows-app-image.ps1` 已移除 `JAVA_HOME`／`JDK_HOME` 並從 PATH 排除 Java，使用 app image Runtime 執行 `--shutdown`，exit code 0；smoke test 現另檢查 launcher 衍生的 JVM child process，`residualProcesses` 為 0。GitHub windows-latest runner 亦重現同一結果。尚待無系統 Java 的乾淨 VM 複驗。 |
 | Setup 生命週期 | 通過（目前主機） | `installer-smoke.json` 證明 install、repair、預設保留資料及 `/PURGE=1` 清除成功；程式、staging、backup 與資料目錄無殘留。 |
 | SBOM 與第三方聲明 | 通過 | CycloneDX 1.6 共 62 個 runtime 元件；Setup 實際安裝 `sbom.cdx.json` 與 `THIRD-PARTY-NOTICES.md`。 |
-| CI/CD policy | 本機通過 | 兩份 workflow YAML 可解析，第三方 Actions 鎖定 40 碼 SHA，PR/main 只有 `contents: read`；實際 GitHub run 尚未建立。 |
+| CI/CD policy | 通過（GitHub 實跑） | 兩份 workflow YAML 可解析，第三方 Actions 鎖定 40 碼 SHA，PR/main 只有 `contents: read`。PR #1 的 run `32346195873` 於 windows-latest 與 ubuntu-latest 皆成功；Windows job 另完成 jpackage app image 與自帶 Runtime smoke test。 |
 | 商用 Release gate | 如預期阻擋 | 預發佈 EULA／Publisher／support URL 尚未核准，Setup 尚未簽章；`verify-release.ps1 -RequireCommercialMetadata` 已拒絕公開條件。 |
 
-最新本機 Setup：`dist/AssetsManagerLinebot-Setup-0.1.0.exe`，SHA-256 為 `9BEE780994D53B7565D7AB05F6469C4802F22D69616D1AB9B6D4D05EA5959659`。Setup 每次重建後雜湊會改變，正式值必須由 Tag workflow 在簽章後寫入 Release Notes。
+最新本機 Setup：`dist/AssetsManagerLinebot-Setup-0.1.0.exe`，SHA-256 為 `2AC9A619410DC57CF6CFC4E964E4DF77D6A8AA80FA0F50B2B97ADC0989206306`。Setup 每次重建後雜湊會改變，正式值必須由 Tag workflow 在簽章後寫入 Release Notes。
+
+### CI 首次實跑修正的問題
+
+只在 GitHub runner 出現、本機 Windows 無法暴露：
+
+- `mvnw` 版控模式為 `100644`，Ubuntu 以 exit code 126 失敗；已改 `100755`。
+- Windows runner 的 TEMP 是 8.3 短檔名（`RUNNER~1`），`QuotationOutputDirectoryService` 回傳解析後的長路徑，測試預期值未正規化。
+- 桌面測試 fixture 寫死 `Path.of("C:/local")`，在 Linux 屬相對路徑而未通過資料根目錄驗證。
+
+因此在此之前標記為完成的桌面與封裝項目，其證據僅涵蓋本機 Windows 環境。
