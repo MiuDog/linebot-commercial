@@ -22,8 +22,8 @@ $ThirdPartyNoticesPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "
 $SbomPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "target\classes\META-INF\sbom\sbom.json"))
 $OutputPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "dist\LinebotCommercial-Setup-$Version.exe"))
 $NsisVersion = "3.12"
-$NsisInstallerSha256 = "3BC2B06253A7E4957111BE152AC6A536E0C7478A706E19DA814038DB5D706495"
-$NsisPackageUrl = "https://community.chocolatey.org/api/v2/package/nsis.install/3.12.0"
+$NsisZipSha256 = "56581F90DB321581C5381193D796FFFCF2D24B2F8FED2160A6C6A3BAA67F2C4F"
+$NsisPackageUrl = "https://community.chocolatey.org/api/v2/package/nsis.portable/3.12.0"
 
 #endregion
 
@@ -46,48 +46,48 @@ function Assert-Version {
 	}
 }
 
-# 方法：以官方 SHA-256 驗證 NSIS installer，拒絕未知建置工具。
-function Assert-NsisInstallerHash {
+# 方法：以官方 SHA-256 驗證 NSIS zip，拒絕未知建置工具。
+function Assert-NsisZipHash {
 	param(
-		[string]$InstallerPath
+		[string]$ZipPath
 	)
 
-	$ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $InstallerPath).Hash
+	$ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipPath).Hash
 
-	if ($ActualHash -ne $NsisInstallerSha256) {
-		throw "NSIS installer SHA-256 驗證失敗。"
+	if ($ActualHash -ne $NsisZipSha256) {
+		throw "NSIS zip SHA-256 驗證失敗。"
 	}
 }
 
-# 方法：從已審核套件取得官方 NSIS installer 並驗證固定 SHA-256。
-function Get-VerifiedNsisInstaller {
+# 方法：從已審核套件取得官方 NSIS zip 並驗證固定 SHA-256。
+function Get-VerifiedNsisZip {
 	if ($NsisInstallerPath -ne "") {
-		$ResolvedInstaller = [System.IO.Path]::GetFullPath($NsisInstallerPath)
-		Assert-NsisInstallerHash -InstallerPath $ResolvedInstaller
+		$ResolvedZip = [System.IO.Path]::GetFullPath($NsisInstallerPath)
+		Assert-NsisZipHash -ZipPath $ResolvedZip
 
-		return $ResolvedInstaller
+		return $ResolvedZip
 	}
 
-	$PackagePath = Join-Path $TargetRoot "nsis.install.$NsisVersion.nupkg"
-	$ArchivePath = Join-Path $TargetRoot "nsis.install.$NsisVersion.zip"
+	$PackagePath = Join-Path $TargetRoot "nsis.portable.$NsisVersion.nupkg"
+	$ArchivePath = Join-Path $TargetRoot "nsis.portable.$NsisVersion.zip"
 	$ExtractPath = Join-Path $TargetRoot "package"
 
 	New-Item -ItemType Directory -Path $TargetRoot -Force | Out-Null
 
-	# 外部函式：下載含官方 binary 的已審核 NSIS 套件，後續仍以官方 SHA-256 驗證。
+	# 外部函式：下載含官方 binary 的已審核 NSIS portable 套件，後續仍以官方 SHA-256 驗證。
 	Invoke-WebRequest -Uri $NsisPackageUrl -OutFile $PackagePath
 	Copy-Item -LiteralPath $PackagePath -Destination $ArchivePath -Force
 	Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ExtractPath -Force
-	$ResolvedInstaller = Get-ChildItem -LiteralPath $ExtractPath -Recurse -Filter "nsis-$NsisVersion-setup.exe" |
+	$ResolvedZip = Get-ChildItem -LiteralPath $ExtractPath -Recurse -Filter "nsis-$NsisVersion.zip" |
 		Select-Object -First 1 -ExpandProperty FullName
 
-	if ($null -eq $ResolvedInstaller) {
-		throw "已下載套件中找不到 NSIS installer。"
+	if ($null -eq $ResolvedZip) {
+		throw "已下載套件中找不到 NSIS zip。"
 	}
 
-	Assert-NsisInstallerHash -InstallerPath $ResolvedInstaller
+	Assert-NsisZipHash -ZipPath $ResolvedZip
 
-	return $ResolvedInstaller
+	return $ResolvedZip
 }
 
 # 方法：準備專案內固定版本 NSIS 工具鏈，不修改全域系統安裝。
@@ -96,13 +96,13 @@ function Initialize-NsisToolchain {
 		return
 	}
 
-	$Installer = Get-VerifiedNsisInstaller
+	$Zip = Get-VerifiedNsisZip
 	New-Item -ItemType Directory -Path $NsisRoot -Force | Out-Null
+	$ExtractRoot = Join-Path $TargetRoot "nsis-extracted"
+	Expand-Archive -LiteralPath $Zip -DestinationPath $ExtractRoot -Force
+	Copy-Item -Path (Join-Path $ExtractRoot "nsis-$NsisVersion\*") -Destination $NsisRoot -Recurse -Force
 
-	# 外部函式：把已驗證 NSIS 靜默安裝至 target 工具目錄並等待完成。
-	$Process = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$NsisRoot") -Wait -PassThru -WindowStyle Hidden
-
-	if ($Process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $MakensisPath -PathType Leaf)) {
+	if (-not (Test-Path -LiteralPath $MakensisPath -PathType Leaf)) {
 		throw "NSIS $NsisVersion 工具鏈準備失敗。"
 	}
 }
