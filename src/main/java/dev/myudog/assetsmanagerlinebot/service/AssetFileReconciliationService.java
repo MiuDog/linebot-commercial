@@ -89,6 +89,8 @@ public class AssetFileReconciliationService {
 		Optional<Asset> existing = assetRepository.findByMessageId(messageId);
 		if (existing.isEmpty()) return;
 
+		if (assetRepository.isQuotationAsset(existing.get().id())) return;
+
 		Path path = fileStorage.resolve(existing.get().filePath());
 
 		// 外部 API：直接確認實體檔案是否仍存在，避免等待下一次同步。

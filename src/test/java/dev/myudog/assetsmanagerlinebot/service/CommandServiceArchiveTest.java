@@ -8,6 +8,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
+import java.nio.file.NoSuchFileException;
 
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -52,10 +55,10 @@ class CommandServiceArchiveTest {
 		commandService.handleText("ZD-JY12345", "M3", "C1", "U1", "R3");
 		commandService.handleText("YJ123456", "M4", "C1", "U1", "R4");
 
-		verify(lineService).replyText("R1", "已將3張圖片存入「ZD12345」，流水號01至03");
-		verify(lineService).replyText("R2", "已將2張圖片存入「ZD12345A」，流水號08至09");
-		verify(lineService).replyText("R3", "已將1張圖片存入「ZD-JY12345」，流水號100至100");
-		verify(lineService).replyText("R4", "已將4張圖片存入「YJ123456」，流水號21至24");
+		verify(lineService).replyText("R1", "歸檔成功：已將3張圖片存入「ZD12345」，流水號01至03。");
+		verify(lineService).replyText("R2", "歸檔成功：已將2張圖片存入「ZD12345A」，流水號08至09。");
+		verify(lineService).replyText("R3", "歸檔成功：已將1張圖片存入「ZD-JY12345」，流水號100至100。");
+		verify(lineService).replyText("R4", "歸檔成功：已將4張圖片存入「YJ123456」，流水號21至24。");
 	}
 
 	@Test
@@ -81,15 +84,28 @@ class CommandServiceArchiveTest {
 	}
 
 	@Test
-	void reportsDuplicateAndFetchedCountsWhenTheImageSetIsIncomplete() throws Exception {
+	void explainsWhenNoImageInTheSetCouldBeDownloaded() throws Exception {
 		when(archiveService.archive("M1", "C1", "ZD12345"))
-			.thenReturn(new ImageArchiveService.ArchiveResult(ImageArchiveService.ArchiveStatus.INCOMPLETE_SET, "ZD12345", 1, 3, 1, "", ""));
+			.thenReturn(new ImageArchiveService.ArchiveResult(ImageArchiveService.ArchiveStatus.INCOMPLETE_SET, "ZD12345", 0, 3, 0, "", ""));
 
 		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
 
 		verify(lineService).replyText(
 			"reply-token",
-			"圖片抓取未完成：重複1張，最終抓取1張（預期3張）"
+			"無法歸檔：LINE 顯示此圖片組共3張，但目前沒有任何圖片下載成功。請重新上傳圖片後再執行指令。"
+		);
+	}
+
+	@Test
+	void reportsMissingCountAfterAvailableImagesWereArchived() throws Exception {
+		when(archiveService.archive("M1", "C1", "ZD12345"))
+			.thenReturn(new ImageArchiveService.ArchiveResult(ImageArchiveService.ArchiveStatus.ARCHIVED, "ZD12345", 2, 3, 0, "01", "02"));
+
+		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
+
+		verify(lineService).replyText(
+			"reply-token",
+			"部分歸檔完成：已將2張圖片存入「ZD12345」，流水號01至02；LINE 顯示此圖片組共3張，其中1張未能下載。"
 		);
 	}
 
@@ -105,7 +121,7 @@ class CommandServiceArchiveTest {
 
 		verify(lineService).replyText(
 			"reply-token",
-			"尚未回覆圖片，請回覆要歸檔的圖片組後重新執行指令"
+			"無法歸檔：尚未回覆圖片。請先回覆要儲存的圖片，再輸入資料夾代碼。"
 		);
 		verifyNoInteractions(archiveService);
 	}
@@ -154,11 +170,11 @@ class CommandServiceArchiveTest {
 
 		verify(lineService).replyText(
 			"R1",
-			"找不到被回覆圖片的待處理紀錄，請重新上傳後再試"
+			"無法歸檔：找不到被回覆圖片，可能尚未下載完成、已被刪除，或暫存紀錄已清除。請重新上傳後再試。"
 		);
 		verify(lineService).replyText(
 			"R3",
-			"被回覆圖片不屬於目前群組，無法歸檔"
+			"無法歸檔：被回覆圖片來自其他群組，不能存入目前群組的資料。"
 		);
 	}
 
@@ -178,7 +194,65 @@ class CommandServiceArchiveTest {
 
 		verify(lineService).replyText(
 			"reply-token",
-			"圖片歸檔失敗，請稍後重新執行指令"
+			"圖片歸檔失敗：無法寫入圖片檔案。本次未完成歸檔，請稍後再試。"
+		);
+	}
+
+	@Test
+	void explainsStoragePermissionFailuresInChinese() throws Exception {
+		doThrow(new AccessDeniedException("E:/圖片資產/ZD12345"))
+			.when(archiveService)
+			.archive("M1", "C1", "ZD12345");
+
+		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
+
+		verify(lineService).replyText(
+			"reply-token",
+			"圖片歸檔失敗：圖片資料夾沒有寫入權限。本次未完成歸檔，請通知管理員檢查儲存路徑權限。"
+		);
+	}
+
+	@Test
+	void explainsMissingTemporaryImagesInChinese() throws Exception {
+		doThrow(new NoSuchFileException(".pending/missing.jpg"))
+			.when(archiveService)
+			.archive("M1", "C1", "ZD12345");
+
+		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
+
+		verify(lineService).replyText(
+			"reply-token",
+			"圖片歸檔失敗：找不到暫存圖片，圖片可能已被移動或刪除。本次未完成歸檔，請重新上傳後再試。"
+		);
+	}
+
+	@Test
+	void explainsInsufficientStorageSpaceInChinese() throws Exception {
+		FileSystemException failure =
+			new FileSystemException("E:/圖片資產/ZD12345", null, "No space left on device");
+		doThrow(failure)
+			.when(archiveService)
+			.archive("M1", "C1", "ZD12345");
+
+		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
+
+		verify(lineService).replyText(
+			"reply-token",
+			"圖片歸檔失敗：圖片儲存空間不足。本次未完成歸檔，請通知管理員清理或擴充磁碟空間。"
+		);
+	}
+
+	@Test
+	void explainsDatabaseOrStateFailuresWithoutShowingTechnicalDetails() throws Exception {
+		doThrow(new IllegalStateException("database constraint details"))
+			.when(archiveService)
+			.archive("M1", "C1", "ZD12345");
+
+		commandService.handleText("ZD12345", "M1", "C1", "U1", "reply-token");
+
+		verify(lineService).replyText(
+			"reply-token",
+			"圖片歸檔失敗：資料紀錄發生異常。本次未完成歸檔，請稍後再試；若持續發生請通知管理員。"
 		);
 	}
 }

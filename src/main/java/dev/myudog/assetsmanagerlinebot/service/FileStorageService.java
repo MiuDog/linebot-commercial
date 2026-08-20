@@ -22,16 +22,20 @@ import java.util.regex.Pattern;
  * <p>對外只回傳「相對於資產庫根目錄、以 / 分隔」的路徑，資料庫也只存這個，
  * 因此整個資產庫連同 assets.db 可以整包搬到別台機器而不失效。
  *
- * <p><b>實體結構</b>：{@code {根目錄}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg}
+	 * <p><b>正式歸檔結構</b>：
+	 * {@code {根目錄}/{部門資料夾}/{yyyyMMdd}/{yyyyMMdd-流水號}.jpg}
  *
  * <pre>
  * F:\資產庫\
  * ├─ assets.db
- * ├─ 20260727\
- * │  ├─ 20260727-224530123.jpg
- * │  └─ 20260727-224612456.jpg
- * └─ 20260728\
- *    └─ 20260728-091502001.jpg
+	 * ├─ ZD12345\
+	 * │  ├─ 20260727\
+	 * │  │  └─ 20260727-01.jpg
+	 * │  └─ 20260728\
+	 * │     └─ 20260728-01.jpg
+	 * └─ YJ123456\
+	 *    └─ 20260728\
+	 *       └─ 20260728-01.jpg
  * </pre>
  *
  * <p><b>磁碟上只有日期，沒有資產編號。</b> 分類完全交給資料庫的標籤，
@@ -41,8 +45,8 @@ import java.util.regex.Pattern;
  * <p>好處是使用者改標籤時檔案路徑永遠不變，備份與外部引用不會失效；
  * 而且同一張圖可以同時屬於多個編號，不必在磁碟上複製或做連結。
  *
- * <p>根目錄由 {@code ASSETS_ROOT} 環境變數指定，可以是任意路徑
- * （例如 {@code F:/資產庫}），與專案目錄無關。
+ * <p>資產根目錄由共同系統根目錄自動推導為「圖片資產」子路徑，
+ * 例如 {@code E:/圖片資產}，與專案目錄無關。
  *
  * <p><b>上游呼叫鏈：</b>
  * <ul>
@@ -70,8 +74,8 @@ public class FileStorageService {
 	private final Path root;
 
 	/**
-	 * @param assetsRoot 資產庫根目錄，由 {@code ASSETS_ROOT} 指定，
-	 *                   例如 {@code F:/資產庫} 或 {@code /data/assets}
+	 * @param assetsRoot 自共同系統根目錄推導的資產庫根目錄，
+	 *                   例如 {@code E:/圖片資產} 或 {@code /data/system-root/圖片資產}
 	 */
 	//#region 初始化與儲存
 
@@ -178,16 +182,17 @@ public class FileStorageService {
 		String folderName,
 		String contentType
 	) throws IOException {
-		// 步驟 1：使用 Java NIO 建立完整代碼對應的正式資料夾。
-		Path directory = resolve(folderName);
+		String date = DAY.format(ZonedDateTime.now(ZONE));
+
+		// 步驟 1：使用 Java NIO 建立部門代碼與當天日期對應的正式資料夾。
+		Path directory = resolve(folderName + "/" + date);
 
 		// 外部呼叫：使用 Java NIO 建立指定代碼的正式歸檔目錄。
 		Files.createDirectories(directory);
 
-		// 步驟 2：依該資料夾既有檔案決定下一個獨立流水號。
+		// 步驟 2：只依當天日期資料夾內的檔案決定獨立流水號。
 		long sequence = nextArchiveSequence(directory);
 		int width = Math.max(2, Long.toString(sequence).length());
-		String date = DAY.format(ZonedDateTime.now(ZONE));
 		String baseName = date + "-" + String.format("%0" + width + "d", sequence);
 		Path target = directory.resolve(baseName + extensionFor(contentType));
 

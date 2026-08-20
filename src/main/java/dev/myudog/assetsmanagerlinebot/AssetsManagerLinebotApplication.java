@@ -1,5 +1,6 @@
 package dev.myudog.assetsmanagerlinebot;
 
+import dev.myudog.assetsmanagerlinebot.desktop.DesktopApplication;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -33,6 +34,12 @@ public class AssetsManagerLinebotApplication {
 	 */
 	// 方法：執行 main 方法的處理流程。
 	public static void main(String[] args) {
+		if (DesktopApplication.desktopModeRequested(args)) {
+			DesktopApplication.createDefault().start(args);
+			return;
+		}
+
+		// 外部函式：未要求桌面模式時保持既有 server 與 Docker 的 Spring 啟動流程。
 		SpringApplication.run(AssetsManagerLinebotApplication.class, args);
 	}
 }

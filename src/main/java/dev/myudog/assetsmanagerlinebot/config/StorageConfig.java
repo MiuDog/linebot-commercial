@@ -31,7 +31,7 @@ public class StorageConfig {
 	public DataSource dataSource(
 		@Value("${app.storage.root}") String assetsRoot,
 		@Value("${spring.datasource.url}") String jdbcUrl
-	) throws IOException {
+	) throws IOException, java.sql.SQLException {
 		// 步驟 1：使用 Java NIO 正規化儲存路徑並確保 SQLite 父目錄存在。
 		Path root = Paths.get(assetsRoot).toAbsolutePath().normalize();
 
@@ -45,6 +45,8 @@ public class StorageConfig {
 		// SQLite 只允許單一寫入者，連線池開多條只會換來 SQLITE_BUSY
 		dataSource.setMaximumPoolSize(1);
 		dataSource.setConnectionInitSql("PRAGMA foreign_keys=ON");
+		// 外部呼叫：在 schema.sql 建立新表前先安全升級既有 SQLite 報價資料。
+		QuotationSchemaMigrator.migrate(dataSource);
 		return dataSource;
 	}
 }

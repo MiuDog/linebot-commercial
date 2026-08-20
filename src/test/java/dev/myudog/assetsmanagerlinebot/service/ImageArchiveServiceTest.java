@@ -2,9 +2,14 @@ package dev.myudog.assetsmanagerlinebot.service;
 
 import dev.myudog.assetsmanagerlinebot.domain.Asset;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.context.TestPropertySource;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@ExtendWith(OutputCaptureExtension.class)
 @TestPropertySource(
 	properties =
 	{"app.storage.root=${java.io.tmpdir}/assets-manager-archive-test",
@@ -37,6 +43,43 @@ class ImageArchiveServiceTest {
 
 	@Autowired
 	FileStorageService fileStorage;
+
+	@Test
+	void exposesAnImageSetOnlyAfterEveryExpectedPositionWasStaged() throws Exception {
+		String suffix = UUID.randomUUID().toString();
+		String sourceId = "U-" + suffix;
+		String imageSetId = "SET-" + suffix;
+		String firstMessageId = "M1-" + suffix;
+		String secondMessageId = "M2-" + suffix;
+		archiveService.stage(
+			firstMessageId,
+			imageSetId,
+			1,
+			2,
+			"user",
+			sourceId,
+			sourceId,
+			image("first"),
+			"image/jpeg"
+		);
+
+		assertThat(archiveService.completedSetMessageIds(sourceId, imageSetId, firstMessageId, 2)).isEmpty();
+
+		archiveService.stage(
+			secondMessageId,
+			imageSetId,
+			2,
+			2,
+			"user",
+			sourceId,
+			sourceId,
+			image("second"),
+			"image/jpeg"
+		);
+
+		assertThat(archiveService.completedSetMessageIds(sourceId, imageSetId, secondMessageId, 2))
+			.containsExactly(firstMessageId, secondMessageId);
+	}
 
 	@Test
 	void archivesEveryImageImmediatelyAndAssignsFolderSpecificSequences() throws Exception {
@@ -84,42 +127,65 @@ class ImageArchiveServiceTest {
 		assertThat(firstFolderAssets)
 			.extracting(Asset::filePath)
 			.containsExactlyInAnyOrder(
-				firstFolder + "/" + date + "-01.jpg",
-				firstFolder + "/" + date + "-02.jpg",
-				firstFolder + "/" + date + "-03.jpg",
-				firstFolder + "/" + date + "-04.jpg"
+				firstFolder + "/" + date + "/" + date + "-01.jpg",
+				firstFolder + "/" + date + "/" + date + "-02.jpg",
+				firstFolder + "/" + date + "/" + date + "-03.jpg",
+				firstFolder + "/" + date + "/" + date + "-04.jpg"
 			);
 
 		List<Asset> secondFolderAssets = assetService.search(sourceId, List.of(secondFolder.toLowerCase()), 10);
 		assertThat(secondFolderAssets)
 			.extracting(Asset::filePath)
-			.containsExactly(secondFolder + "/" + date + "-01.png");
+			.containsExactly(secondFolder + "/" + date + "/" + date + "-01.png");
 	}
 
 	@Test
-	void waitsUntilEveryImageInTheSetHasArrivedWithoutArchivingPartOfIt() throws Exception {
+	void archivesAvailableImagesAndReportsMissingCountWhenTheSetIsIncomplete(
+		CapturedOutput output
+	) throws Exception {
 		String suffix = UUID.randomUUID().toString();
 		String sourceId = "C-" + suffix;
-		String messageId = "message-" + suffix;
+		String firstMessageId = "message-1-" + suffix;
+		String secondMessageId = "message-2-" + suffix;
+		String imageSetId = "set-" + suffix;
+		String folderName = randomFolder("ZD");
 		archiveService.stage(
-			messageId,
-			"set-" + suffix,
+			firstMessageId,
+			imageSetId,
 			1,
-			2,
+			3,
 			"group",
 			sourceId,
 			"U-" + suffix,
 			image("first"),
 			"image/jpeg"
 		);
+		archiveService.stage(
+			secondMessageId,
+			imageSetId,
+			2,
+			3,
+			"group",
+			sourceId,
+			"U-" + suffix,
+			image("second"),
+			"image/jpeg"
+		);
 
 		ImageArchiveService.ArchiveResult result =
-			archiveService.archive(messageId, sourceId, randomFolder("ZD"));
+			archiveService.archive(firstMessageId, sourceId, folderName);
 
-		assertThat(result.status()).isEqualTo(ImageArchiveService.ArchiveStatus.INCOMPLETE_SET);
-		assertThat(result.imageCount()).isEqualTo(1);
-		assertThat(result.expectedCount()).isEqualTo(2);
-		assertThat(assetService.countBySource(sourceId)).isZero();
+		assertThat(result.status()).isEqualTo(ImageArchiveService.ArchiveStatus.ARCHIVED);
+		assertThat(result.imageCount()).isEqualTo(2);
+		assertThat(result.expectedCount()).isEqualTo(3);
+		assertThat(assetService.countBySource(sourceId)).isEqualTo(2);
+		assertThat(output).contains(
+			"event=image_archive_set_incomplete",
+			"imageSetId=" + imageSetId,
+			"expectedCount=3",
+			"fetchedCount=2",
+			"fetchedIndexes=[1, 2]"
+		);
 	}
 
 	@Test
@@ -216,10 +282,39 @@ class ImageArchiveServiceTest {
 			);
 
 		assertThat(result.status())
-			.isEqualTo(ImageArchiveService.ArchiveStatus.INCOMPLETE_SET);
+			.isEqualTo(ImageArchiveService.ArchiveStatus.ARCHIVED);
 		assertThat(result.imageCount()).isEqualTo(1);
 		assertThat(result.duplicateCount()).isZero();
 		assertThat(result.expectedCount()).isEqualTo(2);
+	}
+
+	@Test
+	void reportsDetailedIndexesWhenNoImageCouldBeArchived(CapturedOutput output) throws Exception {
+		String suffix = UUID.randomUUID().toString();
+		String sourceId = "C-" + suffix;
+		String messageId = "failed-" + suffix;
+		String imageSetId = "set-" + suffix;
+		archiveService.recordFetchFailure(
+			messageId,
+			imageSetId,
+			1,
+			2,
+			sourceId
+		);
+
+		ImageArchiveService.ArchiveResult result =
+			archiveService.archive(messageId, sourceId, randomFolder("ZD"));
+
+		assertThat(result.status()).isEqualTo(ImageArchiveService.ArchiveStatus.INCOMPLETE_SET);
+		assertThat(result.imageCount()).isZero();
+		assertThat(result.expectedCount()).isEqualTo(2);
+		assertThat(assetService.countBySource(sourceId)).isZero();
+		JsonNode incompleteEvent = structuredEvent(output, "image_archive_set_incomplete");
+		assertThat(output).contains("event=line_image_fetch_failed");
+		assertThat(incompleteEvent).isNotNull();
+		assertThat(kvp(incompleteEvent, "imageSetId")).isEqualTo(imageSetId);
+		assertThat(kvp(incompleteEvent, "fetchedIndexes")).isEqualTo("[]");
+		assertThat(kvp(incompleteEvent, "fetchAttempts")).isEqualTo("[1:FAILED/2]");
 	}
 
 	@Test
@@ -304,11 +399,11 @@ class ImageArchiveServiceTest {
 		String sourceId = "C-" + suffix;
 		String folderName = randomFolder("ZD");
 		String date = DAY.format(ZonedDateTime.now(TAIPEI));
-		Path directory = fileStorage.resolve(folderName);
+		Path directory = fileStorage.resolve(folderName + "/" + date);
 
 		// 外部呼叫：建立既有的第 99 號檔案，驗證下一張會自動擴充為三位數。
 		Files.createDirectories(directory);
-		Files.writeString(directory.resolve("20260101-99.jpg"), "existing");
+		Files.writeString(directory.resolve(date + "-99.jpg"), "existing");
 
 		String messageId = "message-" + suffix;
 		archiveService.stage(
@@ -329,7 +424,42 @@ class ImageArchiveServiceTest {
 		assertThat(result.status()).isEqualTo(ImageArchiveService.ArchiveStatus.ARCHIVED);
 		assertThat(result.firstSequence()).isEqualTo("100");
 		assertThat(result.lastSequence()).isEqualTo("100");
-		assertThat(fileStorage.resolve(folderName + "/" + date + "-100.jpg")).exists();
+		assertThat(fileStorage.resolve(folderName + "/" + date + "/" + date + "-100.jpg")).exists();
+	}
+
+	@Test
+	void resetsTheFolderSequenceForEachDate() throws Exception {
+		String suffix = UUID.randomUUID().toString();
+		String sourceId = "C-" + suffix;
+		String folderName = randomFolder("ZD");
+		String date = DAY.format(ZonedDateTime.now(TAIPEI));
+		String previousDate = DAY.format(ZonedDateTime.now(TAIPEI).minusDays(1));
+		Path previousDirectory = fileStorage.resolve(folderName + "/" + previousDate);
+
+		// 前一天即使已有高流水號，也不得影響今天的獨立計數。
+		Files.createDirectories(previousDirectory);
+		Files.writeString(previousDirectory.resolve(previousDate + "-99.jpg"), "existing");
+
+		String messageId = "message-" + suffix;
+		archiveService.stage(
+			messageId,
+			"set-" + suffix,
+			1,
+			1,
+			"group",
+			sourceId,
+			"U-" + suffix,
+			image("today"),
+			"image/jpeg"
+		);
+
+		ImageArchiveService.ArchiveResult result =
+			archiveService.archive(messageId, sourceId, folderName);
+
+		assertThat(result.status()).isEqualTo(ImageArchiveService.ArchiveStatus.ARCHIVED);
+		assertThat(result.firstSequence()).isEqualTo("01");
+		assertThat(result.lastSequence()).isEqualTo("01");
+		assertThat(fileStorage.resolve(folderName + "/" + date + "/" + date + "-01.jpg")).exists();
 	}
 
 	private void stageSet(
@@ -371,5 +501,36 @@ class ImageArchiveServiceTest {
 
 	private static ByteArrayInputStream image(String text) {
 		return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
+	}
+
+	// 方法：從 Spring 測試的 JSON Lines 輸出尋找指定 structured event。
+	private static JsonNode structuredEvent(CapturedOutput output, String eventName) {
+		ObjectMapper mapper = new ObjectMapper();
+		return output.getOut()
+			.lines()
+			.filter(line -> line.startsWith("{"))
+			.map(line -> parseJson(mapper, line))
+			.filter(node -> node != null && eventName.equals(kvp(node, "event")))
+			.findFirst()
+			.orElse(null);
+	}
+
+	// 方法：安全解析單行 JSON，略過測試框架的非 JSON 訊息。
+	private static JsonNode parseJson(ObjectMapper mapper, String line) {
+		try {
+			return mapper.readTree(line);
+		}
+		catch (Exception exception) {
+			return null;
+		}
+	}
+
+	// 方法：讀取 Logback JsonEncoder 產生的單鍵 kvpList 欄位。
+	private static String kvp(JsonNode event, String fieldName) {
+		for (JsonNode field : event.path("kvpList")) {
+			JsonNode value = field.get(fieldName);
+			if (value != null) return value.asString();
+		}
+		return null;
 	}
 }

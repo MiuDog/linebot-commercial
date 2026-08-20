@@ -9,9 +9,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
+import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -32,6 +36,8 @@ import java.util.regex.Pattern;
  *      #標籤            → 列出本群組所有編號／標籤與數量
  *      #說明            → 用法
  *      #報價            → 引用一張規格圖後下此指令，跑 AI 提取 → 計算 → 產報價單
+ *
+ *   ③ 標記機器人 + ping → 回覆 pong 與本次事件的延遲毫秒數
  * </pre>
  *
  * <p>井字號開頭一律當指令，與圖片歸檔流程互不混淆。
@@ -63,8 +69,26 @@ public class CommandService {
 	private static final Pattern ARCHIVE_PREFIX =
 		Pattern.compile("^(?:ZD|YJ).*");
 
+	/**
+	 * 標記機器人後只輸入 ping（不分大小寫）才算連線檢查，避免誤判一般對話。
+	 */
+	private static final Pattern PING_COMMAND =
+		Pattern.compile("^ping$", Pattern.CASE_INSENSITIVE);
+
 	private static final String ARCHIVE_SYNTAX_ERROR =
 		"檢測到語法錯誤，請修正後重新執行指令";
+
+	private static final String ARCHIVE_PERMISSION_ERROR =
+		"圖片歸檔失敗：圖片資料夾沒有寫入權限。"
+			+ "本次未完成歸檔，請通知管理員檢查儲存路徑權限。";
+
+	private static final String ARCHIVE_STORAGE_FULL_ERROR =
+		"圖片歸檔失敗：圖片儲存空間不足。"
+			+ "本次未完成歸檔，請通知管理員清理或擴充磁碟空間。";
+
+	private static final String ARCHIVE_PENDING_FILE_MISSING_ERROR =
+		"圖片歸檔失敗：找不到暫存圖片，圖片可能已被移動或刪除。"
+			+ "本次未完成歸檔，請重新上傳後再試。";
 
 	private static final String HELP = """
             📦 資產管理機器人用法
@@ -80,6 +104,8 @@ public class CommandService {
             ④ 盤點：#標籤 列出目前所有編號與數量
             ⑤ 報價：引用一張規格圖 →「#報價」
                會先用 AI 讀出規格，再套公式與模板產出報價單。
+            ⑥ 連線檢查：標記機器人並輸入 ping
+               會回覆 pong 與本次事件的延遲毫秒數。
             """;
 
 	private final AssetService assetService;
@@ -114,6 +140,32 @@ public class CommandService {
 	}
 
 	/**
+	 * 連線自我檢查：使用者標記機器人並輸入 ping 時，回覆 pong 與本次事件的延遲毫秒數。
+	 *
+	 * <p>延遲以「LINE 產生事件的時間」到「本服務處理到這一行的時間」相減求得，
+	 * 涵蓋 LINE 送出、網路傳輸與本服務排隊處理的總時間，可用來判斷機器人是否還活著、
+	 * 以及目前回應是不是變慢了。兩端時鐘不同步時可能算出負數，一律夾為 0。
+	 *
+	 * @param mentionText          去掉自身標記後剩下的文字；機器人未被標記時為 null
+	 * @param eventTimestampMillis LINE 事件時間戳記（毫秒）；取不到時為 0 以下
+	 * @param replyToken           回覆權杖
+	 * @return 已當成 ping 處理並回覆時為 true，呼叫端據此略過後續文字流程
+	 */
+	// 方法：回覆標記機器人後的 ping 連線檢查。
+	public boolean handleMentionPing(String mentionText, long eventTimestampMillis, String replyToken) {
+		if (mentionText == null || !PING_COMMAND.matcher(mentionText.trim()).matches()) return false;
+
+		if (eventTimestampMillis <= 0) {
+			lineService.replyText(replyToken, "🏓 pong！（本次事件缺少時間戳記，無法計算延遲）");
+			return true;
+		}
+
+		long latencyMillis = Math.max(0, System.currentTimeMillis() - eventTimestampMillis);
+		lineService.replyText(replyToken, "🏓 pong！延遲 " + latencyMillis + " ms");
+		return true;
+	}
+
+	/**
 	 * 文字訊息的總入口，依「有沒有引用圖片」決定要走歸檔還是走指令。
 	 *
 	 * <p>引用優先：使用者引用了一張圖片並輸入資產編號時，即使文字剛好以井字號開頭，
@@ -142,7 +194,7 @@ public class CommandService {
 		if (quotedMessageId == null) {
 			lineService.replyText(
 				replyToken,
-				"尚未回覆圖片，請回覆要歸檔的圖片組後重新執行指令"
+				"無法歸檔：尚未回覆圖片。請先回覆要儲存的圖片，再輸入資料夾代碼。"
 			);
 			return;
 		}
@@ -251,13 +303,9 @@ public class CommandService {
 			) {
 				lineService.replyText(
 					replyToken,
-					"圖片抓取未完成：重複"
-						+ result.duplicateCount()
-						+ "張，最終抓取"
-						+ result.imageCount()
-						+ "張（預期"
+					"無法歸檔：LINE 顯示此圖片組共"
 						+ result.expectedCount()
-						+ "張）"
+						+ "張，但目前沒有任何圖片下載成功。請重新上傳圖片後再執行指令。"
 				);
 			}
 			else if (
@@ -266,7 +314,8 @@ public class CommandService {
 			) {
 				lineService.replyText(
 					replyToken,
-					"找不到被回覆圖片的待處理紀錄，請重新上傳後再試"
+					"無法歸檔：找不到被回覆圖片，可能尚未下載完成、已被刪除，"
+						+ "或暫存紀錄已清除。請重新上傳後再試。"
 				);
 			}
 			else if (
@@ -275,7 +324,7 @@ public class CommandService {
 			) {
 				lineService.replyText(
 					replyToken,
-					"被回覆圖片不屬於目前群組，無法歸檔"
+					"無法歸檔：被回覆圖片來自其他群組，不能存入目前群組的資料。"
 				);
 			}
 			else if (
@@ -284,27 +333,96 @@ public class CommandService {
 			) {
 				lineService.replyText(
 					replyToken,
-					"已將"
-						+ result.imageCount()
-						+ "張圖片存入「"
-						+ result.folderName()
-						+ "」，流水號"
-						+ result.firstSequence()
-						+ "至"
-						+ result.lastSequence()
+					archiveResultMessage(result)
 				);
 			}
 		}
 		catch (IOException | RuntimeException e) {
 			// 日誌：記錄圖片直接歸檔失敗，保留暫存圖片以便重新操作。
 			log.error(
-				"event=image_archive_write_failed errorType={}",
-				e.getClass().getSimpleName());
+				"event=image_archive_write_failed quotedMessageId={} folder={} errorType={}",
+				quotedMessageId,
+				folderName,
+				e.getClass().getSimpleName(),
+				e
+			);
 			lineService.replyText(
 				replyToken,
-				"圖片歸檔失敗，請稍後重新執行指令"
+				archiveFailureMessage(e)
 			);
 		}
+	}
+
+	// 方法：將圖片歸檔結果整理成面向使用者的中文訊息。
+	private String archiveResultMessage(ImageArchiveService.ArchiveResult result) {
+		String storedResult =
+			"已將"
+				+ result.imageCount()
+				+ "張圖片存入「"
+				+ result.folderName()
+				+ "」，流水號"
+				+ result.firstSequence()
+				+ "至"
+				+ result.lastSequence();
+		int missingCount = Math.max(0, result.expectedCount() - result.imageCount());
+		if (missingCount == 0) return "歸檔成功：" + storedResult + "。";
+
+		return "部分歸檔完成："
+			+ storedResult
+			+ "；LINE 顯示此圖片組共"
+			+ result.expectedCount()
+			+ "張，其中"
+			+ missingCount
+			+ "張未能下載。";
+	}
+
+	// 方法：依歸檔例外類型提供不含技術細節的中文說明。
+	private String archiveFailureMessage(Throwable failure) {
+		if (hasCause(failure, AccessDeniedException.class)) return ARCHIVE_PERMISSION_ERROR;
+
+		if (hasInsufficientStorageCause(failure)) return ARCHIVE_STORAGE_FULL_ERROR;
+
+		if (hasCause(failure, NoSuchFileException.class)) return ARCHIVE_PENDING_FILE_MISSING_ERROR;
+
+		if (hasCause(failure, IOException.class)) return "圖片歸檔失敗：無法寫入圖片檔案。本次未完成歸檔，請稍後再試。";
+
+		return "圖片歸檔失敗：資料紀錄發生異常。"
+			+ "本次未完成歸檔，請稍後再試；若持續發生請通知管理員。";
+	}
+
+	// 方法：確認例外因果鏈是否包含指定類型。
+	private static boolean hasCause(
+		Throwable failure,
+		Class<? extends Throwable> expectedType
+	) {
+		Throwable current = failure;
+		while (current != null) {
+			if (expectedType.isInstance(current)) return true;
+
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	// 方法：確認例外原因是否表示圖片儲存空間已滿。
+	private static boolean hasInsufficientStorageCause(Throwable failure) {
+		Throwable current = failure;
+		while (current != null) {
+			if (current instanceof FileSystemException fileSystemException) {
+				String reason = fileSystemException.getReason();
+				if (reason != null) {
+					String normalizedReason = reason.toLowerCase(Locale.ROOT);
+					if (
+						normalizedReason.contains("no space left")
+							|| normalizedReason.contains("disk full")
+							|| normalizedReason.contains("磁碟空間不足")
+							|| normalizedReason.contains("空間不足")
+					) return true;
+				}
+			}
+			current = current.getCause();
+		}
+		return false;
 	}
 
 	/**
