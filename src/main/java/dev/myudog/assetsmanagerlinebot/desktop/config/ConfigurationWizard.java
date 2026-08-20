@@ -173,6 +173,11 @@ public final class ConfigurationWizard implements AutoCloseable {
 		JDialog dialog = optionPane.createDialog(parent, firstConfiguration ? "首次設定" : "編輯設定");
 		activeDialog.set(dialog);
 
+		// 安裝程式以 Exec 啟動 App 時拿不到前景權，且 JDialog 本身不會產生工作列按鈕；
+		// 不主動置頂就會被其他視窗蓋住，使用者會以為設定精靈根本沒出現。
+		dialog.setAlwaysOnTop(true);
+		dialog.setAutoRequestFocus(true);
+
 		try {
 			dialog.setVisible(true);
 		}
