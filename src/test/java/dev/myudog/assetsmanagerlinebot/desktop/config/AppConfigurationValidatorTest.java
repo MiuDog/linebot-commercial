@@ -15,7 +15,7 @@ class AppConfigurationValidatorTest {
 	// 方法：驗證缺少 LINE 憑證時會回報對應欄位。
 	@Test
 	void shouldRejectMissingRequiredCredentials() {
-		AppConfiguration configuration = AppConfiguration.defaults(Path.of("C:/local"));
+		AppConfiguration configuration = AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")));
 
 		assertThat(validator.validate(configuration))
 			.extracting(AppConfigurationValidator.Violation::field)
@@ -55,8 +55,10 @@ class AppConfigurationValidatorTest {
 	}
 
 	// 方法：建立可通過驗證的最小設定快照。
+	// 資料根目錄必須是執行中作業系統認定的絕對路徑；寫死 Windows 磁碟機代號會讓
+	// 同一份設定在 Linux CI 被視為相對路徑而驗證失敗，因此改用當地的暫存目錄。
 	private AppConfiguration validConfiguration() {
-		return AppConfiguration.defaults(Path.of("C:/local"))
+		return AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")))
 			.withValue(AppConfigurationField.LINE_BOT_CHANNEL_TOKEN, "test-token")
 			.withValue(AppConfigurationField.LINE_BOT_CHANNEL_SECRET, "test-secret");
 	}

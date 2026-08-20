@@ -16,7 +16,7 @@ class DesktopNgrokIntegrationTest {
 	// 方法：connector 寫入的公開網址會映射至既有 app.public-base-url。
 	@Test
 	void shouldMapConnectedPublicUrlToSpringProperties() {
-		AppConfiguration configuration = AppConfiguration.defaults(Path.of("C:/local"))
+		AppConfiguration configuration = AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")))
 			.withValue(AppConfigurationField.PUBLIC_BASE_URL, "https://example.ngrok.app");
 
 		assertThat(new DesktopSpringProperties().from(configuration))

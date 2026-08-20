@@ -54,7 +54,7 @@ class ConfigurationWizardModelTest {
 
 	// 方法：建立測試用預設設定。
 	private AppConfiguration defaults() {
-		return AppConfiguration.defaults(Path.of("C:/local"));
+		return AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")));
 	}
 
 	// 方法：建立具有必要 LINE 機密的有效設定。

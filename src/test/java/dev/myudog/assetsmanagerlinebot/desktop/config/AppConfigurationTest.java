@@ -45,7 +45,7 @@ class AppConfigurationTest {
 	// 方法：驗證修改設定會建立新物件，不會改變既有設定快照。
 	@Test
 	void shouldCreateANewSnapshotWhenChangingAValue() {
-		AppConfiguration original = AppConfiguration.defaults(Path.of("C:/local"));
+		AppConfiguration original = AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")));
 		AppConfiguration changed = original.withValue(
 			AppConfigurationField.LINE_BOT_CHANNEL_TOKEN,
 			"test-token"

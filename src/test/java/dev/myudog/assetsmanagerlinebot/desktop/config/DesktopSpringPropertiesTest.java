@@ -14,7 +14,7 @@ class DesktopSpringPropertiesTest {
 	// 方法：驗證一般與解密後機密欄位都映射至宣告的 Spring property key。
 	@Test
 	void shouldMapEveryConfigurationFieldToItsSpringProperty() {
-		AppConfiguration configuration = AppConfiguration.defaults(Path.of("C:/local"))
+		AppConfiguration configuration = AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")))
 			.withValue(AppConfigurationField.LINE_BOT_CHANNEL_TOKEN, "line-token")
 			.withValue(AppConfigurationField.QUOTATION_POSTBACK_SECRET, "postback-secret");
 

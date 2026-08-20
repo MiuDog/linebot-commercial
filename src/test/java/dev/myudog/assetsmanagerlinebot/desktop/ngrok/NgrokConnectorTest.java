@@ -86,7 +86,7 @@ class NgrokConnectorTest {
 
 	// 方法：建立具有必要 ngrok 欄位的測試設定。
 	private AppConfiguration configuration(boolean enabled) {
-		return AppConfiguration.defaults(Path.of("C:/local"))
+		return AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")))
 			.withValue(AppConfigurationField.NGROK_ENABLED, Boolean.toString(enabled))
 			.withValue(AppConfigurationField.NGROK_AUTHTOKEN, "test-token");
 	}

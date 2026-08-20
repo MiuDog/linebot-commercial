@@ -133,6 +133,6 @@ class DesktopApplicationTest {
 
 	// 方法：建立桌面 bootstrap 測試用預設設定。
 	private AppConfiguration configuration() {
-		return AppConfiguration.defaults(Path.of("C:/local"));
+		return AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")));
 	}
 }

@@ -68,7 +68,7 @@ class ConfigurationWizardTest {
 
 	// 方法：建立具有必要欄位的測試設定。
 	private AppConfiguration validConfiguration() {
-		return AppConfiguration.defaults(Path.of("C:/local"))
+		return AppConfiguration.defaults(Path.of(System.getProperty("java.io.tmpdir")))
 			.withValue(AppConfigurationField.LINE_BOT_CHANNEL_TOKEN, "token")
 			.withValue(AppConfigurationField.LINE_BOT_CHANNEL_SECRET, "secret");
 	}
