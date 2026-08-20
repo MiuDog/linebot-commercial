@@ -92,13 +92,25 @@ jobs:
         shell: pwsh
         run: powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version "${{ steps.version.outputs.value }}"
 
+      # 演算法步驟二：偵測是否具備簽章能力，決定走商用簽章或未簽章個人發佈。
+      - name: Detect signing capability
+        id: signing
+        shell: pwsh
+        env:
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+        run: |
+          $Available = -not [string]::IsNullOrWhiteSpace($env:SIGNING_CERTIFICATE_BASE64)
+          "available=$($Available.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       # 發佈閘門：法律／品牌 placeholder 必須在接觸簽章秘密前先失敗。
       - name: Verify commercial metadata
+        if: steps.signing.outputs.available == 'true'
         shell: pwsh
         run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata
 
       # 外部工具：使用受保護 Environment PFX 簽署 Setup，secret 不寫入檔案或 Log。
       - name: Sign Setup
+        if: steps.signing.outputs.available == 'true'
         shell: pwsh
         env:
           SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
@@ -107,19 +119,59 @@ jobs:
 
       # 外部工具：簽章後重新驗證版本、商用欄位、SBOM 與 Authenticode，並取得 SHA-256。
       - name: Verify signed Setup
-        id: verify
+        if: steps.signing.outputs.available == 'true'
         shell: pwsh
         run: |
           $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata -RequireSignature
           $Hash = ($Output | Where-Object { $_ -like "SHA256=*" }).Substring(7)
-          "sha256=$Hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "SETUP_SHA256=$Hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      # 外部工具：驗證通過後才建立 GitHub Release，公開資產僅有一份 Setup.exe。
+      # 外部工具：未設定簽章憑證時仍驗證版本、SBOM 與 notices，但不套用商用與簽章閘門。
+      - name: Verify unsigned Setup
+        if: steps.signing.outputs.available != 'true'
+        shell: pwsh
+        run: |
+          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe"
+          $Hash = ($Output | Where-Object { $_ -like "SHA256=*" }).Substring(7)
+          "SETUP_SHA256=$Hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # 外部工具：驗證通過後才建立 GitHub Release，資產僅有一份 Setup.exe。
+      # 未簽章版本一律標記為 pre-release，並在 Notes 說明 SmartScreen 行為，
+      # 避免未簽章檔案被當成正式商用版散布。
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.signing.outputs.available }}
         run: |
-          $Notes = "SHA-256: ${{ steps.verify.outputs.sha256 }}"
-          gh release create "${{ github.ref_name }}" "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" --draft --verify-tag --title "Assets Manager Linebot ${{ steps.version.outputs.value }}" --notes $Notes
-          gh release edit "${{ github.ref_name }}" --draft=false
+          $Version = "${{ steps.version.outputs.value }}"
+          $Tag = "${{ github.ref_name }}"
+          $Asset = "dist\AssetsManagerLinebot-Setup-$Version.exe"
+
+          if ($env:SIGNED -eq "true") {
+            $Lines = @("SHA-256: $env:SETUP_SHA256")
+          }
+          else {
+            $Lines = @(
+              "未簽章的個人使用版本，尚未取得 Windows 程式碼簽章憑證。",
+              "",
+              "首次執行會出現 SmartScreen 藍色警告，點「其他資訊」再點「仍要執行」即可。",
+              "安裝不需要系統管理員權限，只安裝給目前的 Windows 使用者。",
+              "",
+              "SHA-256: $env:SETUP_SHA256"
+            )
+          }
+
+          $Notes = $Lines -join "`n"
+          $Title = "Assets Manager Linebot $Version"
+
+          if ($env:SIGNED -eq "true") {
+            gh release create $Tag $Asset --draft --verify-tag --title $Title --notes $Notes
+          }
+          else {
+            gh release create $Tag $Asset --draft --verify-tag --prerelease --title $Title --notes $Notes
+          }
+
+          if ($LASTEXITCODE -ne 0) { throw "建立 GitHub Release 草稿失敗，exit code：$LASTEXITCODE" }
+
+          gh release edit $Tag --draft=false

@@ -51,9 +51,25 @@ system-data\
 
 Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用者另裝 JDK／JRE。第一次開啟會顯示繁體中文設定精靈；關閉視窗後仍可留在系統匣背景執行，再次開啟 App 可查看狀態與即時 Log。
 
-**目前版本導向為未簽章的個人使用版，不做公開發佈。** 功能完整，唯一差別是沒有 Authenticode 簽章，首次執行會出現 Windows SmartScreen 警告（處理方式見下方）。
+**目前版本導向為未簽章的個人使用版。** 功能完整，唯一差別是沒有 Authenticode 簽章，首次執行會出現 Windows SmartScreen 警告（處理方式見下方）。Release 建立在 private repo，只有具備存取權的人看得到，並一律標記為 pre-release。
 
-公開發佈的閘門刻意保持關閉：`packaging/windows/release.properties` 的 `licenseStatus` 仍是 `PRE_RELEASE`、`supportUrl` 仍是佔位值，`scripts/verify-release.ps1` 會在推送 `v*.*.*` tag 時擋下正式流程，因此不會意外產生公開的 GitHub Release。
+### 自動發佈到 GitHub Release
+
+推送符合 `v<主版號>.<次版號>.<修訂號>` 的 tag 即自動建置、驗證並建立 GitHub Release，資產只有一份 Setup.exe：
+
+```bash
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
+```
+
+Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
+
+| 狀態 | 行為 |
+| --- | --- |
+| 未設定簽章憑證（目前） | 略過商用欄位與 Authenticode 閘門，Release 標記為 **pre-release**，Notes 附 SmartScreen 說明與 SHA-256 |
+| 已設定簽章憑證 | 套用商用欄位閘門、簽章並驗證 Authenticode，全部通過才建立正式 Release |
+
+版本號取自 tag，必須與 `pom.xml` 一致。本 repo 目前是 private，因此 Release 只有具備存取權的人看得到。
 
 建立個人使用的 Setup：
 
