@@ -6,7 +6,9 @@ import dev.myudog.assetsmanagerlinebot.service.FileStorageService;
 import dev.myudog.assetsmanagerlinebot.service.LineStorageService;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -36,6 +38,13 @@ import static org.mockito.Mockito.when;
 class QuotationDurableReplyIntegrationTest {
 
 	private static final String POSTBACK_SECRET = "0123456789abcdef0123456789abcdef";
+
+	// 當機重領後產生的補送訊息必須與原訊息逐字相同；postback 期限取自時鐘，
+	// 用系統時鐘會在跨秒時算出不同的 e= 與簽章，因此固定時鐘讓比對穩定。
+	private static final Clock FIXED_CLOCK = Clock.fixed(
+		Instant.parse("2026-01-01T00:00:00Z"),
+		ZoneOffset.UTC
+	);
 
 	@TempDir
 	Path temporaryDirectory;
@@ -319,9 +328,9 @@ class QuotationDurableReplyIntegrationTest {
 			return new QuotationReplyOutboxService(jdbc, line, new ObjectMapper());
 		}
 
-		// 方法：建立測試用簽章服務。
+		// 方法：建立測試用簽章服務；固定時鐘確保重跑產生的 postback 期限一致。
 		private QuotationPostbackSigner signer() {
-			return new QuotationPostbackSigner(POSTBACK_SECRET);
+			return new QuotationPostbackSigner(POSTBACK_SECRET, FIXED_CLOCK);
 		}
 
 		// 方法：建立使用短交易 durable completion 的正式 workflow。
