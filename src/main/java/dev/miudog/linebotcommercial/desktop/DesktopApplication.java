@@ -458,9 +458,21 @@ public final class DesktopApplication {
 		onEdt(() -> windowModel.updatePublicUrl(configuration.value(AppConfigurationField.PUBLIC_BASE_URL)));
 	}
 
-	// 方法：依目前資料根目錄取得既有 Logback 使用的固定 log 子目錄。
+	// 方法：依目前資料根目錄取得既有 Logback 使用的固定 log 子目錄，並確保目錄已建立與 System property 已設定。
 	private static Path logDirectory(AppConfiguration configuration) {
-		return Path.of(configuration.value(AppConfigurationField.SYSTEM_ROOT_PATH)).resolve("log");
+		String systemRoot = configuration.value(AppConfigurationField.SYSTEM_ROOT_PATH);
+		if (systemRoot != null && !systemRoot.isBlank()) {
+			System.setProperty("SYSTEM_ROOT_PATH", systemRoot);
+		}
+		Path logDir = Path.of(systemRoot).resolve("log");
+		try {
+			java.nio.file.Files.createDirectories(logDir);
+		}
+		catch (Exception exception) {
+			// 日誌：記錄日誌目錄建立失敗，不中斷桌面啟動流程。
+			log.warn("event=desktop_log_directory_create_failed errorType={}", exception.getClass().getSimpleName());
+		}
+		return logDir;
 	}
 
 	// 狀態來源包含 main、Spring lifecycle 與背景執行緒，而系統匣與視窗只能在 EDT 操作。

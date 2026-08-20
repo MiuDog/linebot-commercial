@@ -30,13 +30,14 @@ public class StorageConfig {
 	@Bean
 	public DataSource dataSource(
 		@Value("${app.storage.root}") String assetsRoot,
+		@Value("${app.observability.log-path:${app.system.root}/log}") String logPath,
 		@Value("${spring.datasource.url}") String jdbcUrl
 	) throws IOException, java.sql.SQLException {
-		// 步驟 1：使用 Java NIO 正規化儲存路徑並確保 SQLite 父目錄存在。
+		// 步驟 1：使用 Java NIO 正規化儲存路徑並確保 SQLite 與 Log 父目錄存在。
 		Path root = Paths.get(assetsRoot).toAbsolutePath().normalize();
-
-		// 外部呼叫：使用 Java NIO 建立 SQLite 資料庫需要的父目錄。
 		Files.createDirectories(root);
+		Path logRoot = Paths.get(logPath).toAbsolutePath().normalize();
+		Files.createDirectories(logRoot);
 
 		// 步驟 2：透過 HikariCP 建立 SQLite 資料來源並套用連線設定。
 		HikariDataSource dataSource = new HikariDataSource();

@@ -28,7 +28,12 @@ public final class SpringDesktopBackend implements DesktopBackend {
 
 		SpringApplication application = new SpringApplication(LinebotCommercialApplication.class);
 
-		// 外部函式：在建立任何 Spring Bean 前注入桌面設定，避免先使用舊設定啟動。
+		// 外部函式：在建立任何 Spring Bean 前注入桌面設定，並透過最高優先權 PropertySource 確保不被 application.properties 預設空值覆蓋。
+		application.addInitializers(applicationContext -> {
+			applicationContext.getEnvironment()
+				.getPropertySources()
+				.addFirst(new org.springframework.core.env.MapPropertySource("desktopConfiguration", properties));
+		});
 		application.setDefaultProperties(properties);
 		context = application.run(arguments);
 	}
