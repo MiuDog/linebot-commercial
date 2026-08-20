@@ -7,9 +7,9 @@
 安裝模式：
 
 - 每位使用者安裝，不要求 UAC。
-- 預設位置：`%LOCALAPPDATA%\Programs\AssetsManagerLinebot`。
+- 預設位置：`%LOCALAPPDATA%\Programs\LinebotCommercial`。
 - 建立目前使用者的開始功能表捷徑；桌面捷徑為可選項。
-- 安裝完成後啟動 `AssetsManagerLinebot.exe --configure-first-run`。
+- 安裝完成後啟動 `LinebotCommercial.exe --configure-first-run`。
 - 安裝時檢查 Microsoft Excel COM 與可用印表機；缺少時顯示 PDF 功能不可用的警告，但不阻擋其他功能安裝。
 
 維護模式：
@@ -23,7 +23,7 @@
 
 1. Maven 產生 `target/app.jar`。
 2. `jpackage --type app-image` 產生包含 Java Runtime 的 App image。
-3. NSIS 將完整 App image 包進 `AssetsManagerLinebot-Setup-<version>.exe`。
+3. NSIS 將完整 App image 包進 `LinebotCommercial-Setup-<version>.exe`。
 4. 安裝器、App launcher 及 uninstaller 在正式版本完成可信任簽章。
 
 ## Tech Stack
@@ -48,7 +48,7 @@ powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1
 # 執行安裝器驗收測試
 # 不帶開關只做靜態檢查；-ExecuteLifecycle 才會實際安裝、解除安裝並驗證資料保留，
 # -TestPurge 另外驗證明確清除。缺少開關時證據檔的生命週期欄位會是 false 而 exit code 仍為 0。
-powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 -InstallerPath dist\AssetsManagerLinebot-Setup-0.1.0.exe -ExecuteLifecycle -TestPurge
+powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 -InstallerPath dist\LinebotCommercial-Setup-0.1.0.exe -ExecuteLifecycle -TestPurge
 ```
 
 ## Project Structure

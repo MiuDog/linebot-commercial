@@ -1,4 +1,4 @@
-﻿param(
+param(
 	[Parameter(Mandatory = $true)]
 	[string]$Version,
 	[switch]$SkipBuild
@@ -133,7 +133,7 @@ $JpackageArguments = @(
 	"--type", "app-image",
 	"--name", $ProductName,
 	"--app-version", $Version,
-	"--vendor", "Myudog",
+	"--vendor", "MiuDog",
 	"--description", "LINE 群組資產管理與報價桌面應用程式",
 	"--input", $InputRoot,
 	"--main-jar", "app.jar",

@@ -19,7 +19,7 @@
 ## 共用邊界
 
 - 安裝後的設定與執行資料屬於目前 Windows 使用者，不寫入 Windows 全域環境變數。
-- GitHub Release 對外只提供一份 `AssetsManagerLinebot-Setup-<version>.exe`。
+- GitHub Release 對外只提供一份 `LinebotCommercial-Setup-<version>.exe`。
 - Setup.exe 內含 App 與 Java Runtime；ngrok agent 不隨產品再散布。
 - 正式公開版本必須完成可信任的 Windows 程式碼簽章。
 - 所有模組沿用專案既有中文註解、Logger、Tab 縮排及個人化程式碼風格。

@@ -38,7 +38,7 @@
 | [`Asset`](06-record.md#asset) | Record | 一筆資產索引的不可變快照 |
 | [`AssetRepository`](05-repository.md#assetrepository) | Repository | 資產索引的唯一資料庫出入口 |
 | [`AssetService`](04-service.md#assetservice) | Service | 資產生命週期協調：收錄→歸檔→查詢 |
-| [`LinebotCommercialApplication`](01-application.md#assetsmanagerlinebotapplication) | Application | 應用程式進入點 |
+| [`LinebotCommercialApplication`](01-application.md#linebotcommercialapplication) | Application | 應用程式進入點 |
 | [`CommandService`](04-service.md#commandservice) | Service | 群組文字指令解析與回覆組裝 |
 | [`ExtractedSpec`](06-record.md#extractedspec) | Record | AI 讀出的結構化規格欄位 |
 | [`FileStorageService`](04-service.md#filestorageservice) | Service | 圖片在磁碟上的落地、搬移與路徑安全 |

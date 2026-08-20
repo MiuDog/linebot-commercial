@@ -14,10 +14,10 @@
 
 設定位置：
 
-- 設定根目錄：`%LOCALAPPDATA%\AssetsManagerLinebot\config`
-- 一般設定：`application.properties`
-- 加密機密：`secrets.dat`
-- 預設資料根目錄：`%LOCALAPPDATA%\AssetsManagerLinebot\data`
+- 設定根目錄：`%LOCALAPPDATA%\LinebotCommercial\config`
+- 一般設定檔：`%LOCALAPPDATA%\LinebotCommercial\config\application.properties`
+- 機密設定檔：`%LOCALAPPDATA%\LinebotCommercial\config\secrets.dat`
+- 預設資料根目錄：`%LOCALAPPDATA%\LinebotCommercial\data`
 - 不在安裝目錄建立或讀取正式環境的 `.env`。
 
 欄位分組：

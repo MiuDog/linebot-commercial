@@ -213,9 +213,10 @@ Task 17 端對端與實體檔案驗收依賴 Task 1–16
 
 #### 9.1.2 設定與機密資料
 
-- 一般設定存於 `%LOCALAPPDATA%\AssetsManagerLinebot\config\application.properties`。
-- 機密值由 `DpapiSecretStore` 透過鎖定版本的 JNA Platform 呼叫 Windows DPAPI，密文存於 `secrets.dat`。
-- desktop bootstrap 在建立 Logger、ngrok 或 Spring context 前載入設定；正式 App 不依賴安裝目錄內的 `.env`。
+- 一般設定存於 `%LOCALAPPDATA%\LinebotCommercial\config\application.properties`。
+- 機密設定以 Windows DPAPI 加密存於 `%LOCALAPPDATA%\LinebotCommercial\config\secrets.dat`。
+- 支援環境變數與 Java property 映射至 Spring Boot。
+- 採 per-user 安裝至 `%LOCALAPPDATA%\Programs\LinebotCommercial`，避免要求 UAC。或 Spring context 前載入設定；正式 App 不依賴安裝目錄內的 `.env`。
 - 設定保存採驗證、暫存寫入、原子替換；失敗時保留上一版。
 
 #### 9.1.3 單一執行個體與桌面 UI

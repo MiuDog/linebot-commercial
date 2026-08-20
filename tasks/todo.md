@@ -42,7 +42,7 @@
 **Acceptance criteria：**
 
 - [x] 一般欄位與機密欄位有單一分類來源，必要欄位、URL、Port、數值及路徑驗證可定位至欄位。
-- [x] 預設設定與資料路徑位於目前使用者的 `%LOCALAPPDATA%\AssetsManagerLinebot`。
+- [x] 預設設定與資料路徑位於目前使用者的 `%LOCALAPPDATA%\LinebotCommercial`。
 - [x] desktop mode 未啟用時仍沿用既有 Spring Boot 啟動行為。
 
 **Verification：**

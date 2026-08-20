@@ -31,7 +31,7 @@
 powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.0
 
 # 驗證 Authenticode
-Get-AuthenticodeSignature -LiteralPath dist\AssetsManagerLinebot-Setup-0.1.0.exe
+Get-AuthenticodeSignature -LiteralPath dist\LinebotCommercial-Setup-0.1.0.exe
 
 # 建立 Release Tag，由 GitHub Actions 接手
 git tag -a v0.1.0 -m "Release v0.1.0"
@@ -82,7 +82,7 @@ Workflow 只呼叫版本庫內已測試的 build scripts，不在 YAML 中重複
 
 - 每個 Pull Request 與 main push 都會自動執行 Java 完整驗證，失敗時阻止合併或 Release。
 - 推送合法且版本一致的 Tag 後，Windows runner 產生一份已簽章 Setup.exe。
-- GitHub Release 資產只有 `AssetsManagerLinebot-Setup-<version>.exe`，Release Notes 包含 SHA-256。
+- GitHub Release 資產只有 `LinebotCommercial-Setup-<version>.exe`，Release Notes 包含 SHA-256。
 - 非 Tag workflow 無法取得簽章秘密，也沒有 GitHub Release 寫入權限。
 - 發佈失敗不留下公開的半成品 Release。
 - Release runbook 能讓維護者完成憑證輪替、重跑、撤回及回復上一版。

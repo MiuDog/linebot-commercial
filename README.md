@@ -1,4 +1,4 @@
-# Assets Manager LINE Bot
+# Linebot Commercial
 
 `@linebot-commercial@0.2.1`
 
