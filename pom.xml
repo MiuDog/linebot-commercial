@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>dev.myudog</groupId>
-	<artifactId>assets-manager-linebot</artifactId>
+	<artifactId>linebot-commercial</artifactId>
 	<version>0.1.1</version>
-	<name>assets-manager-linebot</name>
+	<name>linebot-commercial</name>
 	<description>LINE 群組資產收錄與取用機器人</description>
 	<url/>
 	<licenses>

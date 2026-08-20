@@ -1,6 +1,6 @@
 # Doc 2: LINE Bot 開發必知規則與各階段處理方式
 
-適用版本：`@assets-manager-linebot@0.1.0`
+適用版本：`@linebot-commercial@0.1.0`
 
 本文件分成三部分：**平台規則**（LINE 官方的硬性限制，違反就是壞掉）、**測試階段**、**部署階段**。
 

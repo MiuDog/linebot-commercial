@@ -1,6 +1,6 @@
 # Doc 3: 版本編號、Release 與 Push SOP
 
-當前版本：`@assets-manager-linebot@0.1.0`
+當前版本：`@linebot-commercial@0.1.0`
 
 ---
 
@@ -15,17 +15,17 @@
 實際套用時，「本專案」使用 `pom.xml` 的 `artifactId`：
 
 ```
-@assets-manager-linebot@0.1.0
+@linebot-commercial@0.1.0
 ```
 
 這個字串是**唯一的正式版本識別**，出現在：
 
 | 位置 | 形式 |
 |---|---|
-| Git tag | `@assets-manager-linebot@0.1.0` |
-| GitHub Release 標題 | `@assets-manager-linebot@0.1.0` |
+| Git tag | `@linebot-commercial@0.1.0` |
+| GitHub Release 標題 | `@linebot-commercial@0.1.0` |
 | `pom.xml` `<version>` | `0.1.0`（Maven 不接受 `@`，只放數字部分） |
-| 文件標頭 | `適用版本：@assets-manager-linebot@0.1.0` |
+| 文件標頭 | `適用版本：@linebot-commercial@0.1.0` |
 
 ### 1.2 版本號採語意化版本
 
@@ -168,7 +168,7 @@ git switch main && git pull
 **④ 提交版本變更**
 
 ```bash
-git commit -am "chore: 發布 @assets-manager-linebot@0.1.0"
+git commit -am "chore: 發布 @linebot-commercial@0.1.0"
 ```
 
 **⑤ 打 tag**
@@ -176,7 +176,7 @@ git commit -am "chore: 發布 @assets-manager-linebot@0.1.0"
 tag 名稱使用完整格式：
 
 ```bash
-git tag -a "@assets-manager-linebot@0.1.0" -m "@assets-manager-linebot@0.1.0"
+git tag -a "@linebot-commercial@0.1.0" -m "@linebot-commercial@0.1.0"
 ```
 
 **⑥ 推送**
@@ -188,13 +188,13 @@ git push origin main --follow-tags
 **⑦ 建立 GitHub Release**
 
 ```bash
-gh release create "@assets-manager-linebot@0.1.0" --title "@assets-manager-linebot@0.1.0" --notes-file RELEASE_NOTES.md
+gh release create "@linebot-commercial@0.1.0" --title "@linebot-commercial@0.1.0" --notes-file RELEASE_NOTES.md
 ```
 
 ### 3.3 Release Notes 格式
 
 ```markdown
-## @assets-manager-linebot@0.1.0
+## @linebot-commercial@0.1.0
 
 ### 新增
 - 群組圖片自動收錄，落地至本機磁碟
@@ -218,7 +218,7 @@ gh release create "@assets-manager-linebot@0.1.0" --title "@assets-manager-lineb
 ### 3.4 部署到公司伺服器
 
 ```bash
-git fetch --tags && git checkout "@assets-manager-linebot@0.1.0"
+git fetch --tags && git checkout "@linebot-commercial@0.1.0"
 ```
 
 ```bash
@@ -236,7 +236,7 @@ docker compose ps
 ### 3.5 回滾
 
 ```bash
-git checkout "@assets-manager-linebot@0.0.9"
+git checkout "@linebot-commercial@0.0.9"
 ```
 
 ```bash

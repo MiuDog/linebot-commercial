@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://assets-manager-linebot.local/schema/quotation-request-2.0.json",
+  "$id": "https://linebot-commercial.local/schema/quotation-request-2.0.json",
   "title": "Quotation AI extraction patch",
   "description": "AI/OCR extraction-only contract. The application validates, merges, previews, calculates and executes nextAction.",
   "type": "object",
