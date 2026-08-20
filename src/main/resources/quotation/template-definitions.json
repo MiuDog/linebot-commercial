@@ -1,14 +1,26 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "templates": [
     {
       "schemeCode": "CNS",
+      "workbookPath": "outputs/excel-templates/quotation-template-CNS.xlsx",
       "sheetName": "CNS",
       "summaryOnly": false,
       "taxRate": 0.05,
+      "quoteNumberPrefix": "",
+      "header": {
+        "customerName": "C4",
+        "phoneFax": "C5",
+        "customerEmail": "C6",
+        "contact": "C7",
+        "projectSite": "C8",
+        "quoteNumber": "G4",
+        "quoteDate": "G5",
+        "salesRepresentative": "G6"
+      },
       "detail": {
         "firstRow": 11,
-        "lastRow": 28,
+        "lastRow": 31,
         "columns": {
           "lineNumber": "A",
           "itemName": "B",
@@ -21,10 +33,10 @@
         }
       },
       "totals": {
-        "subtotal": "G29",
-        "preTax": "G30",
-        "tax": "G31",
-        "total": "G32"
+        "subtotal": "G32",
+        "preTax": "G33",
+        "tax": "G34",
+        "total": "G35"
       },
       "image": {
         "placement": "UNUSED_DETAIL_ROWS",
@@ -36,9 +48,21 @@
     },
     {
       "schemeCode": "GENERAL",
+      "workbookPath": "outputs/excel-templates/quotation-template-GENERAL.xlsx",
       "sheetName": "一般架",
       "summaryOnly": false,
       "taxRate": 0.05,
+      "quoteNumberPrefix": "",
+      "header": {
+        "customerName": "C4",
+        "phoneFax": "C5",
+        "customerEmail": "C6",
+        "contact": "C7",
+        "projectSite": "C8",
+        "quoteNumber": "G4",
+        "quoteDate": "G5",
+        "salesRepresentative": "G6"
+      },
       "detail": {
         "firstRow": 11,
         "lastRow": 30,
@@ -69,9 +93,21 @@
     },
     {
       "schemeCode": "MARINE",
+      "workbookPath": "outputs/excel-templates/quotation-template-MARINE.xlsx",
       "sheetName": "船用",
       "summaryOnly": true,
       "taxRate": 0.05,
+      "quoteNumberPrefix": "",
+      "header": {
+        "customerName": "C4",
+        "phoneFax": "C5",
+        "customerEmail": "C6",
+        "contact": "C7",
+        "projectSite": "C8",
+        "quoteNumber": "G4",
+        "quoteDate": "G5",
+        "salesRepresentative": "G6"
+      },
       "detail": {
         "firstRow": 11,
         "lastRow": 23,
@@ -91,6 +127,96 @@
         "preTax": "G25",
         "tax": "G26",
         "total": "G27"
+      },
+      "image": {
+        "placement": "UNUSED_DETAIL_ROWS",
+        "firstColumn": "A",
+        "lastColumn": "C",
+        "minimumUnusedRows": 4,
+        "fit": "CONTAIN"
+      }
+    },
+    {
+      "schemeCode": "BLANK",
+      "workbookPath": "outputs/excel-templates/quotation-template-BLANK.xlsx",
+      "sheetName": "空白",
+      "summaryOnly": false,
+      "taxRate": 0.05,
+      "quoteNumberPrefix": "",
+      "header": {
+        "customerName": "C4",
+        "phoneFax": "C5",
+        "customerEmail": "C6",
+        "contact": "C7",
+        "projectSite": "C8",
+        "quoteNumber": "G4",
+        "quoteDate": "G5",
+        "salesRepresentative": "G6"
+      },
+      "detail": {
+        "firstRow": 11,
+        "lastRow": 28,
+        "columns": {
+          "lineNumber": "A",
+          "itemName": "B",
+          "specification": "C",
+          "quantity": "D",
+          "unit": "E",
+          "unitPrice": "F",
+          "lineAmount": "G",
+          "remark": "H"
+        }
+      },
+      "totals": {
+        "subtotal": "G29",
+        "preTax": "G30",
+        "tax": "G31",
+        "total": "G32"
+      },
+      "image": {
+        "placement": "UNUSED_DETAIL_ROWS",
+        "firstColumn": "A",
+        "lastColumn": "C",
+        "minimumUnusedRows": 4,
+        "fit": "CONTAIN"
+      }
+    },
+    {
+      "schemeCode": "SALES",
+      "workbookPath": "outputs/excel-templates/quotation-template-SALES.xlsx",
+      "sheetName": "銷售報價單(報價單號前會多一個S)",
+      "summaryOnly": false,
+      "taxRate": 0.05,
+      "quoteNumberPrefix": "S",
+      "header": {
+        "customerName": "C4",
+        "phoneFax": "C5",
+        "customerEmail": "C6",
+        "contact": "C7",
+        "projectSite": "C8",
+        "quoteNumber": "G4",
+        "quoteDate": "G5",
+        "salesRepresentative": "G6"
+      },
+      "detail": {
+        "firstRow": 11,
+        "lastRow": 28,
+        "columns": {
+          "lineNumber": "A",
+          "itemName": "B",
+          "specification": "C",
+          "quantity": "D",
+          "unit": "E",
+          "unitPrice": "F",
+          "lineAmount": "G",
+          "remark": "H"
+        }
+      },
+      "totals": {
+        "subtotal": "G29",
+        "preTax": "G30",
+        "tax": "G31",
+        "total": "G32"
       },
       "image": {
         "placement": "UNUSED_DETAIL_ROWS",

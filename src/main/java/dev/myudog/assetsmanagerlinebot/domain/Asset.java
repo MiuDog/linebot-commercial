@@ -9,8 +9,8 @@ import java.util.List;
  * <p>這個專案採「指標法」：圖片本體永遠留在磁碟，資料庫只保存指向它的
  * {@code filePath}。因此本紀錄本身不含任何影像位元組。
  *
- * <p>{@code filePath} 是相對於 {@code app.storage.root}（ASSETS_ROOT）的路徑，且一律以 "/" 分隔，
- * 讓同一份 assets.db 在 Windows 與 Linux 容器之間搬移時不會失效。
+ * <p>{@code filePath} 是相對路徑且一律以 "/" 分隔；一般資產相對於「圖片資產」子路徑，
+ * 正式報價圖片則由受信任的 quotation_asset 關聯選擇共同系統根目錄。
  *
  * @param id          資料庫流水號；尚未寫入時為 null
  * @param messageId   LINE 訊息 id，用來對應引用回覆並防止重複收錄

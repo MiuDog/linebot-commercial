@@ -52,6 +52,20 @@ build/
 ### 報價單產出 ###
 /quotations/
 /quotation-output/
+/log/
+
+### Codex／試算表暫存 ###
+/.codex-tmp/
+*.inspect.ndjson
 
 
 /example
+
+### 桌面 App 執行期資料 ###
+# 使用者資料根目錄：log、SQLite 與報價產出都屬營運資料，不進版控。
+/system-data/
+
+### 報價單次執行產物 ###
+# outputs/ 只有 excel-templates 是建置輸入（Maven 會複製進 JAR），其餘為執行結果。
+/outputs/*/
+!/outputs/excel-templates/

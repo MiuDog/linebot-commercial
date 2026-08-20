@@ -11,8 +11,8 @@ Repository、SQLite、磁碟與外部 API。若要理解單一類別的欄位與
 | 標記 | 意義 |
 |---|---|
 | ✅ | 目前已接通且有測試覆蓋 |
-| ⚠️ | 已進入流程，但會因設定或尚未實作而中止 |
-| 🧩 | 資料契約或基礎設施已存在，尚未接到正式事件 |
+| ⚠️ | 已進入流程，但會因必要設定、外部程式或環境限制而受控中止 |
+| 🧩 | 已核准但刻意延後的第二階段擴充，不屬於目前正式事件 |
 | 🕰️ | 保留的舊式／程式化入口，目前沒有 Controller 呼叫 |
 
 ---
@@ -31,6 +31,7 @@ Repository、SQLite、磁碟與外部 API。若要理解單一類別的欄位與
 | 輸入 `#說明` | `LineWebhookController` | 回覆使用方式 | ✅ |
 | 輸入 `#標籤` | `LineWebhookController` | 統計目前群組的標籤和圖片數 | ✅ |
 | 輸入 `#查 標籤` | `LineWebhookController` | 查出圖片並回覆公開圖片網址 | ✅ |
+| 標記機器人並輸入 `ping` | `LineWebhookController` | 回覆 `pong` 與事件到處理的延遲毫秒數 | ✅ |
 | LINE 伺服器抓取圖片網址 | `MediaController` | 從磁碟串流圖片 | ✅ |
 | 引用圖片輸入 `#報價` | `LineWebhookController` | AI 擷取規格，計算與輸出階段目前中止 | ⚠️ |
 | `GET /actuator/health` | Spring Boot Actuator | 回覆容器健康狀態 | ✅ |
@@ -351,87 +352,64 @@ sequenceDiagram
 	participant Media as MediaController
 	participant Asset as AssetService
 	participant Repo as AssetRepository
-	participant Files as FileStorageService
-	participant Disk as ASSETS_ROOT
+	participant Paths as AssetPathResolver
+	participant Disk as ASSETS_ROOT／QUOTATION_ROOT_PATH
 
 	LINE->>Filter: GET /media/{shareToken}
 	Filter->>Media: 已附 Request ID 的請求
 	Media->>Asset: findByShareToken
 	Asset->>Repo: findByShareToken
 	Repo-->>Media: Asset 或 empty
-	Media->>Files: resolve(asset.filePath)
-	Files-->>Media: 安全的絕對路徑
+	Media->>Paths: resolve(asset)
+	Paths-->>Media: 依 quotation_asset 關聯解析安全絕對路徑
 	Media->>Disk: Files.isReadable
 	Disk-->>Media: 圖片檔案
 	Media-->>LINE: Content-Type + FileSystemResource
 ```
 
 `shareToken` 是每筆資產獨立的隨機值，不使用可預測的資料庫流水號。即使 SQLite 的
-`file_path` 被竄改，`FileStorageService.resolve()` 仍會阻止讀取資產根目錄以外的檔案。
+`file_path` 被竄改，一般資產與正式報價資產的 containment 驗證仍會阻止讀取各自根目錄外的檔案。
+儲存範圍只由可信的 `quotation_asset` 關聯決定，不採信路徑文字前綴。
 
 ---
 
-## 事件 9：引用圖片輸入 `#報價`
+## 事件 9：LINE 一對一 `#報價`
 
 ```text
-CommandService.handleText
-└─ CommandService.handleCommand
-	└─ CommandService.replyQuotation
-		├─ 檢查 quotedMessageId
-		├─ QuotationService.isAiConfigured
-		├─ AssetService.findByMessageId
-		│	└─ AssetRepository.findByMessageId
-		├─ AssetService.contentOf
-		│	├─ FileStorageService.resolve
-		│	└─ Files.readAllBytes
-		└─ QuotationService.quote
-			├─ AiExtractionService.extract
-			│	├─ buildRequestBody
-			│	├─ callModel
-			│	│	└─ POST OpenAI 相容 chat completions API
-			│	├─ extractContent
-			│	├─ parseJsonObject
-			│	└─ validateRequiredFields
-			├─ QuotationCalculator.calculate
-			│	└─ ⚠️ 目前拋出 UnsupportedOperationException
-			└─ QuotationPdfService.generate
-				└─ ⚠️ 只有計算完成後才會到達；目前亦為佔位
+LineWebhookController
+└─ QuotationLineWorkflowService
+	├─ SqliteQuotationDraftWorkflowPort
+	│	├─ QuotationAiParsingService：AI／OCR 2.x patch
+	│	├─ QuotationConversationService：缺漏、圖片、預覽狀態機
+	│	└─ QuotationCalculationService：DIRECT 複價、5% 稅額與總額
+	├─ QuotationLineMessageBuilder：缺漏清單、預覽、確認／取消按鈕
+	└─ CONFIRM postback
+		├─ QuotationConfirmationService：同一交易配置流水號、正式快照與 generation job
+		├─ QuotationReplyOutboxService：持久化處理中回覆，reply 失敗可冪等 push
+		└─ QuotationGenerationLauncher：喚醒 SQLite 租約工作者
+			└─ QuotationGenerationJobWorker
+				└─ QuotationGenerationCoordinator
+				├─ QuotationAssetArchiveService：全部候選原圖移入日期流水號資料夾
+				├─ QuotationWorkbookService：五格式 Excel、分頁與唯一選圖
+				├─ QuotationPdfService：Microsoft Excel COM 匯出 PDF
+				└─ QuotationDeliveryService：HTTPS 下載連結與 LINE Flex 推播
 ```
 
-目前實際結果：
+只有 `source.type=user` 可建立或修改草稿；群組與 room 的報價指令只提示改用私訊。AI 只提供
+欄位 patch、缺漏及圖片評分，應用程式驗證後才轉移狀態，金額、流水號與檔案路徑均由程式決定。
+確認請求不等待最長 90 秒的 Excel COM：流水號交易完成後立即提交背景工作並回覆處理中。
 
-1. AI 設定不完整：直接回覆設定缺漏。
-2. 找不到引用圖片：提示重新上傳。
-3. AI 呼叫或解析失敗：由 `AiExtractionException.userMessage()` 轉成使用者訊息。
-4. AI 成功：顯示已辨識欄位，再提示「報價公式尚未定義」。
-5. 計算與輸出完成：程式已有成功分支，但目前不會到達。
+背景執行器固定單一工作者，避免同時操作 Excel COM；待辦本體保存在
+`quotation_generation_job`，工作者以租約、退避時間與嘗試次數接續處理。程序啟動及排程都會掃描
+待辦與過期租約；記憶體執行器滿載時只略過本次喚醒，資料庫工作仍可於下一次喚醒恢復。XLSX 失敗
+可由管理頁沿用同一報價單號與快照重排；PDF 失敗保留 Excel 及 `PDF_FAILED`，LINE 傳送失敗保留
+READY PDF。
 
-### 尚未接線的新版報價資料層
-
-以下資源已存在並通過測試，但尚未由 `QuotationService` 使用：
-
-```text
-quotation-request.schema.json
-├─ 限制 AI 只輸出方案、品項、數量、圖片評估與警告
-└─ 刻意不允許 AI 決定價格
-
-template-definitions.json
-├─ CNS
-├─ GENERAL／一般架
-└─ MARINE／船用
-
-schema.sql
-├─ quotation_scheme / quotation_item / quotation_rule
-├─ quotation_template
-├─ quotation_request / quotation_request_image
-└─ quotation / quotation_line
-
-QuotationOutputDirectoryService
-└─ 建立 {QUOTATION_ROOT_PATH}/報價單/{安全案件名稱}
-```
-
-也就是說，新版 Excel 契約、模板座標與 SQLite 報價快照已完成「資料設計」，
-但還沒有 Repository、計算引擎、Excel 寫入器及正式事件串接。
+LINE 的 AI／OCR 網路呼叫在資料庫交易外完成；其後的對話狀態轉換、
+`quotation_reply_outbox` 入列與 event receipt 完成則以同一個短交易提交。若程序在入列前中止，
+租約到期後可由相同 webhook 重領，並依已提交的 message id 重建相同回覆而不重跑 AI。
+reply token 失效或程序在送出前重啟時，以事件與目的地衍生的穩定 retry key 改走 push；
+已送出的 outbox 不會再次傳送。
 
 ---
 
@@ -495,7 +473,8 @@ Docker / docker compose
 | `FileStorageService` | 路徑安全與檔案操作 | 阻擋根目錄外路徑 |
 | `LineStorageService` | LINE 外部 HTTP 呼叫 | 記錄狀態碼或例外，不向上拋出 |
 | `AiExtractionService` | AI 呼叫、解析、必要欄位驗證 | 統一拋出 `AiExtractionException` |
-| `QuotationService` | 報價三階段串接 | 未完成階段回傳 `blockedStep` |
+| `QuotationLineWorkflowService` | 草稿、確認與背景工作提交 | 缺漏可繼續補件；佇列滿載回覆安全忙碌訊息 |
+| `QuotationGenerationCoordinator` | 正式圖片、Excel、PDF 與交付串接 | 各階段保存可重試狀態，不倒退破壞已完成檔案 |
 
 ---
 
@@ -507,5 +486,5 @@ Docker / docker compose
 4. `PendingImageRepository`、`AssetRepository`：看資料如何保存與隔離。
 5. `FileStorageService`：看磁碟結構與路徑安全。
 6. `MediaController`、`LineStorageService`：看 LINE 如何取回圖片。
-7. `QuotationService`、`AiExtractionService`：看報價的完成與未完成邊界。
+7. `QuotationLineWorkflowService`、`QuotationGenerationCoordinator`：看報價確認與背景完成邊界。
 8. `schema.sql`：最後看完整資料模型與新版報價資料層。

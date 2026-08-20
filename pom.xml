@@ -28,6 +28,8 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<jna.version>5.19.1</jna.version>
+		<cyclonedx.version>2.9.3</cyclonedx.version>
 	</properties>
 	<dependencies>
 
@@ -58,9 +60,22 @@
 			<version>3.46.1.3</version>
 		</dependency>
 
+		<!-- Windows 桌面模式以 JNA Platform 的官方 Win32 mapping 呼叫目前使用者的 DPAPI。 -->
+		<dependency>
+			<groupId>net.java.dev.jna</groupId>
+			<artifactId>jna-platform</artifactId>
+			<version>${jna.version}</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -68,10 +83,52 @@
 	<build>
 		<!-- 產出檔名固定為 app.jar，讓 Dockerfile 不必跟著版本號改 -->
 		<finalName>app</finalName>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<resource>
+				<directory>outputs/excel-templates</directory>
+				<targetPath>quotation/templates</targetPath>
+				<includes>
+					<include>quotation-template-*.xlsx</include>
+				</includes>
+			</resource>
+		</resources>
 		<plugins>
+			<!-- 於 verify 產生可嵌入 Setup 的 CycloneDX JSON SBOM。 -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+				<version>${cyclonedx.version}</version>
+				<executions>
+					<execution>
+						<phase>verify</phase>
+						<goals>
+							<goal>makeAggregateBom</goal>
+						</goals>
+						<configuration>
+							<outputFormat>json</outputFormat>
+							<outputName>sbom</outputName>
+							<includeBomSerialNumber>true</includeBomSerialNumber>
+							<includeTestScope>false</includeTestScope>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+
+			<!-- JDK 25 測試程序允許 JNA 與 SQLite JDBC 載入其必要的原生程式庫。 -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<argLine>--enable-native-access=ALL-UNNAMED</argLine>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

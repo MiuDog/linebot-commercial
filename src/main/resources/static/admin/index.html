@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>報價資料管理</title>
+	<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+	<a class="skip-link" href="#main-content">跳到主要內容</a>
+	<header class="page-header">
+		<div>
+			<p class="eyebrow">LOCAL QUOTATION CONTROL</p>
+			<h1>報價資料管理</h1>
+			<p class="subtitle">管理五種報價格式、共用品項，以及各格式固定的規格與價格。</p>
+		</div>
+		<div class="local-badge" aria-label="存取狀態">僅限本機</div>
+	</header>
+
+	<main id="main-content">
+		<section aria-labelledby="scheme-title">
+			<div class="section-heading">
+				<div>
+					<p class="section-index">01</p>
+					<h2 id="scheme-title">五種報價格式</h2>
+				</div>
+				<p>五份範本均已提供；「船用」報表只顯示最終結果，不揭露內部計算過程。</p>
+			</div>
+			<div id="scheme-list" class="scheme-list" aria-live="polite"></div>
+		</section>
+
+		<section class="workspace" aria-labelledby="item-title">
+			<div class="section-heading wide-heading">
+				<div>
+					<p class="section-index">02</p>
+					<h2 id="item-title">品項主檔</h2>
+				</div>
+				<p>品項名稱與別名共用；規格、單位、單價及備註由各報價格式分別設定。</p>
+			</div>
+
+			<div class="split-layout">
+				<div class="table-panel">
+					<div class="toolbar">
+						<div class="search-control">
+							<label for="item-search">搜尋品項</label>
+							<input id="item-search" type="search" placeholder="輸入代碼、名稱或別名">
+						</div>
+						<div class="export-actions">
+							<a class="export-link" href="/api/admin/quotation-master-data.xlsx" download>匯出 Excel 主檔</a>
+							<a class="text-link" href="/api/admin/quotation-master-data.csv" download>另存 CSV</a>
+							<label class="text-link" for="master-data-import">上傳 CSV 覆蓋主檔</label>
+							<input id="master-data-import" type="file" accept=".csv,text/csv" hidden>
+						</div>
+						<p class="field-help">
+							上傳的 CSV 會整批覆蓋主檔：檔案內的品項重新啟用，未出現的品項自動停用（不刪除，歷史報價不受影響）。
+						</p>
+					</div>
+					<div class="table-scroll">
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">代碼</th>
+									<th scope="col">品項</th>
+									<th scope="col">別名</th>
+									<th scope="col">狀態</th>
+									<th scope="col"><span class="visually-hidden">操作</span></th>
+								</tr>
+							</thead>
+							<tbody id="item-rows"></tbody>
+						</table>
+					</div>
+					<p id="item-empty" class="empty-state" hidden>目前尚無品項，請從右側建立第一筆資料。</p>
+				</div>
+
+				<form id="item-form" class="form-panel">
+					<div class="form-title-row">
+						<h3 id="item-form-title">新增品項</h3>
+						<button id="item-reset" class="text-button" type="button">清除</button>
+					</div>
+					<input id="item-id" type="hidden">
+					<label for="item-code">品項代碼</label>
+					<input id="item-code" name="code" required maxlength="64" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="SCAFFOLD_EXTERNAL">
+					<p class="field-help">穩定代碼，僅使用英文、數字及底線。</p>
+
+					<label for="item-name">品項名稱</label>
+					<input id="item-name" name="name" required maxlength="100" placeholder="外部鷹架">
+
+					<label for="item-aliases">AI 辨識別名</label>
+					<input id="item-aliases" name="aliases" maxlength="500" placeholder="外架, 鷹架">
+					<p class="field-help">以逗號分隔，最多 20 個。</p>
+
+					<label class="check-row" for="item-active">
+						<input id="item-active" type="checkbox" checked>
+						<span>啟用品項</span>
+					</label>
+					<button class="primary-button" type="submit">儲存品項</button>
+				</form>
+			</div>
+
+		</section>
+
+		<section aria-labelledby="mapping-title">
+			<div class="section-heading">
+				<div>
+					<p class="section-index">03</p>
+					<h2 id="mapping-title">格式品項設定</h2>
+				</div>
+				<p>數量由 LINE 指令提供，複價由系統計算，因此這兩欄不會存入主檔。</p>
+			</div>
+
+			<div class="mapping-controls">
+				<div>
+					<label for="scheme-select">報價格式</label>
+					<select id="scheme-select"></select>
+				</div>
+			</div>
+
+			<div class="split-layout mapping-layout">
+				<div class="table-panel">
+					<div class="table-scroll">
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">順序</th>
+									<th scope="col">品項</th>
+									<th scope="col">規格／說明</th>
+									<th scope="col">單位</th>
+									<th scope="col">單價</th>
+									<th scope="col">備註</th>
+								</tr>
+							</thead>
+							<tbody id="mapping-rows"></tbody>
+						</table>
+					</div>
+					<p id="mapping-empty" class="empty-state" hidden>此格式尚未設定品項。</p>
+				</div>
+
+				<form id="mapping-form" class="form-panel">
+					<h3>加入或更新格式品項</h3>
+					<label for="mapping-item">品項</label>
+					<select id="mapping-item" required></select>
+
+					<label for="mapping-specification">規格／說明</label>
+					<input id="mapping-specification" maxlength="200">
+
+					<div class="field-grid">
+						<div>
+							<label for="mapping-unit">單位</label>
+							<input id="mapping-unit" required maxlength="20" placeholder="m2">
+						</div>
+						<div>
+							<label for="mapping-price">單價</label>
+							<input id="mapping-price" required type="number" min="0" step="0.01">
+						</div>
+					</div>
+
+					<label for="mapping-remark">備註</label>
+					<textarea id="mapping-remark" maxlength="500" rows="3"></textarea>
+
+					<div class="field-grid">
+						<div>
+							<label for="mapping-order">顯示順序</label>
+							<input id="mapping-order" required type="number" min="0" max="10000" value="10">
+						</div>
+						<div>
+							<label for="mapping-mode">計價模式</label>
+							<select id="mapping-mode">
+								<option value="DIRECT">直接計價</option>
+								<option value="DERIVED">衍生計算</option>
+								<option value="MANUAL">人工輸入</option>
+							</select>
+						</div>
+					</div>
+
+					<label class="check-row" for="mapping-visible">
+						<input id="mapping-visible" type="checkbox" checked>
+						<span>顯示於客戶報價單</span>
+					</label>
+					<label class="check-row" for="mapping-active">
+						<input id="mapping-active" type="checkbox" checked>
+						<span>啟用此格式品項</span>
+					</label>
+					<button class="primary-button" type="submit">儲存格式品項</button>
+				</form>
+			</div>
+		</section>
+
+		<section aria-labelledby="validation-title">
+			<div class="section-heading">
+				<div>
+					<p class="section-index">04</p>
+					<h2 id="validation-title">AI JSON 測試</h2>
+				</div>
+				<p>貼上 AI 固定格式，系統會拒絕額外欄位，並以資料庫主檔補齊規格、單位、單價、備註及 DIRECT 複價。</p>
+			</div>
+
+			<form id="ai-parse-form" class="form-panel ai-parse-form">
+				<div class="form-title-row">
+					<div>
+						<h3>從文字建立報價資料</h3>
+						<p id="ai-status" class="field-help" role="status">正在檢查 AI 設定…</p>
+					</div>
+				</div>
+				<p class="field-help">報價格式取用上方「報價格式」選單的值；AI 不會自行判定格式。</p>
+				<label for="ai-instruction">報價指令</label>
+				<textarea id="ai-instruction" rows="5" maxlength="20000" required placeholder="例如：建立 CNS 報價，名稱為中區外牆工程，外部鷹架 120 m2、防塵網 120 m2。"></textarea>
+				<p class="field-help">此處只測試文字解析；正式 LINE 草稿已支援名片 OCR、工程候選圖評分與最高區別度選圖。</p>
+				<button id="ai-parse-button" class="primary-button" type="submit" disabled>讓 AI 解析</button>
+			</form>
+
+			<div class="validation-layout">
+				<form id="validation-form" class="form-panel validation-form">
+					<label for="validation-json">待驗證 JSON</label>
+					<textarea id="validation-json" rows="22" required spellcheck="false">{
+  "schemaVersion": "2.0",
+  "schemeCode": "CNS",
+  "schemeConfidence": 1,
+  "headerPatch": {
+    "workName": {
+      "value": "測試報價",
+      "sourceText": "測試報價",
+      "confidence": 1
+    }
+  },
+  "standardItemIntents": [
+    {
+      "itemCode": "EXTERNAL_SCAFFOLD",
+      "quantity": 2,
+      "sourceText": "外部鷹架 2 平方米",
+      "confidence": 1
+    }
+  ],
+  "customItems": [],
+  "removedItemCodes": [],
+  "imageAssessments": [],
+  "selectedImageMessageId": null,
+  "imageDeclined": true,
+  "missingBaseFields": [],
+  "missingItemFields": [],
+  "nextAction": "SHOW_PREVIEW",
+  "warnings": []
+}</textarea>
+					<p class="field-help">AI 只能提供品項代碼、數量、來源文字與信心；不可提供固定價格或報表欄位。</p>
+					<button class="primary-button" type="submit">驗證並預覽</button>
+				</form>
+
+				<div id="validation-result" class="table-panel validation-result" aria-live="polite" hidden>
+					<div class="result-heading">
+						<div>
+							<p class="result-label">驗證通過</p>
+							<h3 id="validation-result-name"></h3>
+						</div>
+						<p id="validation-result-scheme"></p>
+					</div>
+					<div class="table-scroll">
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">品項</th>
+									<th scope="col">規格／說明</th>
+									<th scope="col">數量</th>
+									<th scope="col">單位</th>
+									<th scope="col">單價</th>
+									<th scope="col">複價</th>
+									<th scope="col">備註</th>
+								</tr>
+							</thead>
+							<tbody id="validation-result-rows"></tbody>
+						</table>
+					</div>
+					<div class="result-notes">
+						<p><strong>選取圖片：</strong><span id="validation-result-image">未選取</span></p>
+						<p><strong>缺漏欄位：</strong><span id="validation-result-missing">無</span></p>
+						<p><strong>AI 警告：</strong><span id="validation-result-warnings">無</span></p>
+					</div>
+				</div>
+			</div>
+
+			<div class="form-panel workbook-form">
+				<div class="form-title-row">
+					<div>
+						<h3>正式 Excel 產出</h3>
+						<p class="field-help">正式確認後由系統產生，管理頁不能略過確認或自行指定單號。</p>
+					</div>
+				</div>
+				<p class="field-help">請在 LINE 私訊中確認完整預覽；確認交易會分配當日流水號，保存正式快照並排入 Excel／PDF 背景工作。</p>
+			</div>
+		</section>
+
+		<section aria-labelledby="quotation-management-title">
+			<div class="section-heading">
+				<div>
+					<p class="section-index">05</p>
+					<h2 id="quotation-management-title">正式報價管理</h2>
+				</div>
+				<p>查詢已確認的正式快照，下載資料庫綁定檔案，並在合法狀態下重試 PDF 或 LINE。</p>
+			</div>
+
+			<div class="management-subsection" aria-labelledby="quotation-draft-title">
+				<div class="subsection-heading">
+					<div>
+						<p class="result-label">確認前</p>
+						<h3 id="quotation-draft-title">草稿管理</h3>
+					</div>
+					<p>檢查 AI／OCR 抬頭、品項快照、缺漏欄位、程式計算金額與選定圖片。</p>
+				</div>
+				<form id="quotation-draft-filter-form" class="form-panel draft-filters" role="search">
+					<div>
+						<label for="quotation-draft-search">搜尋草稿</label>
+						<input id="quotation-draft-search" type="search" maxlength="100" placeholder="報價名稱、公司或工作">
+					</div>
+					<div>
+						<label for="quotation-draft-status">狀態</label>
+						<select id="quotation-draft-status">
+							<option value="">全部</option>
+							<option value="COLLECTING_BASE_INFO">補充頂部資料</option>
+							<option value="COLLECTING_ITEMS">補充品項</option>
+							<option value="AWAITING_IMAGE">等待圖片</option>
+							<option value="READY_FOR_PREVIEW">可預覽</option>
+							<option value="AWAITING_CONFIRMATION">等待確認</option>
+							<option value="CONFIRMED">已確認</option>
+							<option value="CANCELLED">已取消</option>
+							<option value="EXPIRED">已逾期</option>
+						</select>
+					</div>
+					<div class="quotation-filter-actions">
+						<button class="primary-button" type="submit">查詢草稿</button>
+						<button id="quotation-draft-filter-reset" class="text-button" type="button">清除條件</button>
+					</div>
+				</form>
+
+				<div class="quotation-management-layout">
+					<div class="table-panel">
+						<div class="toolbar">
+							<strong id="quotation-draft-list-summary">正在載入草稿…</strong>
+							<button id="quotation-draft-refresh" class="text-button" type="button">重新整理</button>
+						</div>
+						<div class="table-scroll">
+							<table aria-describedby="quotation-draft-list-summary">
+								<thead>
+									<tr>
+										<th scope="col">名稱／公司</th>
+										<th scope="col">工作／格式</th>
+										<th scope="col">狀態</th>
+										<th scope="col">更新時間</th>
+										<th scope="col">操作</th>
+									</tr>
+								</thead>
+								<tbody id="quotation-draft-rows"></tbody>
+							</table>
+						</div>
+						<p id="quotation-draft-empty" class="empty-state" hidden>目前沒有符合條件的草稿。</p>
+						<div class="pagination-actions" aria-label="報價草稿分頁">
+							<button id="quotation-draft-previous" class="row-button" type="button">上一頁</button>
+							<span id="quotation-draft-page-status" role="status">第 1 頁</span>
+							<button id="quotation-draft-next" class="row-button" type="button">下一頁</button>
+						</div>
+					</div>
+
+					<aside id="quotation-draft-detail" class="form-panel quotation-detail" aria-live="polite" hidden>
+						<div class="form-title-row">
+							<div>
+								<p class="result-label">草稿快照</p>
+								<h3 id="quotation-draft-detail-title"></h3>
+							</div>
+							<span id="quotation-draft-detail-status" class="status-chip"></span>
+						</div>
+						<dl id="quotation-draft-detail-summary" class="quotation-summary"></dl>
+						<p id="quotation-draft-missing" class="missing-summary"></p>
+						<figure id="quotation-draft-image-panel" class="selected-image-panel" hidden>
+							<img id="quotation-draft-selected-image" alt="草稿選定的工程圖片">
+							<figcaption>AI 選定的代表圖片</figcaption>
+						</figure>
+						<div class="table-scroll">
+							<table>
+								<caption>草稿品項快照</caption>
+								<thead>
+									<tr>
+										<th scope="col">品項／規格</th>
+										<th scope="col">數量／單位</th>
+										<th scope="col">單價</th>
+										<th scope="col">備註</th>
+									</tr>
+								</thead>
+								<tbody id="quotation-draft-detail-items"></tbody>
+							</table>
+						</div>
+					</aside>
+				</div>
+			</div>
+
+			<div class="subsection-heading formal-heading">
+				<div>
+					<p class="result-label">確認後</p>
+					<h3>正式報價</h3>
+				</div>
+			</div>
+
+			<form id="quotation-filter-form" class="form-panel quotation-filters" role="search">
+				<div>
+					<label for="quotation-filter-number">報價單號</label>
+					<input id="quotation-filter-number" maxlength="100" autocomplete="off">
+				</div>
+				<div>
+					<label for="quotation-filter-company">公司</label>
+					<input id="quotation-filter-company" maxlength="100" autocomplete="off">
+				</div>
+				<div>
+					<label for="quotation-filter-work">工作</label>
+					<input id="quotation-filter-work" maxlength="100" autocomplete="off">
+				</div>
+				<div>
+					<label for="quotation-filter-date-from">開始日期</label>
+					<input id="quotation-filter-date-from" type="date">
+				</div>
+				<div>
+					<label for="quotation-filter-date-to">結束日期</label>
+					<input id="quotation-filter-date-to" type="date">
+				</div>
+				<div>
+					<label for="quotation-filter-status">狀態</label>
+					<select id="quotation-filter-status">
+						<option value="">全部</option>
+						<option value="CONFIRMED">已確認</option>
+						<option value="GENERATING_EXCEL">產生 Excel 中</option>
+						<option value="GENERATING_PDF">產生 PDF 中</option>
+						<option value="PDF_FAILED">PDF 失敗</option>
+						<option value="READY">可交付</option>
+						<option value="SENDING">LINE 傳送中</option>
+						<option value="SENT">已傳送</option>
+						<option value="CANCELLED">已取消</option>
+						<option value="FAILED">失敗</option>
+					</select>
+				</div>
+				<div class="quotation-filter-actions">
+					<button class="primary-button" type="submit">查詢正式報價</button>
+					<button id="quotation-filter-reset" class="text-button" type="button">清除條件</button>
+				</div>
+			</form>
+
+			<div class="quotation-management-layout">
+				<div class="table-panel">
+					<div class="toolbar">
+						<strong id="quotation-list-summary">正在載入正式報價…</strong>
+						<button id="quotation-refresh" class="text-button" type="button">重新整理</button>
+					</div>
+					<div class="table-scroll">
+						<table aria-describedby="quotation-list-summary">
+							<thead>
+								<tr>
+									<th scope="col">單號／日期</th>
+									<th scope="col">公司／工作</th>
+									<th scope="col">格式</th>
+									<th scope="col">總計</th>
+									<th scope="col">正式狀態</th>
+									<th scope="col">PDF／LINE</th>
+									<th scope="col">操作</th>
+								</tr>
+							</thead>
+							<tbody id="quotation-rows"></tbody>
+						</table>
+					</div>
+					<p id="quotation-empty" class="empty-state" hidden>目前沒有符合條件的正式報價。</p>
+					<div class="pagination-actions" aria-label="正式報價分頁">
+						<button id="quotation-previous" class="row-button" type="button">上一頁</button>
+						<span id="quotation-page-status" role="status">第 1 頁</span>
+						<button id="quotation-next" class="row-button" type="button">下一頁</button>
+					</div>
+				</div>
+
+				<aside id="quotation-detail" class="form-panel quotation-detail" aria-live="polite" hidden>
+					<div class="form-title-row">
+						<div>
+							<p class="result-label">正式快照</p>
+							<h3 id="quotation-detail-title"></h3>
+						</div>
+						<span id="quotation-detail-status" class="status-chip"></span>
+					</div>
+					<dl id="quotation-detail-summary" class="quotation-summary"></dl>
+					<figure id="quotation-image-panel" class="selected-image-panel" hidden>
+						<img id="quotation-selected-image" alt="正式報價選定的工程圖片">
+						<figcaption>報價單採用圖片</figcaption>
+					</figure>
+					<div class="table-scroll">
+						<table>
+							<caption>客戶可見品項</caption>
+							<thead>
+								<tr>
+									<th scope="col">品項</th>
+									<th scope="col">數量</th>
+									<th scope="col">複價</th>
+								</tr>
+							</thead>
+							<tbody id="quotation-detail-lines"></tbody>
+						</table>
+					</div>
+					<div id="quotation-file-actions" class="quotation-actions"></div>
+					<div class="quotation-actions external-actions">
+						<button id="quotation-retry-xlsx" class="primary-button" type="button">重試 Excel</button>
+						<button id="quotation-retry-pdf" class="primary-button" type="button">重試 PDF</button>
+						<button id="quotation-retry-line" class="primary-button" type="button">重新傳送 LINE</button>
+						<button id="quotation-regenerate-link" class="text-button" type="button">重新產生 PDF 連結</button>
+						<button id="quotation-revoke-links" class="danger-button" type="button">撤銷 PDF 連結</button>
+					</div>
+					<div id="quotation-copy-link" class="copy-link-panel" hidden>
+						<a id="quotation-generated-link" class="text-link" target="_blank" rel="noopener noreferrer">開啟新 PDF 連結</a>
+						<button id="quotation-copy-link-button" class="row-button" type="button">複製連結</button>
+					</div>
+					<div class="audit-panel">
+						<h4>稽核紀錄</h4>
+						<ul id="quotation-audit-records" class="audit-records"></ul>
+					</div>
+					<p id="quotation-operation-status" class="field-help" role="status"></p>
+				</aside>
+			</div>
+		</section>
+	</main>
+
+	<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+	<script src="/admin/admin.js" defer></script>
+</body>
+</html>

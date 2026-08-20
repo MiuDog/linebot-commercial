@@ -112,10 +112,25 @@ public class AssetRepository {
 
 	// 方法：取得檔案同步需要的全部資產索引。
 	public List<Asset> findAll() {
-		// 外部呼叫：使用 Spring JDBC 讀取全部資產路徑供磁碟同步使用。
-		return jdbc.sql("SELECT * FROM asset ORDER BY id")
+		// 外部呼叫：資產根目錄同步排除由正式報價資料夾管理的圖片。
+		return jdbc.sql("""
+			SELECT a.* FROM asset a
+			WHERE NOT EXISTS (
+				SELECT 1 FROM quotation_asset qa WHERE qa.asset_id = a.id
+			)
+			ORDER BY a.id
+			""")
 			.query(AssetRepository::mapAsset)
 			.list();
+	}
+
+	// 方法：判斷圖片是否由正式報價資料夾管理。
+	public boolean isQuotationAsset(long assetId) {
+		Integer count = jdbc.sql("SELECT COUNT(*) FROM quotation_asset WHERE asset_id = ?")
+			.param(assetId)
+			.query(Integer.class)
+			.single();
+		return count != null && count > 0;
 	}
 
 	// 方法：更新 Explorer 改名或移動後的檔案資料。
@@ -300,6 +315,31 @@ public class AssetRepository {
                         ORDER BY a.created_at DESC
                         LIMIT ?
                         """.formatted(placeholders)).params(params).query(AssetRepository::mapAsset).list();
+
+		return found.stream().map(this::withTags).toList();
+	}
+
+	// 方法：依來源、完整部門標籤及部門下的八碼日期資料夾查詢圖片。
+	public List<Asset> searchByDepartmentAndDate(
+		String sourceId,
+		String departmentTag,
+		String compactDate,
+		int limit
+	) {
+		String pathPattern = departmentTag + "/" + compactDate + "/%";
+		List<Asset> found = jdbc.sql("""
+			SELECT DISTINCT a.* FROM asset a
+			JOIN asset_tag at ON at.asset_id = a.id
+			JOIN tag t ON t.id = at.tag_id
+			WHERE a.source_id = ?
+			  AND LOWER(t.name) = ?
+			  AND LOWER(a.file_path) LIKE ?
+			ORDER BY a.created_at ASC, a.id ASC
+			LIMIT ?
+			""")
+			.params(sourceId, departmentTag, pathPattern, limit)
+			.query(AssetRepository::mapAsset)
+			.list();
 
 		return found.stream().map(this::withTags).toList();
 	}

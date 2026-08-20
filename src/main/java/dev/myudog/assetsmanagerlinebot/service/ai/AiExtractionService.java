@@ -1,5 +1,10 @@
 package dev.myudog.assetsmanagerlinebot.service.ai;
 
+import dev.myudog.assetsmanagerlinebot.observability.AiUsageAuditService;
+import dev.myudog.assetsmanagerlinebot.observability.AiUsageCostCalculator;
+import dev.myudog.assetsmanagerlinebot.observability.AiAttemptStatus;
+import dev.myudog.assetsmanagerlinebot.observability.NetworkObservationLogger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -8,17 +13,23 @@ import org.slf4j.MDC;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 【職責】把規格圖／資訊圖送給 AI 模型，並把回應整理成結構化欄位。
@@ -28,7 +39,7 @@ import java.util.Map;
  *
  * <p><b>設定全部留空，需由使用者填入：</b>
  * <pre>
- *   AI_API_URL         模型端點（OpenAI 相容的 /chat/completions）
+ *   AI_API_URL         OpenAI 相容 API 的共同基底網址
  *   AI_API_KEY         金鑰
  *   AI_MODEL           模型名稱
  *   AI_REQUIRED_FIELDS 必要欄位，以逗號分隔；缺任何一項就報錯
@@ -46,10 +57,22 @@ import java.util.Map;
  * 也不決定 LINE 回覆文案。失敗統一轉成 {@link AiExtractionException}。
  */
 @Service
-public class AiExtractionService {
+public class AiExtractionService implements AiJsonCompletionClient {
 
 	private static final Logger log = LoggerFactory.getLogger(AiExtractionService.class);
 	private static final int DEFAULT_TIMEOUT_SECONDS = 60;
+	private static final int MAXIMUM_COMPLETION_IMAGES = 20;
+	private static final int MAXIMUM_IMAGE_BYTES = 10 * 1024 * 1024;
+	private static final int MAXIMUM_TOTAL_IMAGE_BYTES = 30 * 1024 * 1024;
+	private static final int MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;
+	private static final int MAXIMUM_SYSTEM_PROMPT_LENGTH = 1_000_000;
+	private static final int MAXIMUM_USER_PROMPT_LENGTH = 50_000;
+	private static final Set<String> ALLOWED_IMAGE_CONTENT_TYPES = Set.of(
+		"image/jpeg",
+		"image/png",
+		"image/webp",
+		"image/gif"
+	);
 
 	/**
 	 * 提示詞。要求模型只輸出 JSON，後續解析才不必處理自然語言。
@@ -69,6 +92,10 @@ public class AiExtractionService {
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final HttpClient httpClient;
+	private NetworkObservationLogger networkLogger = new NetworkObservationLogger();
+	private AiUsageAuditService usageAuditService = new AiUsageAuditService(
+		new AiUsageCostCalculator("USD", "", "", "")
+	);
 
 	@Value("${app.ai.api-url:}")
 	private String apiUrl;
@@ -94,6 +121,16 @@ public class AiExtractionService {
 	public AiExtractionService(@Value("${app.ai.timeout-seconds:}") String timeoutSecondsRaw) {
 		this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 		this.timeoutSeconds = parseTimeoutSeconds(timeoutSecondsRaw);
+	}
+
+	// 方法：在完整 Spring 容器中接入外部網路 RED 與 AI usage 成本稽核。
+	@Autowired(required = false)
+	public void configureObservability(
+		NetworkObservationLogger networkLogger,
+		AiUsageAuditService usageAuditService
+	) {
+		this.networkLogger = networkLogger;
+		this.usageAuditService = usageAuditService;
 	}
 
 	// 方法：執行 parseTimeoutSeconds 方法的處理流程。
@@ -122,8 +159,59 @@ public class AiExtractionService {
 	//#region 提取流程
 
 	// 方法：執行 isConfigured 方法的處理流程。
+	@Override
 	public boolean isConfigured() {
 		return notBlank(apiUrl) && notBlank(apiKey) && notBlank(model);
+	}
+
+	// 方法：以固定 system/user 邊界與候選圖片取得模型輸出的 JSON 文字。
+	@Override
+	public String completeJson(String systemPrompt, String userPrompt, List<AiImageInput> images) {
+		long startedAt = System.nanoTime();
+		List<AiImageInput> safeImages = validateCompletionInput(systemPrompt, userPrompt, images);
+
+		// 日誌：記錄結構化 JSON 模型呼叫開始，不記錄提示詞或圖片內容。
+		log.info(
+			"event=ai_json_completion_started requestId={} modelConfigured={} imageCount={}",
+			currentRequestId(),
+			notBlank(model),
+			safeImages.size()
+		);
+		try {
+			if (!isConfigured()) {
+				usageAuditService.auditFailure(
+					model,
+					"quotation_json_completion",
+					AiAttemptStatus.NOT_CONFIGURED,
+					"NotConfigured"
+				);
+				throw new AiExtractionException("AI 服務尚未設定（AI_API_URL／AI_API_KEY／AI_MODEL）", (Throwable) null);
+			}
+
+			String responseBody = callModel(
+				buildJsonCompletionRequestBody(systemPrompt, userPrompt, safeImages),
+				"quotation_json_completion"
+			);
+			String content = extractContent(responseBody);
+
+			// 日誌：記錄 JSON 模型呼叫完成與耗時，不記錄模型輸出。
+			log.info(
+				"event=ai_json_completion_completed requestId={} durationMs={}",
+				currentRequestId(),
+				elapsedMilliseconds(startedAt)
+			);
+			return content;
+		}
+		catch (RuntimeException exception) {
+			// 日誌：記錄 JSON 模型呼叫失敗的安全摘要。
+			log.warn(
+				"event=ai_json_completion_failed requestId={} durationMs={} errorType={}",
+				currentRequestId(),
+				elapsedMilliseconds(startedAt),
+				exception.getClass().getSimpleName()
+			);
+			throw exception;
+		}
 	}
 
 	/**
@@ -151,12 +239,18 @@ public class AiExtractionService {
 		);
 		try {
 			if (!isConfigured()) {
+				usageAuditService.auditFailure(
+					model,
+					"image_spec_extraction",
+					AiAttemptStatus.NOT_CONFIGURED,
+					"NotConfigured"
+				);
 				throw new AiExtractionException("AI 服務尚未設定（AI_API_URL／AI_API_KEY／AI_MODEL）", (Throwable) null);
 			}
 
 			// 步驟 2：依序組建請求、呼叫模型並解析模型回應。
 			List<String> requiredFields = requiredFields();
-			String responseBody = callModel(imageBytes, contentType, requiredFields);
+			String responseBody = callModel(imageBytes, contentType, requiredFields, "image_spec_extraction");
 			String content = extractContent(responseBody);
 			Map<String, Object> fields = parseJsonObject(content);
 
@@ -229,14 +323,27 @@ public class AiExtractionService {
 	//#region 模型請求
 
 	// 方法：執行 callModel 方法的處理流程。
-	private String callModel(byte[] imageBytes, String contentType, List<String> requiredFields) {
+	private String callModel(
+		byte[] imageBytes,
+		String contentType,
+		List<String> requiredFields,
+		String operation
+	) {
+		return callModel(buildRequestBody(imageBytes, contentType, requiredFields), operation);
+	}
+
+	// 方法：將已建立的 OpenAI 相容請求送往設定端點並限制回應大小。
+	private String callModel(Map<String, Object> requestBody, String operation) {
+		long networkStartedAt = -1;
+		boolean networkFinished = false;
+		boolean attemptAudited = false;
 		try {
 			// 步驟 1：使用 Jackson 將模型請求資料序列化成 JSON。
-			String payload = objectMapper.writeValueAsString(buildRequestBody(imageBytes, contentType, requiredFields));
+			String payload = objectMapper.writeValueAsString(requestBody);
 
 			// 步驟 2：使用 Java HTTP API 建立含驗證資訊、逾時與 JSON 本文的請求。
 			HttpRequest request = HttpRequest.newBuilder()
-				.uri(URI.create(apiUrl))
+				.uri(URI.create(chatCompletionsUrl()))
 				.header("Content-Type", "application/json")
 				.header("Authorization", "Bearer " + apiKey)
 				.timeout(Duration.ofSeconds(timeoutSeconds))
@@ -244,26 +351,87 @@ public class AiExtractionService {
 				.build();
 
 			// 步驟 3：透過 Java HTTP 用戶端送出請求並等待文字回應。
-			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-			if (response.statusCode() / 100 != 2) {
-				throw new AiExtractionException(
-					"模型回應狀態碼 " + response.statusCode() + "：" + truncate(response.body()),
-					(Throwable) null
-				);
+			networkStartedAt = networkLogger.started("AI", "chat_completion");
+			HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+			networkLogger.completed("AI", "chat_completion", networkStartedAt, response.statusCode());
+			networkFinished = true;
+			String responseBody;
+			try (InputStream body = response.body()) {
+				responseBody = readLimitedResponseBody(body);
 			}
-			return response.body();
+			if (response.statusCode() / 100 != 2) {
+				usageAuditService.auditFailure(
+					model,
+					operation,
+					AiAttemptStatus.HTTP_ERROR,
+					"HttpStatus" + response.statusCode()
+				);
+				attemptAudited = true;
+				throw new AiExtractionException("模型回應狀態碼 " + response.statusCode(), (Throwable) null);
+			}
+			usageAuditService.auditSuccess(responseBody, model, operation);
+			attemptAudited = true;
+
+			return responseBody;
 		}
 		catch (AiExtractionException e) {
+			if (networkStartedAt >= 0 && !networkFinished) {
+				networkLogger.failed("AI", "chat_completion", networkStartedAt, e);
+			}
+			if (!attemptAudited) {
+				usageAuditService.auditFailure(
+					model,
+					operation,
+					AiAttemptStatus.NETWORK_ERROR,
+					e.getClass().getSimpleName()
+				);
+			}
 			throw e;
 		}
 		catch (InterruptedException e) {
+			if (networkStartedAt >= 0 && !networkFinished) {
+				networkLogger.failed("AI", "chat_completion", networkStartedAt, e);
+			}
 			// 外部呼叫：恢復執行緒中斷旗標，讓上層仍能辨識取消訊號。
 			Thread.currentThread().interrupt();
+			usageAuditService.auditFailure(
+				model,
+				operation,
+				AiAttemptStatus.NETWORK_ERROR,
+				e.getClass().getSimpleName()
+			);
 			throw new AiExtractionException("呼叫模型時被中斷", e);
 		}
 		catch (Exception e) {
+			if (networkStartedAt >= 0 && !networkFinished) {
+				networkLogger.failed("AI", "chat_completion", networkStartedAt, e);
+			}
+			usageAuditService.auditFailure(
+				model,
+				operation,
+				e instanceof HttpTimeoutException ? AiAttemptStatus.TIMEOUT : AiAttemptStatus.NETWORK_ERROR,
+				e.getClass().getSimpleName()
+			);
 			throw new AiExtractionException("呼叫模型失敗：" + e.getMessage(), e);
 		}
+	}
+
+	// 方法：由共同 AI API 基底網址推導 Chat Completions 端點，並相容既有完整端點設定。
+	private String chatCompletionsUrl() {
+		String normalized = apiUrl.replaceFirst("/+$", "");
+		if (normalized.endsWith("/chat/completions")) return normalized;
+
+		return normalized + "/chat/completions";
+	}
+
+	// 方法：限制模型 HTTP 回應大小，避免錯誤端點耗盡記憶體。
+	private String readLimitedResponseBody(InputStream body) throws IOException {
+		// 外部 API：最多讀取上限再多一個位元組，以辨識超量回應。
+		byte[] bytes = body.readNBytes(MAXIMUM_RESPONSE_BYTES + 1);
+		if (bytes.length > MAXIMUM_RESPONSE_BYTES) {
+			throw new AiExtractionException("模型回應超過大小上限", (Throwable) null);
+		}
+		return new String(bytes, StandardCharsets.UTF_8);
 	}
 
 	/**
@@ -308,9 +476,113 @@ public class AiExtractionService {
 		body.put("model", model);
 		body.put("messages", List.of(message));
 
-		// 設定目的：擷取工作需要穩定結果，因此將模型溫度固定為零。
-		body.put("temperature", 0);
 		return body;
+	}
+
+	// 方法：建立具有 system/user 隔離、圖片代碼標籤及輸出上限的 JSON 完成請求。
+	private Map<String, Object> buildJsonCompletionRequestBody(
+		String systemPrompt,
+		String userPrompt,
+		List<AiImageInput> images
+	) {
+		List<Map<String, Object>> userContent = new ArrayList<>();
+		userContent.add(textPart(userPrompt));
+		for (AiImageInput image : images) {
+			userContent.add(textPart("候選圖片 messageId：" + image.messageId()));
+			userContent.add(imagePart(image.bytes(), normalizedImageContentType(image.contentType())));
+		}
+
+		Map<String, Object> systemMessage = new LinkedHashMap<>();
+		systemMessage.put("role", "system");
+		systemMessage.put("content", systemPrompt);
+
+		Map<String, Object> userMessage = new LinkedHashMap<>();
+		userMessage.put("role", "user");
+		userMessage.put("content", userContent);
+
+		Map<String, Object> body = new LinkedHashMap<>();
+		body.put("model", model);
+		body.put("messages", List.of(systemMessage, userMessage));
+		body.put("max_completion_tokens", 4000);
+		return body;
+	}
+
+	// 方法：建立 OpenAI 多模態訊息中的文字區塊。
+	private Map<String, Object> textPart(String text) {
+		Map<String, Object> part = new LinkedHashMap<>();
+		part.put("type", "text");
+		part.put("text", text);
+		return part;
+	}
+
+	// 方法：建立 OpenAI 多模態訊息中的圖片 data URL 區塊。
+	private Map<String, Object> imagePart(byte[] bytes, String contentType) {
+		String dataUrl = "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+		Map<String, Object> imageUrl = new LinkedHashMap<>();
+		imageUrl.put("url", dataUrl);
+
+		Map<String, Object> part = new LinkedHashMap<>();
+		part.put("type", "image_url");
+		part.put("image_url", imageUrl);
+		return part;
+	}
+
+	// 方法：在任何網路呼叫前限制提示詞、圖片數量及總位元組。
+	private List<AiImageInput> validateCompletionInput(
+		String systemPrompt,
+		String userPrompt,
+		List<AiImageInput> images
+	) {
+		requiredPrompt(systemPrompt, "系統提示詞", MAXIMUM_SYSTEM_PROMPT_LENGTH);
+		requiredPrompt(userPrompt, "使用者提示詞", MAXIMUM_USER_PROMPT_LENGTH);
+		List<AiImageInput> safeImages = images == null ? List.of() : List.copyOf(images);
+		if (safeImages.size() > MAXIMUM_COMPLETION_IMAGES) {
+			throw new AiExtractionException("候選圖片不可超過 " + MAXIMUM_COMPLETION_IMAGES + " 張", (Throwable) null);
+		}
+
+		Set<String> messageIds = new HashSet<>();
+		long totalBytes = 0;
+		for (AiImageInput image : safeImages) {
+			if (image == null || !notBlank(image.messageId())) {
+				throw new AiExtractionException("候選圖片代碼不可留空", (Throwable) null);
+			}
+			if (!messageIds.add(image.messageId())) {
+				throw new AiExtractionException("候選圖片代碼不可重複", (Throwable) null);
+			}
+
+			byte[] bytes = image.bytes();
+			if (bytes == null || bytes.length == 0 || bytes.length > MAXIMUM_IMAGE_BYTES) {
+				throw new AiExtractionException("單張候選圖片大小不正確或超過上限", (Throwable) null);
+			}
+			normalizedImageContentType(image.contentType());
+			totalBytes += bytes.length;
+		}
+		if (totalBytes > MAXIMUM_TOTAL_IMAGE_BYTES) {
+			throw new AiExtractionException("候選圖片總大小超過上限", (Throwable) null);
+		}
+		return safeImages;
+	}
+
+	// 方法：驗證提示詞具有內容且大小受限。
+	private void requiredPrompt(String value, String label, int maximumLength) {
+		if (!notBlank(value)) throw new AiExtractionException(label + "不可留空", (Throwable) null);
+
+		if (value.length() > maximumLength) {
+			throw new AiExtractionException(label + "長度超過上限", (Throwable) null);
+		}
+	}
+
+	// 方法：將圖片 MIME 正規化為明確允許的格式。
+	private String normalizedImageContentType(String contentType) {
+		if (!notBlank(contentType)) {
+			throw new AiExtractionException("候選圖片格式不可留空", (Throwable) null);
+		}
+
+		String normalized = contentType.trim().toLowerCase(Locale.ROOT);
+		if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(normalized)) {
+			throw new AiExtractionException("不支援的候選圖片格式", (Throwable) null);
+		}
+		return normalized;
 	}
 
 	/**

@@ -96,17 +96,18 @@ LINE 回傳的原始內容。
 
 **職責**：報價計算的結果，是計算器與 PDF 產生器之間的資料契約。
 
-> ⚠️ **欄位組成為佔位設計**，等實際公式與報價單版面確定後再調整。
+> 這是舊版程式化入口的相容契約；正式 LINE 報價改用含明細、稅額與總額的
+> `QuotationCalculationResult`。只有第二階段工程尺寸推算仍保留未來擴充空間。
 
 | 欄位 | 說明 |
 |---|---|
-| `unitPrice` | 單價（佔位） |
-| `quantity` | 數量（佔位） |
-| `subtotal` | 未稅小計（佔位） |
-| `tax` | 稅額（佔位） |
-| `total` | 含稅總計（佔位） |
+| `unitPrice` | 舊版介面的單價 |
+| `quantity` | 舊版介面的數量 |
+| `subtotal` | 舊版介面的未稅小計 |
+| `tax` | 舊版介面的稅額 |
+| `total` | 舊版介面的含稅總計 |
 
-先定義出來是為了讓上下游可以先串起來，而不是等公式到位才開始接。
+此 record 只供舊版相容入口；正式流程使用 `QuotationCalculationResult` 的精確快照。
 
 ---
 
@@ -114,17 +115,17 @@ LINE 回傳的原始內容。
 
 `QuotationService.QuotationResult`（巢狀 record）
 
-報價流程的執行結果。
+舊版相容報價流程的執行結果；LINE webhook 不再使用。
 
 | 欄位 | 說明 |
 |---|---|
 | `spec` | 提取出的規格；提取失敗時為 null |
-| `amounts` | 計算出的金額；公式未定義時為 null |
-| `pdfPath` | 產出的報價單路徑；模板未提供時為 null |
+| `amounts` | 舊版計算結果；相容流程卡關時為 null |
+| `pdfPath` | 舊版產出路徑；相容流程卡關時為 null |
 | `blockedStep` | 卡在哪一步，全部完成時為 null |
 
 | 方法 | 說明 |
 |---|---|
 | `boolean isComplete()` | 沒有卡關時為 true。 |
 
-刻意把「提取成功但後段未完成」表達成一種**結果**而非例外，讓使用者至少能看到 AI 讀出了什麼——這在調校提示詞與必要欄位設定時非常有用。
+`blockedStep` 僅為舊版呼叫端保留；正式 LINE 流程以草稿狀態、`quotation_file` 與交付狀態表達進度。

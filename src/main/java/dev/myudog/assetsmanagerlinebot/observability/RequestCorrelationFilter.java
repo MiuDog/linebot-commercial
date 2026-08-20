@@ -53,15 +53,25 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
 		finally {
 			if (!request.getRequestURI().startsWith("/actuator/")) {
 				// 日誌：記錄 HTTP 請求結果與處理耗時。
-				log.info(
+				String safePath = SensitiveDataSanitizer.sanitizeRequestPath(request.getRequestURI());
+				long durationMs = elapsedMilliseconds(startedAt);
+				log.atInfo()
+					.addKeyValue("event", "http_request_completed")
+					.addKeyValue("requestId", requestId)
+					.addKeyValue("method", request.getMethod())
+					.addKeyValue("path", safePath)
+					.addKeyValue("statusClass", response.getStatus() / 100 + "xx")
+					.addKeyValue("status", response.getStatus())
+					.addKeyValue("durationMs", durationMs)
+					.log(
 					"event=http_request_completed requestId={} method={} path={} "
 					+ "status={} durationMs={}",
 					requestId,
 					request.getMethod(),
-					request.getRequestURI(),
+					safePath,
 					response.getStatus(),
-					elapsedMilliseconds(startedAt)
-				);
+					durationMs
+					);
 			}
 			MDC.remove("requestId");
 		}

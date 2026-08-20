@@ -16,10 +16,9 @@ import java.util.regex.Pattern;
  *
  * <p><b>預定呼叫鏈：</b>
  * {@code 報價解析完成 → createDirectory(quotationName)
- * → {QUOTATION_ROOT_PATH}/報價單/{安全案件名稱} → Excel／PDF 輸出器}。
+ * → {共同系統根目錄}/報價單/{安全案件名稱} → Excel／PDF 輸出器}。
  *
- * <p>本服務目前只由啟動狀態檢查與測試使用，尚未接入
- * {@link QuotationService} 的正式 {@code #報價} 事件。
+ * <p>本服務已供本機管理頁的 Excel 產生器使用；正式 LINE {@code #報價} 事件仍待草稿流程接入。
  */
 @Service
 public class QuotationOutputDirectoryService {
@@ -29,6 +28,8 @@ public class QuotationOutputDirectoryService {
 	private static final Pattern INVALID_WINDOWS_CHARACTERS = Pattern.compile("[<>:\"/\\\\|?*\\p{Cntrl}]");
 	private static final Pattern REPEATED_DOTS = Pattern.compile("\\.{2,}");
 	private static final Pattern TRAILING_DOTS_OR_SPACES = Pattern.compile("[. ]+$");
+	private static final Pattern FORMAL_FOLDER = Pattern.compile("\\d{8}-\\d{2,}");
+	private static final Set<String> FORMAL_EXTENSIONS = Set.of(".xlsx", ".pdf");
 	private static final Set<String> WINDOWS_RESERVED_NAMES = Set.of(
 		"CON",
 		"PRN",
@@ -83,9 +84,109 @@ public class QuotationOutputDirectoryService {
 			throw new IllegalArgumentException("報價單名稱形成了不安全的輸出路徑");
 		}
 
-		// 步驟 2：使用 Java NIO 建立通過安全檢查的報價單目錄。
+		// 步驟 2：建立父目錄後解析實體路徑，拒絕報價根目錄或案件目錄 symlink。
+		Files.createDirectories(configuredRoot);
+		if (Files.isSymbolicLink(quotationRoot)) {
+			throw new IllegalArgumentException("報價單根目錄形成了不安全的輸出路徑");
+		}
+
+		Files.createDirectories(quotationRoot);
+		Path realConfiguredRoot = configuredRoot.toRealPath();
+		Path realQuotationRoot = quotationRoot.toRealPath();
+		if (!realConfiguredRoot.equals(realQuotationRoot.getParent())) {
+			throw new IllegalArgumentException("報價單根目錄形成了不安全的輸出路徑");
+		}
+		if (Files.isSymbolicLink(target)) {
+			throw new IllegalArgumentException("報價單名稱形成了不安全的輸出路徑");
+		}
+
+		// 步驟 3：使用 Java NIO 建立通過安全檢查的報價單目錄並再次確認實體位置。
 		Files.createDirectories(target);
+		Path realTarget = target.toRealPath();
+		if (!realQuotationRoot.equals(realTarget.getParent())) {
+			throw new IllegalArgumentException("報價單名稱形成了不安全的輸出路徑");
+		}
+
+		return realTarget;
+	}
+
+	// 方法：在已配置的每日流水號資料夾中解析正式 XLSX 或 PDF 檔案路徑。
+	public Path resolveFormalFile(
+		String folderName,
+		String fileBaseName,
+		String extension
+	) throws IOException {
+		if (!isConfigured()) throw new IllegalStateException("尚未設定報價單根目錄");
+
+		if (folderName == null || !FORMAL_FOLDER.matcher(folderName).matches()) {
+			throw new IllegalArgumentException("正式報價資料夾必須是 YYYYMMDD-至少二位流水號");
+		}
+		if (!FORMAL_EXTENSIONS.contains(extension)) {
+			throw new IllegalArgumentException("正式報價副檔名只允許 .xlsx 或 .pdf");
+		}
+
+		Path directory = createDirectory(folderName);
+		String safeBaseName = sanitizeName(fileBaseName);
+		Path target = directory.resolve(safeBaseName + extension).normalize();
+		if (!target.startsWith(directory) || !directory.equals(target.getParent())) {
+			throw new IllegalArgumentException("正式報價檔名形成了不安全的輸出路徑");
+		}
+		if (Files.isSymbolicLink(target)) {
+			throw new IllegalArgumentException("正式報價檔名形成了不安全的輸出路徑");
+		}
+
 		return target;
+	}
+
+	// 方法：只解析每日流水號正式資料夾，不在預檢完成前建立實體目錄。
+	public Path resolveFormalDirectory(String folderName) {
+		if (!isConfigured()) throw new IllegalStateException("尚未設定報價單根目錄");
+
+		if (folderName == null || !FORMAL_FOLDER.matcher(folderName).matches()) {
+			throw new IllegalArgumentException("正式報價資料夾必須是 YYYYMMDD-至少二位流水號");
+		}
+		Path quotationRoot = configuredRoot.resolve(QUOTATION_FOLDER).normalize();
+		Path directory = quotationRoot.resolve(folderName).normalize();
+		if (!directory.startsWith(quotationRoot) || !quotationRoot.equals(directory.getParent())) {
+			throw new IllegalArgumentException("正式報價資料夾形成了不安全的輸出路徑");
+		}
+		return directory;
+	}
+
+	// 方法：將正式報價檔案轉成相對於共同系統根目錄的安全資料庫定位字串。
+	public String relativeLocator(Path path) {
+		if (!isConfigured() || path == null) throw new IllegalStateException("尚未設定報價單根目錄");
+
+		Path normalized = path.toAbsolutePath().normalize();
+		Path quotationRoot = configuredRoot.resolve(QUOTATION_FOLDER).normalize();
+		if (!normalized.startsWith(quotationRoot)) {
+			throw new IllegalArgumentException("正式報價檔案不在報價單資料夾內");
+		}
+		return configuredRoot.relativize(normalized).toString().replace('\\', '/');
+	}
+
+	// 方法：解析資料庫中的正式報價相對定位，供圖片預覽及下載服務安全讀取。
+	public Path resolveLocator(String locator) {
+		if (!isConfigured() || locator == null || locator.isBlank()) {
+			throw new IllegalStateException("正式報價檔案定位不可留空");
+		}
+		Path resolved = configuredRoot.resolve(locator).normalize();
+		Path quotationRoot = configuredRoot.resolve(QUOTATION_FOLDER).normalize();
+		if (!resolved.startsWith(quotationRoot)) {
+			throw new IllegalArgumentException("正式報價檔案定位超出報價單資料夾");
+		}
+		try {
+			Path realRoot = quotationRoot.toRealPath();
+			Path realFile = resolved.toRealPath();
+			if (!realFile.startsWith(realRoot)) {
+				throw new IllegalArgumentException("正式報價檔案定位超出報價單資料夾");
+			}
+
+			return realFile;
+		}
+		catch (IOException exception) {
+			throw new IllegalArgumentException("正式報價檔案不存在或無法安全解析", exception);
+		}
 	}
 
 	// 方法：執行 sanitizeName 方法的處理流程。

@@ -3,6 +3,11 @@ package dev.myudog.assetsmanagerlinebot.controller;
 import dev.myudog.assetsmanagerlinebot.service.CommandService;
 import dev.myudog.assetsmanagerlinebot.service.ImageArchiveService;
 import dev.myudog.assetsmanagerlinebot.service.LineStorageService;
+import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineMessage;
+import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationLineWorkflowService;
+import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationReplyOutboxService;
+import dev.myudog.assetsmanagerlinebot.service.quotation.QuotationAiException;
+import dev.myudog.assetsmanagerlinebot.service.voice.VoiceCommandService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,12 +22,16 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class LineWebhookControllerTest {
@@ -38,12 +47,232 @@ class LineWebhookControllerTest {
 	@Mock
 	LineStorageService lineService;
 
+	@Mock
+	QuotationLineWorkflowService quotationWorkflow;
+
+	@Mock
+	QuotationReplyOutboxService replyOutbox;
+
+	@Mock
+	VoiceCommandService voiceCommandService;
+
 	LineWebhookController controller;
 
 	@BeforeEach
 	void setUp() {
-		controller = new LineWebhookController(commandService, archiveService, lineService);
+		controller = new LineWebhookController(
+			commandService,
+			archiveService,
+			lineService,
+			quotationWorkflow,
+			voiceCommandService
+		);
 		ReflectionTestUtils.setField(controller, "channelSecret", CHANNEL_SECRET);
+	}
+
+	@Test
+	void routesGroupAudioToTheVoiceCommandService() throws Exception {
+		String payload = """
+			{"events":[{
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"group","groupId":"C1","userId":"U1"},
+			  "message":{"id":"A1","type":"audio","duration":3500}
+			}]}
+			""";
+
+		var response = controller.handleWebhook(signature(payload), payload);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		verify(voiceCommandService).handleGroupAudio("A1", "C1", "reply-token");
+	}
+
+	@Test
+	void ignoresDirectAudioBecauseVoiceCommandsAreGroupOnly() throws Exception {
+		String payload = """
+			{"events":[{
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "message":{"id":"A1","type":"audio","duration":3500}
+			}]}
+			""";
+
+		controller.handleWebhook(signature(payload), payload);
+
+		verifyNoInteractions(voiceCommandService);
+	}
+
+	@Test
+	void rejectsEveryWebhookWhenChannelSecretIsBlank() {
+		ReflectionTestUtils.setField(controller, "channelSecret", "");
+
+		var response = controller.handleWebhook("attacker-signature", "{\"events\":[]}");
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		verify(commandService, never()).handleText(any(), any(), any(), any(), any());
+		verifyNoInteractions(archiveService, lineService, quotationWorkflow);
+	}
+
+	@Test
+	void ignoresQuotationInstructionsFromGroupsWithoutCreatingDrafts() throws Exception {
+		String payload = """
+			{"events":[{
+			  "webhookEventId":"EV-GROUP",
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"group","groupId":"C1","userId":"U1"},
+			  "message":{"id":"M1","type":"text","text":"#報價 一般架"}
+			}]}
+			""";
+
+		controller.handleWebhook(signature(payload), payload);
+
+		verify(quotationWorkflow, never()).handleText(any(), any(), any(), any(), any());
+		verify(commandService, never()).handleText(any(), any(), any(), any(), any());
+		verify(lineService).replyText("reply-token", "報價建立僅支援一對一私訊，請私訊機器人後重新輸入。");
+	}
+
+	@Test
+	void routesDirectQuotationTextAndKeepsDuplicateEventIdIdempotent() throws Exception {
+		String payload = """
+			{"events":[{
+			  "webhookEventId":"EV-USER",
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "message":{"id":"M1","type":"text","text":"#報價 一般架"}
+			}]}
+			""";
+		when(quotationWorkflow.isQuotationText("U1", "#報價 一般架")).thenReturn(true);
+		when(quotationWorkflow.handleText("EV-USER", "M1", "U1", "#報價 一般架", null))
+			.thenReturn(java.util.List.of(new QuotationLineMessage(java.util.Map.of("type", "text", "text", "請補資料"))))
+			.thenReturn(java.util.List.of());
+
+		controller.handleWebhook(signature(payload), payload);
+		controller.handleWebhook(signature(payload), payload);
+
+		verify(quotationWorkflow, times(2)).handleText("EV-USER", "M1", "U1", "#報價 一般架", null);
+		verify(lineService, times(1)).reply(eq("reply-token"), any());
+	}
+
+	@Test
+	void reportsTheExactMasterDataValidationFailureInsteadOfAGenericAdministratorMessage() throws Exception {
+		String payload = directTextPayload("EV-VALIDATION", "#報價 CNS 外部鷹架 2");
+		when(quotationWorkflow.isQuotationText("U1", "#報價 CNS 外部鷹架 2")).thenReturn(true);
+		when(quotationWorkflow.handleText(
+			"EV-VALIDATION",
+			"M1",
+			"U1",
+			"#報價 CNS 外部鷹架 2",
+			null
+		)).thenThrow(new QuotationAiException(
+			"AI_MASTER_DATA_VALIDATION_FAILED",
+			"標準品項 UNKNOWN 不屬於所選格式 CNS"
+		));
+
+		controller.handleWebhook(signature(payload), payload);
+
+		verify(lineService).replyText(
+			"reply-token",
+			"AI 辨識結果無法套用品項主檔：標準品項 UNKNOWN 不屬於所選格式 CNS\n"
+				+ "請改用品項主檔中的名稱，或補充報價格式與數量。\n"
+				+ "錯誤代碼：AI_MASTER_DATA_VALIDATION_FAILED"
+		);
+	}
+
+	@Test
+	void distinguishesAiTimeoutFromDatabaseAndUnknownFailures() throws Exception {
+		String timeoutPayload = directTextPayload("EV-TIMEOUT", "#報價 一般架");
+		String databasePayload = directTextPayload("EV-DATABASE", "#報價 CNS");
+		String unknownPayload = directTextPayload("EV-UNKNOWN", "#報價 空白");
+		when(quotationWorkflow.isQuotationText("U1", "#報價 一般架")).thenReturn(true);
+		when(quotationWorkflow.isQuotationText("U1", "#報價 CNS")).thenReturn(true);
+		when(quotationWorkflow.isQuotationText("U1", "#報價 空白")).thenReturn(true);
+		when(quotationWorkflow.handleText("EV-TIMEOUT", "M1", "U1", "#報價 一般架", null))
+			.thenThrow(new QuotationAiException("AI_TIMEOUT", "AI 解析逾時"));
+		when(quotationWorkflow.handleText("EV-DATABASE", "M1", "U1", "#報價 CNS", null))
+			.thenThrow(new org.springframework.dao.CannotAcquireLockException("database busy"));
+		when(quotationWorkflow.handleText("EV-UNKNOWN", "M1", "U1", "#報價 空白", null))
+			.thenThrow(new IllegalStateException("sensitive internal detail"));
+
+		controller.handleWebhook(signature(timeoutPayload), timeoutPayload);
+		controller.handleWebhook(signature(databasePayload), databasePayload);
+		controller.handleWebhook(signature(unknownPayload), unknownPayload);
+
+		verify(lineService).replyText(
+			"reply-token",
+			"AI 解析超過等待時間，請稍後重送同一段報價指令。\n錯誤代碼：AI_TIMEOUT"
+		);
+		verify(lineService).replyText(
+			"reply-token",
+			"報價資料庫目前忙碌，資料尚未遺失，請稍後重試。\n錯誤代碼：QUOTATION_DATABASE_BUSY"
+		);
+		verify(lineService).replyText(
+			"reply-token",
+			"報價處理發生未預期錯誤，請將錯誤代碼提供給管理員。\n錯誤代碼：QUOTATION_INTERNAL_ERROR"
+		);
+	}
+
+	@Test
+	void retriesOnlyThePendingReplyWhenDuplicateMutationIsAlreadyIdempotent() throws Exception {
+		String payload = """
+			{"events":[{
+			  "webhookEventId":"EV-OUTBOX",
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "message":{"id":"M1","type":"text","text":"#報價 一般架"}
+			}]}
+			""";
+		LineWebhookController reliableController = new LineWebhookController(
+			commandService,
+			archiveService,
+			lineService,
+			quotationWorkflow,
+			replyOutbox,
+			voiceCommandService
+		);
+		ReflectionTestUtils.setField(reliableController, "channelSecret", CHANNEL_SECRET);
+		List<QuotationLineMessage> firstReply = java.util.List.of(
+			new QuotationLineMessage(java.util.Map.of("type", "text", "text", "請補資料"))
+		);
+		when(quotationWorkflow.isQuotationText("U1", "#報價 一般架")).thenReturn(true);
+		when(quotationWorkflow.handleText("EV-OUTBOX", "M1", "U1", "#報價 一般架", null))
+			.thenReturn(firstReply)
+			.thenReturn(java.util.List.of());
+
+		reliableController.handleWebhook(signature(payload), payload);
+		reliableController.handleWebhook(signature(payload), payload);
+
+		verify(replyOutbox).deliver(
+			eq("EV-OUTBOX"),
+			eq("U1"),
+			eq("reply-token"),
+			any()
+		);
+		verify(replyOutbox).retryPending("EV-OUTBOX");
+		verifyNoInteractions(commandService);
+	}
+
+	@Test
+	void routesOnlyDirectUserPostbacksToQuotationWorkflow() throws Exception {
+		String payload = """
+			{"events":[{
+			  "webhookEventId":"EV-POSTBACK",
+			  "type":"postback",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "postback":{"data":"signed-data"}
+			}]}
+			""";
+		when(quotationWorkflow.handlePostback("EV-POSTBACK", "U1", "signed-data"))
+			.thenReturn(java.util.List.of(new QuotationLineMessage(java.util.Map.of("type", "text", "text", "完成"))));
+
+		controller.handleWebhook(signature(payload), payload);
+
+		verify(quotationWorkflow).handlePostback("EV-POSTBACK", "U1", "signed-data");
+		verify(lineService).reply(eq("reply-token"), any());
 	}
 
 	@Test
@@ -82,6 +311,34 @@ class LineWebhookControllerTest {
 	}
 
 	@Test
+	void waitsForTheWholeDirectImageSetBeforeSendingEveryCandidateToQuotationAi() throws Exception {
+		String firstPayload = directImagePayload("EV-IMG-1", "M1", 1, 2);
+		String secondPayload = directImagePayload("EV-IMG-2", "M2", 2, 2);
+		when(lineService.downloadContent("M1"))
+			.thenReturn(new LineStorageService.LineContent(
+				new ByteArrayInputStream("one".getBytes(StandardCharsets.UTF_8)),
+				"image/jpeg"
+			));
+		when(lineService.downloadContent("M2"))
+			.thenReturn(new LineStorageService.LineContent(
+				new ByteArrayInputStream("two".getBytes(StandardCharsets.UTF_8)),
+				"image/jpeg"
+			));
+		when(quotationWorkflow.isQuotationText("U1", "")).thenReturn(true);
+		when(archiveService.completedSetMessageIds("U1", "SET1", "M1", 2)).thenReturn(List.of());
+		when(archiveService.completedSetMessageIds("U1", "SET1", "M2", 2)).thenReturn(List.of("M1", "M2"));
+		when(quotationWorkflow.handleImages("EV-IMG-2", List.of("M1", "M2"), "U1"))
+			.thenReturn(List.of(new QuotationLineMessage(java.util.Map.of("type", "text", "text", "已選圖"))));
+
+		controller.handleWebhook(signature(firstPayload), firstPayload);
+		controller.handleWebhook(signature(secondPayload), secondPayload);
+
+		verify(quotationWorkflow, never()).handleImages("EV-IMG-1", List.of(), "U1");
+		verify(quotationWorkflow).handleImages("EV-IMG-2", List.of("M1", "M2"), "U1");
+		verify(lineService).reply(eq("reply-token"), any());
+	}
+
+	@Test
 	void recordsTheImagePositionWhenLineContentDownloadFails() throws Exception {
 		String payload = """
 				{"events":[{
@@ -101,6 +358,78 @@ class LineWebhookControllerTest {
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		verify(archiveService).recordFetchFailure("M1", "SET1", 1, 3, "C1");
+	}
+
+	@Test
+	void repliesPingLatencyWhenTheBotIsMentioned() throws Exception {
+		long timestamp = System.currentTimeMillis() - 120L;
+		String payload = """
+			{"events":[{
+			  "type":"message",
+			  "timestamp":%d,
+			  "replyToken":"reply-token",
+			  "source":{"type":"group","groupId":"C1","userId":"U1"},
+			  "message":{
+			    "id":"M1",
+			    "type":"text",
+			    "text":"@資產管理 ping",
+			    "mention":{"mentionees":[{"index":0,"length":5,"type":"user","userId":"UBOT","isSelf":true}]}
+			  }
+			}]}
+			""".formatted(timestamp);
+		when(commandService.handleMentionPing("ping", timestamp, "reply-token")).thenReturn(true);
+
+		var response = controller.handleWebhook(signature(payload), payload);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		verify(commandService).handleMentionPing(eq("ping"), eq(timestamp), eq("reply-token"));
+		verify(commandService, never()).handleText(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void keepsRoutingMentionedTextThatIsNotPingToTheCommandService() throws Exception {
+		String payload = """
+			{"events":[{
+			  "type":"message",
+			  "timestamp":1700000000000,
+			  "replyToken":"reply-token",
+			  "source":{"type":"group","groupId":"C1","userId":"U1"},
+			  "message":{
+			    "id":"M1",
+			    "type":"text",
+			    "text":"@資產管理 #標籤",
+			    "mention":{"mentionees":[{"index":0,"length":5,"type":"user","userId":"UBOT","isSelf":true}]}
+			  }
+			}]}
+			""";
+
+		controller.handleWebhook(signature(payload), payload);
+
+		verify(commandService).handleText("@資產管理 #標籤", null, "C1", "U1", "reply-token");
+	}
+
+	private String directImagePayload(String eventId, String messageId, int index, int total) {
+		return """
+			{"events":[{
+			  "webhookEventId":"%s",
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "message":{"id":"%s","type":"image","imageSet":{"id":"SET1","index":%d,"total":%d}}
+			}]}
+			""".formatted(eventId, messageId, index, total);
+	}
+
+	private String directTextPayload(String eventId, String text) {
+		return """
+			{"events":[{
+			  "webhookEventId":"%s",
+			  "type":"message",
+			  "replyToken":"reply-token",
+			  "source":{"type":"user","userId":"U1"},
+			  "message":{"id":"M1","type":"text","text":"%s"}
+			}]}
+			""".formatted(eventId, text);
 	}
 
 	// 方法：建立符合 LINE webhook 規格的 HMAC-SHA256 簽章。

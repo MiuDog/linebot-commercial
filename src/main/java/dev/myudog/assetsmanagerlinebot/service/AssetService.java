@@ -4,12 +4,14 @@ import dev.myudog.assetsmanagerlinebot.domain.Asset;
 import dev.myudog.assetsmanagerlinebot.repository.AssetRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -42,13 +44,28 @@ public class AssetService {
 	private final AssetRepository repository;
 	private final FileStorageService fileStorage;
 	private final AssetFileReconciliationService reconciliationService;
+	private final AssetPathResolver paths;
 
 	/**
 	 * @param repository  資產索引的資料庫存取
 	 * @param fileStorage 圖片本體的落地與搬移
 	 */
 	// 方法：初始化 AssetService。
+	@Autowired
 	public AssetService(
+		AssetRepository repository,
+		FileStorageService fileStorage,
+		AssetFileReconciliationService reconciliationService,
+		AssetPathResolver paths
+	) {
+		this.repository = repository;
+		this.fileStorage = fileStorage;
+		this.reconciliationService = reconciliationService;
+		this.paths = paths;
+	}
+
+	// 方法：保留只使用一般資產根目錄的既有聚焦測試建構介面。
+	AssetService(
 		AssetRepository repository,
 		FileStorageService fileStorage,
 		AssetFileReconciliationService reconciliationService
@@ -56,6 +73,7 @@ public class AssetService {
 		this.repository = repository;
 		this.fileStorage = fileStorage;
 		this.reconciliationService = reconciliationService;
+		this.paths = null;
 	}
 
 	/**
@@ -164,6 +182,21 @@ public class AssetService {
 		return repository.searchByTags(sourceId, tags, limit);
 	}
 
+	// 方法：依群組、部門標籤及正式歸檔日期查詢語音任務所需圖片。
+	public List<Asset> searchByDepartmentAndDate(
+		String sourceId,
+		String departmentTag,
+		String compactDate,
+		int limit
+	) {
+		return repository.searchByDepartmentAndDate(
+			sourceId,
+			departmentTag,
+			compactDate,
+			limit
+		);
+	}
+
 	/**
 	 * 列出某群組用過的編號／標籤與各自數量，供盤點使用。
 	 *
@@ -221,6 +254,7 @@ public class AssetService {
 	// 方法：執行 contentOf 方法的處理流程。
 	public byte[] contentOf(Asset asset) throws IOException {
 		// 外部呼叫：使用 Java NIO 一次讀取圖片內容，供 AI 與 PDF 流程重複使用。
-		return Files.readAllBytes(fileStorage.resolve(asset.filePath()));
+		Path path = paths == null ? fileStorage.resolve(asset.filePath()) : paths.resolve(asset);
+		return Files.readAllBytes(path);
 	}
 }

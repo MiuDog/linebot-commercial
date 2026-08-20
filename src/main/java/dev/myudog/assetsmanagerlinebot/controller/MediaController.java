@@ -2,7 +2,7 @@ package dev.myudog.assetsmanagerlinebot.controller;
 
 import dev.myudog.assetsmanagerlinebot.domain.Asset;
 import dev.myudog.assetsmanagerlinebot.service.AssetService;
-import dev.myudog.assetsmanagerlinebot.service.FileStorageService;
+import dev.myudog.assetsmanagerlinebot.service.AssetPathResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
@@ -38,12 +38,12 @@ public class MediaController {
 	private static final Logger log = LoggerFactory.getLogger(MediaController.class);
 
 	private final AssetService assetService;
-	private final FileStorageService fileStorage;
+	private final AssetPathResolver paths;
 
 	// 方法：初始化 MediaController。
-	public MediaController(AssetService assetService, FileStorageService fileStorage) {
+	public MediaController(AssetService assetService, AssetPathResolver paths) {
 		this.assetService = assetService;
-		this.fileStorage = fileStorage;
+		this.paths = paths;
 	}
 
 	// 方法：執行 serve 方法的處理流程。
@@ -57,7 +57,7 @@ public class MediaController {
 
 		// 步驟 2：使用 Java NIO 確認實體檔案仍可讀取。
 		Asset asset = found.get();
-		Path file = fileStorage.resolve(asset.filePath());
+		Path file = paths.resolve(asset);
 
 		// 外部呼叫：使用 Java NIO 驗證媒體檔案仍可由服務讀取。
 		if (!Files.isReadable(file)) {

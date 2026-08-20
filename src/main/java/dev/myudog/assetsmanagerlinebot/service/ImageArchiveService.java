@@ -5,6 +5,8 @@ import dev.myudog.assetsmanagerlinebot.repository.AssetRepository;
 import dev.myudog.assetsmanagerlinebot.repository.PendingImageRepository;
 import dev.myudog.assetsmanagerlinebot.repository.PendingImageRepository.FetchAttempt;
 import dev.myudog.assetsmanagerlinebot.repository.PendingImageRepository.PendingImage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,8 @@ import java.util.UUID;
  */
 @Service
 public class ImageArchiveService {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageArchiveService.class);
 
 	public enum ArchiveStatus { ARCHIVED, NOT_FOUND, WRONG_SOURCE, INCOMPLETE_SET }
 
@@ -103,6 +107,15 @@ public class ImageArchiveService {
 				sourceId,
 				"FETCHED"
 			);
+
+			// 日誌：記錄 webhook 重送時保留原暫存圖片，不重複建立檔案。
+			log.info(
+				"event=line_image_stage_skipped reason=webhook_redelivery imageSetId={} imageIndex={} imageTotal={} messageId={}",
+				normalizedSetId,
+				normalizedIndex,
+				normalizedTotal,
+				messageId
+			);
 			return;
 		}
 
@@ -133,11 +146,43 @@ public class ImageArchiveService {
 				sourceId,
 				"FETCHED"
 			);
+
+			// 日誌：記錄圖片成功暫存時的圖片組位置與實際檔案大小。
+			log.info(
+				"event=line_image_staged imageSetId={} imageIndex={} imageTotal={} messageId={} fileSize={}",
+				normalizedSetId,
+				normalizedIndex,
+				normalizedTotal,
+				messageId,
+				stored.size()
+			);
 		}
 		catch (RuntimeException e) {
 			fileStorage.delete(stored.relativePath());
 			throw e;
 		}
+	}
+
+	// 方法：只在 LINE imageSet 每個預期位置都已成功暫存時回傳完整候選順序。
+	public List<String> completedSetMessageIds(
+		String sourceId,
+		String imageSetId,
+		String fallbackMessageId,
+		int expectedTotal
+	) {
+		if (sourceId == null || sourceId.isBlank() || fallbackMessageId == null || fallbackMessageId.isBlank()) return List.of();
+
+		String normalizedSetId = normalizeSetId(imageSetId, fallbackMessageId);
+		int normalizedTotal = Math.max(1, expectedTotal);
+		List<PendingImage> images = pendingRepository.findSet(sourceId, normalizedSetId);
+		if (images.size() != normalizedTotal) return List.of();
+
+		for (int index = 0; index < images.size(); index++) {
+			PendingImage image = images.get(index);
+			if (image.imageIndex() != index + 1 || image.imageTotal() != normalizedTotal) return List.of();
+		}
+
+		return images.stream().map(PendingImage::messageId).toList();
 	}
 
 	// 方法：記錄 LINE 圖片內容下載失敗，供後續歸檔指令彙總回報。
@@ -156,6 +201,15 @@ public class ImageArchiveService {
 			Math.max(1, imageTotal),
 			sourceId,
 			"FAILED"
+		);
+
+		// 日誌：記錄 LINE 圖片內容未能下載，保留圖片組位置供後續判斷缺圖原因。
+		log.warn(
+			"event=line_image_fetch_failed imageSetId={} imageIndex={} imageTotal={} messageId={}",
+			normalizeSetId(imageSetId, messageId),
+			Math.max(1, imageIndex),
+			Math.max(1, imageTotal),
+			messageId
 		);
 	}
 
@@ -233,6 +287,27 @@ public class ImageArchiveService {
 			.filter(attempt -> "DUPLICATE".equals(attempt.status()))
 			.count();
 		if (images.size() != expected) {
+			// 日誌：完整列出 LINE 回報總數、成功 index 與每個抓取狀態，方便排查缺圖。
+			List<Integer> fetchedIndexes = fetchedIndexes(images);
+			List<String> fetchAttempts = fetchAttemptSummary(attempts);
+			log.atWarn()
+				.addKeyValue("event", "image_archive_set_incomplete")
+				.addKeyValue("imageSetId", imageSetId)
+				.addKeyValue("expectedCount", expected)
+				.addKeyValue("fetchedCount", images.size())
+				.addKeyValue("fetchedIndexes", fetchedIndexes)
+				.addKeyValue("fetchAttempts", fetchAttempts)
+				.log(
+					"event=image_archive_set_incomplete imageSetId={} expectedCount={} "
+						+ "fetchedCount={} fetchedIndexes={} fetchAttempts={}",
+					imageSetId,
+					expected,
+					images.size(),
+					fetchedIndexes,
+					fetchAttempts
+				);
+		}
+		if (images.isEmpty()) {
 			return new ArchiveResult(
 				ArchiveStatus.INCOMPLETE_SET,
 				folderName,
@@ -248,9 +323,11 @@ public class ImageArchiveService {
 		List<String> createdPaths = new ArrayList<>();
 		String firstSequence = "";
 		String lastSequence = "";
+		Integer currentImageIndex = null;
 		try {
 			long tagId = assetRepository.upsertTag(folderName.toLowerCase());
 			for (PendingImage image : images) {
+				currentImageIndex = image.imageIndex();
 				FileStorageService.StoredFile stored =
 					fileStorage
 						.archivePending(image.stagingPath(), folderName, image.contentType());
@@ -288,6 +365,19 @@ public class ImageArchiveService {
 					e.addSuppressed(cleanupError);
 				}
 			}
+
+			// 日誌：保留歸檔失敗位置、已建立檔案數與完整例外堆疊，供 Docker log 追查。
+			log.error(
+				"event=image_archive_set_write_failed imageSetId={} folder={} expectedCount={} fetchedCount={} failedImageIndex={} createdCount={} errorType={}",
+				imageSetId,
+				folderName,
+				expected,
+				images.size(),
+				currentImageIndex,
+				createdPaths.size(),
+				e.getClass().getSimpleName(),
+				e
+			);
 			throw e;
 		}
 
@@ -297,6 +387,18 @@ public class ImageArchiveService {
 		}
 		pendingRepository.deleteSet(sourceId, imageSetId);
 		pendingRepository.deleteFetchSet(sourceId, imageSetId);
+
+		// 日誌：記錄整組歸檔成果，partial 可直接辨識 LINE 回報數量不一致的案例。
+		log.info(
+			"event=image_archive_set_archived imageSetId={} folder={} expectedCount={} archivedCount={} partial={} firstSequence={} lastSequence={}",
+			imageSetId,
+			folderName,
+			expected,
+			images.size(),
+			images.size() != expected,
+			firstSequence,
+			lastSequence
+		);
 		return new ArchiveResult(
 			ArchiveStatus.ARCHIVED,
 			folderName,
@@ -353,7 +455,7 @@ public class ImageArchiveService {
 			reconciliationService.register(assetId, stored.relativePath());
 			assetRepository.linkTag(assetId, tagId);
 		}
-		catch (IOException | RuntimeException e) {
+	catch (IOException | RuntimeException e) {
 			if (stored != null) {
 				try {
 					fileStorage.delete(stored.relativePath());
@@ -362,6 +464,15 @@ public class ImageArchiveService {
 					e.addSuppressed(cleanupError);
 				}
 			}
+
+			// 日誌：記錄重複歸檔失敗的來源路徑、目標資料夾與完整例外堆疊。
+			log.error(
+				"event=image_archive_existing_write_failed sourcePath={} folder={} errorType={}",
+				existing.filePath(),
+				folderName,
+				e.getClass().getSimpleName(),
+				e
+			);
 			throw e;
 		}
 
@@ -388,6 +499,19 @@ public class ImageArchiveService {
 	private static String duplicateMessageId() {
 		// 外部呼叫：使用 UUID 避免重複歸檔資料互相衝突。
 		return "line-duplicate:" + UUID.randomUUID();
+	}
+
+	// 方法：整理已成功暫存的圖片 index，供結構化日誌直接比對缺少位置。
+	private static List<Integer> fetchedIndexes(List<PendingImage> images) {
+		return images.stream().map(PendingImage::imageIndex).toList();
+	}
+
+	// 方法：整理每個 index 的抓取狀態與 LINE 回報總數，供異常日誌追查。
+	private static List<String> fetchAttemptSummary(List<FetchAttempt> attempts) {
+		return attempts
+			.stream()
+			.map(attempt -> attempt.imageIndex() + ":" + attempt.status() + "/" + attempt.imageTotal())
+			.toList();
 	}
 
 	// 方法：保存單張圖片的抓取狀態。
