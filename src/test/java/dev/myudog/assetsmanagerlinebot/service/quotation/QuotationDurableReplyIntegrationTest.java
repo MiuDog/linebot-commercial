@@ -39,12 +39,10 @@ class QuotationDurableReplyIntegrationTest {
 
 	private static final String POSTBACK_SECRET = "0123456789abcdef0123456789abcdef";
 
-	// 當機重領後產生的補送訊息必須與原訊息逐字相同；postback 期限取自時鐘，
-	// 用系統時鐘會在跨秒時算出不同的 e= 與簽章，因此固定時鐘讓比對穩定。
-	private static final Clock FIXED_CLOCK = Clock.fixed(
-		Instant.parse("2026-01-01T00:00:00Z"),
-		ZoneOffset.UTC
-	);
+	// 當機重領後產生的補送訊息必須與原訊息逐字相同；postback 期限由訊息建構器的時鐘
+	// 加上固定存活時間算出，用系統時鐘會在跨秒時得到不同的 e= 與簽章而隨機失敗。
+	// 錨定在啟動當下而非固定日期，讓簽發的期限仍在未來，不影響同類別的期限驗證。
+	private static final Clock FIXED_CLOCK = Clock.fixed(Instant.now(), ZoneOffset.UTC);
 
 	@TempDir
 	Path temporaryDirectory;
@@ -341,7 +339,7 @@ class QuotationDurableReplyIntegrationTest {
 				new QuotationEventReceiptRepository(jdbc),
 				new QuotationConversationService(),
 				signer,
-				new QuotationLineMessageBuilder(signer),
+				new QuotationLineMessageBuilder(signer, FIXED_CLOCK),
 				mock(QuotationConfirmationService.class),
 				null,
 				null,
