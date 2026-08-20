@@ -1,5 +1,8 @@
 package dev.miudog.linebotcommercial.desktop;
 
+import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnection;
+import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnector;
+import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnectorException;
 import dev.miudog.linebotcommercial.desktop.config.AppConfiguration;
 import dev.miudog.linebotcommercial.desktop.config.AppConfigurationRepository;
 import dev.miudog.linebotcommercial.desktop.config.AppConfigurationField;
@@ -119,6 +122,7 @@ public final class DesktopApplication {
 		);
 		DesktopUi desktopUi = new DesktopUi(windowModel);
 		NgrokConnector ngrokConnector = new NgrokConnector();
+		CloudflareConnector cloudflareConnector = new CloudflareConnector();
 		AtomicReference<AppConfiguration> activeConfiguration = new AtomicReference<>();
 		AtomicReference<String[]> activeArguments = new AtomicReference<>(new String[0]);
 		AtomicReference<DesktopApplication> applicationReference = new AtomicReference<>();
@@ -137,6 +141,7 @@ public final class DesktopApplication {
 					desktopUi,
 					windowModel,
 					ngrokConnector,
+					cloudflareConnector,
 					activeConfiguration,
 					activeArguments
 				)
@@ -149,6 +154,7 @@ public final class DesktopApplication {
 					desktopUi,
 					windowModel,
 					ngrokConnector,
+					cloudflareConnector,
 					activeConfiguration,
 					activeArguments
 				)
@@ -175,10 +181,11 @@ public final class DesktopApplication {
 				onEdt(() -> windowModel.updatePort(Integer.parseInt(configuration.value(AppConfigurationField.SERVER_PORT))));
 				desktopUi.start(actionsReference.get(), logDirectory(configuration));
 				onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
-				AppConfiguration preparedConfiguration = prepareNgrok(
+				AppConfiguration preparedConfiguration = prepareTunnels(
 					configuration,
 					repository,
-					ngrokConnector
+					ngrokConnector,
+					cloudflareConnector
 				);
 
 				activeConfiguration.set(preparedConfiguration);
@@ -193,6 +200,7 @@ public final class DesktopApplication {
 				ConfigurationWizard.closeActive();
 				coordinator.stop();
 				ngrokConnector.stop();
+				cloudflareConnector.stop();
 				desktopUi.close();
 			},
 			instanceCoordinator
@@ -334,6 +342,7 @@ public final class DesktopApplication {
 		DesktopUi desktopUi,
 		DesktopWindowModel windowModel,
 		NgrokConnector ngrokConnector,
+		CloudflareConnector cloudflareConnector,
 		AtomicReference<AppConfiguration> activeConfiguration,
 		AtomicReference<String[]> activeArguments
 	) {
@@ -349,32 +358,46 @@ public final class DesktopApplication {
 			desktopUi,
 			windowModel,
 			ngrokConnector,
+			cloudflareConnector,
 			activeConfiguration,
 			activeArguments
 		);
 	}
 
-	// 方法：依受控順序停止 Spring 與 ngrok，再以最新設定重新建立兩者。
+	// 方法：依受控順序停止 Spring、ngrok 與 Cloudflare，再以最新設定重新建立兩者。
 	private static void restartServices(
 		AppConfigurationRepository repository,
 		DesktopLifecycleCoordinator coordinator,
 		DesktopUi desktopUi,
 		DesktopWindowModel windowModel,
 		NgrokConnector ngrokConnector,
+		CloudflareConnector cloudflareConnector,
 		AtomicReference<AppConfiguration> activeConfiguration,
 		AtomicReference<String[]> activeArguments
 	) {
 		coordinator.stop();
 		ngrokConnector.stop();
+		cloudflareConnector.stop();
 		AppConfiguration configured = repository.load().orElse(activeConfiguration.get());
 		desktopUi.followLogDirectory(logDirectory(configured));
 		onEdt(() -> windowModel.updatePort(Integer.parseInt(configured.value(AppConfigurationField.SERVER_PORT))));
 		onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
-		AppConfiguration prepared = prepareNgrok(configured, repository, ngrokConnector);
+		AppConfiguration prepared = prepareTunnels(configured, repository, ngrokConnector, cloudflareConnector);
 
 		activeConfiguration.set(prepared);
 		updateWindowConfiguration(windowModel, prepared);
 		coordinator.start(prepared, activeArguments.get());
+	}
+
+	// 方法：在 Spring 前準備 ngrok 或 Cloudflare Tunnel。
+	private static AppConfiguration prepareTunnels(
+		AppConfiguration configuration,
+		AppConfigurationRepository repository,
+		NgrokConnector ngrokConnector,
+		CloudflareConnector cloudflareConnector
+	) {
+		AppConfiguration afterNgrok = prepareNgrok(configuration, repository, ngrokConnector);
+		return prepareCloudflare(afterNgrok, repository, cloudflareConnector);
 	}
 
 	// 方法：在 Spring 前取得 ngrok URL，失敗時提供重試、設定或本機模式選項。
@@ -413,6 +436,82 @@ public final class DesktopApplication {
 				throw exception;
 			}
 		}
+	}
+
+	// 方法：在 Spring 前啟動 Cloudflare Tunnel，失敗時提供重試、設定或關閉選項。
+	private static AppConfiguration prepareCloudflare(
+		AppConfiguration configuration,
+		AppConfigurationRepository repository,
+		CloudflareConnector cloudflareConnector
+	) {
+		AppConfiguration candidate = configuration;
+
+		while (true) {
+			try {
+				CloudflareConnection connection = cloudflareConnector.start(candidate, java.time.Duration.ofSeconds(10));
+
+				return connection.configuration();
+			}
+			catch (CloudflareConnectorException exception) {
+				int decision = showCloudflareFailureDecision(exception.getMessage());
+
+				if (decision == 0) continue;
+
+				if (decision == 1) {
+					ConfigurationWizardResult result = showConfiguration(candidate, repository, false);
+
+					if (result.saved()) candidate = result.configuration();
+
+					continue;
+				}
+
+				if (decision == 2) {
+					return candidate
+						.withValue(AppConfigurationField.CLOUDFLARE_ENABLED, "false");
+				}
+
+				throw exception;
+			}
+		}
+	}
+
+	// 方法：在 Swing EDT 顯示 Cloudflare 失敗處理選項。
+	private static int showCloudflareFailureDecision(String errorMessage) {
+		AtomicReference<Integer> decision = new AtomicReference<>(JOptionPane.CLOSED_OPTION);
+		String message = (errorMessage != null && !errorMessage.isBlank())
+			? "Cloudflare Tunnel 啟動失敗: " + errorMessage + "\n可重試、修改設定，或關閉 Tunnel 啟動。"
+			: "Cloudflare Tunnel 無法啟動。可重試、修改設定，或關閉 Tunnel 啟動。";
+
+		Runnable dialog = () -> decision.set(JOptionPane.showOptionDialog(
+			null,
+			message,
+			"Cloudflare Tunnel 啟動失敗",
+			JOptionPane.DEFAULT_OPTION,
+			JOptionPane.WARNING_MESSAGE,
+			null,
+			new String[] {"重試", "設定", "關閉 Tunnel"},
+			"重試"
+		));
+
+		try {
+			if (SwingUtilities.isEventDispatchThread()) {
+				dialog.run();
+			}
+			else {
+				// 外部函式：所有 Cloudflare 錯誤選項都在 Swing EDT 顯示與操作。
+				SwingUtilities.invokeAndWait(dialog);
+			}
+		}
+		catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+
+			return JOptionPane.CLOSED_OPTION;
+		}
+		catch (InvocationTargetException exception) {
+			return JOptionPane.CLOSED_OPTION;
+		}
+
+		return decision.get();
 	}
 
 	// 方法：在 Swing EDT 顯示不含 Token 的 ngrok 失敗處理選項。

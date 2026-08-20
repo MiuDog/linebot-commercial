@@ -49,7 +49,10 @@ public enum AppConfigurationField {
 	RESOURCE_LOG_INTERVAL_MS("RESOURCE_LOG_INTERVAL_MS", "app.observability.resource-interval-ms", "資源記錄週期", Group.LOG, false, false, "60000", Format.POSITIVE_INTEGER),
 	NGROK_ENABLED("NGROK_ENABLED", "app.desktop.ngrok.enabled", "使用 ngrok", Group.NGROK, false, false, "false", Format.BOOLEAN),
 	NGROK_AGENT_PATH("NGROK_AGENT_PATH", "app.desktop.ngrok.agent-path", "ngrok 執行檔", Group.NGROK, false, false, "", Format.ABSOLUTE_PATH),
-	NGROK_AUTHTOKEN("NGROK_AUTHTOKEN", "app.desktop.ngrok.authtoken", "ngrok Authtoken", Group.NGROK, true, false, "", Format.NONE);
+	NGROK_AUTHTOKEN("NGROK_AUTHTOKEN", "app.desktop.ngrok.authtoken", "ngrok Authtoken", Group.NGROK, true, false, "", Format.NONE),
+	CLOUDFLARE_ENABLED("CLOUDFLARE_ENABLED", "app.desktop.cloudflare.enabled", "使用 Cloudflare", Group.CLOUDFLARE, false, false, "false", Format.BOOLEAN),
+	CLOUDFLARE_AGENT_PATH("CLOUDFLARE_AGENT_PATH", "app.desktop.cloudflare.agent-path", "cloudflared 執行檔", Group.CLOUDFLARE, false, false, "", Format.ABSOLUTE_PATH),
+	CLOUDFLARE_TUNNEL_TOKEN("CLOUDFLARE_TUNNEL_TOKEN", "app.desktop.cloudflare.tunnel-token", "Cloudflare Tunnel Token", Group.CLOUDFLARE, true, false, "", Format.NONE);
 
 	//#region 欄位
 
@@ -157,7 +160,8 @@ public enum AppConfigurationField {
 		VOICE,
 		QUOTATION,
 		LOG,
-		NGROK
+		NGROK,
+		CLOUDFLARE
 	}
 
 	/**
