@@ -38,12 +38,12 @@ ngrok version
 ## Project Structure
 
 ```text
-src/main/java/dev/myudog/assetsmanagerlinebot/desktop/ngrok/
+src/main/java/dev/miudog/linebotcommercial/desktop/ngrok/
   NgrokConnector.java
   NgrokProcess.java
   NgrokStatus.java
   NgrokTunnel.java
-src/test/java/dev/myudog/assetsmanagerlinebot/desktop/ngrok/
+src/test/java/dev/miudog/linebotcommercial/desktop/ngrok/
   對應單元與整合測試
 ```
 

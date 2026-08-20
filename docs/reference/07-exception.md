@@ -8,7 +8,7 @@
 
 ## `AiExtractionException`
 
-`dev.myudog.assetsmanagerlinebot.service.ai.AiExtractionException`
+`dev.miudog.linebotcommercial.service.ai.AiExtractionException`
 
 繼承 `RuntimeException`。
 

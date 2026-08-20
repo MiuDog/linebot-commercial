@@ -60,7 +60,7 @@ jobs:
       - name: Smoke test bundled runtime
         if: runner.os == 'Windows'
         shell: pwsh
-        run: powershell.exe -NoProfile -File scripts\test-windows-app-image.ps1 -AppImagePath dist\app-image\AssetsManagerLinebot
+        run: powershell.exe -NoProfile -File scripts\test-windows-app-image.ps1 -AppImagePath dist\app-image\LinebotCommercial
 
       # 外部工具：檢查兩份 workflow 的 SHA 鎖定與最小權限規則。
       - name: Verify workflow policy

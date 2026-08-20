@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 #region [欄位]
 
 $ResolvedInstaller = [System.IO.Path]::GetFullPath($InstallerPath)
-$ProductName = "AssetsManagerLinebot"
+$ProductName = "LinebotCommercial"
 $InstallRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "Programs\$ProductName"))
 $DataRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $ProductName))
 $LauncherPath = Join-Path $InstallRoot "$ProductName.exe"

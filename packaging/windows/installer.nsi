@@ -36,8 +36,8 @@ SetCompressor /SOLID lzma
 	!error "SUPPORT_URL is required"
 !endif
 
-!define PRODUCT_NAME "AssetsManagerLinebot"
-!define DISPLAY_NAME "Assets Manager Linebot"
+!define PRODUCT_NAME "LinebotCommercial"
+!define DISPLAY_NAME "Linebot Commercial"
 !define PRODUCT_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define START_MENU_FOLDER "$SMPROGRAMS\${DISPLAY_NAME}"
 

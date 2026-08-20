@@ -92,7 +92,7 @@ Task 17 的實作、文件同步、自動驗證與打包已完成。上述外部
 | CI/CD policy | 通過（GitHub 實跑） | 兩份 workflow YAML 可解析，第三方 Actions 鎖定 40 碼 SHA，PR/main 只有 `contents: read`。PR #1 的 run `32346195873` 於 windows-latest 與 ubuntu-latest 皆成功；Windows job 另完成 jpackage app image 與自帶 Runtime smoke test。 |
 | 商用 Release gate | 如預期阻擋 | 預發佈 EULA／Publisher／support URL 尚未核准，Setup 尚未簽章；`verify-release.ps1 -RequireCommercialMetadata` 已拒絕公開條件。 |
 
-最新本機 Setup：`dist/AssetsManagerLinebot-Setup-0.1.0.exe`，SHA-256 為 `2AC9A619410DC57CF6CFC4E964E4DF77D6A8AA80FA0F50B2B97ADC0989206306`。Setup 每次重建後雜湊會改變，正式值必須由 Tag workflow 在簽章後寫入 Release Notes。
+最新本機 Setup：`dist/LinebotCommercial-Setup-0.1.0.exe`，SHA-256 為 `2AC9A619410DC57CF6CFC4E964E4DF77D6A8AA80FA0F50B2B97ADC0989206306`。Setup 每次重建後雜湊會改變，正式值必須由 Tag workflow 在簽章後寫入 Release Notes。
 
 ### CI 首次實跑修正的問題
 

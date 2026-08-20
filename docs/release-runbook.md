@@ -47,7 +47,7 @@ Tag workflow 依 `WINDOWS_SIGNING_CERTIFICATE_BASE64` 是否存在自動選擇�
 
 1. 若發現安全或資料風險，先將 GitHub Release 標記為 draft 或刪除公開資產，保留 tag 與 workflow 證據供調查。
 2. 公告受影響版本、停止使用方式與資料保留行為。
-3. 預設解除安裝保留 `%LOCALAPPDATA%\AssetsManagerLinebot`；不得要求使用者手動刪除不相關路徑。
+3. 預設解除安裝保留 `%LOCALAPPDATA%\LinebotCommercial`；不得要求使用者手動刪除不相關路徑。
 4. 重新發佈修正版，或解除安裝新版後安裝上一個已簽章 Setup；先備份產品資料目錄。
 5. 重新執行 webhook、Excel/PDF、ngrok、Log 與升級矩陣。
 

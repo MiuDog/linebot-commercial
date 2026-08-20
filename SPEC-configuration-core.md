@@ -65,13 +65,13 @@
 ## Project Structure
 
 ```text
-src/main/java/dev/myudog/assetsmanagerlinebot/desktop/config/
+src/main/java/dev/miudog/linebotcommercial/desktop/config/
   AppConfiguration.java
   AppConfigurationLoader.java
   AppConfigurationValidator.java
   ConfigurationWizard.java
   DpapiSecretStore.java
-src/test/java/dev/myudog/assetsmanagerlinebot/desktop/config/
+src/test/java/dev/miudog/linebotcommercial/desktop/config/
   對應單元與整合測試
 ```
 

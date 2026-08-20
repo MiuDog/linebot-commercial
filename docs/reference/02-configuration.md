@@ -8,7 +8,7 @@ Spring bean 定義與基礎設施組裝。
 
 ## `StorageConfig`
 
-`dev.myudog.assetsmanagerlinebot.config.StorageConfig`
+`dev.miudog.linebotcommercial.config.StorageConfig`
 
 **職責**：建立 SQLite 資料來源，並保證 storage 目錄先於連線存在。
 
