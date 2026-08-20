@@ -64,3 +64,13 @@ asset_tag   (asset_id→asset, tag_id→tag)   PK(asset_id, tag_id), ON DELETE C
 > **`file_path` 寫入後不會再變**：檔案落地之後不搬動，因此沒有更新路徑的方法。若未來要支援搬遷，記得同時處理「搬到一半失敗」的狀態。
 
 > **變更資料表時**：目前沒有 migration 工具。欄位異動需自行寫 `ALTER TABLE` 並確保對既有 `assets.db` 可重複執行。若異動變頻繁，應導入 Flyway。
+
+---
+
+## `QuotationAdminRepository`
+
+`dev.myudog.assetsmanagerlinebot.repository.QuotationAdminRepository`
+
+報價方案、共用品項、方案固定資料與稽核紀錄的 SQLite 出入口。所有異動均使用參數化 SQL；
+方案範本就緒狀態以 `EXISTS` 查詢，避免未來加入多版本範本後重複方案列。批次查詢與安全更新
+範例另見 [報價資料庫安全讀寫](../07-quotation-database-operations.md)。

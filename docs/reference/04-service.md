@@ -51,31 +51,34 @@ LINE 在未收到 200 回應時會重送 webhook，因此 `ingest` 以 `messageI
 
 **職責**：圖片本體在磁碟上的落地、搬移與路徑安全。
 
-**實體結構**：`{ASSETS_ROOT}/{yyyyMMdd}/{yyyyMMdd-HHmmssSSS}.jpg`
+**正式歸檔結構**：`{ASSETS_ROOT}/{部門代碼}/{yyyyMMdd}/{yyyyMMdd-流水號}.jpg`
 
 ```
 F:\資產庫\
 ├─ assets.db
-├─ 20260727\
-│  ├─ 20260727-224530123.jpg
-│  └─ 20260727-224612456.jpg
-└─ 20260728\
-   └─ 20260728-091502001.jpg
+├─ ZD12345\
+│  ├─ 20260727\
+│  │  ├─ 20260727-01.jpg
+│  │  └─ 20260727-02.jpg
+│  └─ 20260728\
+│     └─ 20260728-01.jpg
+└─ YJ123456\
+   └─ 20260728\
+      └─ 20260728-01.jpg
 ```
 
 | 方法 | 說明 |
 |---|---|
-| `StoredFile save(InputStream, String contentType)` | 寫入當天的日期資料夾，缺少的目錄自動建立。 |
+| `StoredFile savePending(InputStream, String contentType)` | 寫入 `.pending`，等待合法部門代碼。 |
+| `StoredFile archivePending(...)` | 寫入部門與當天日期資料夾，分配該日獨立流水號。 |
 | `Path resolve(String relativePath)` | 相對路徑還原成實體路徑，並擋下逃出資產庫根目錄的路徑。 |
 | `Path root()` | 資產庫根目錄的絕對路徑，供疑難排解使用。 |
 | `Path uniquePath(...)` | private，同一毫秒兩張圖時補上流水序號避免覆蓋。 |
 | `static String extensionFor(String contentType)` | 由 MIME 決定副檔名，未知一律當 JPEG。 |
 
-### 磁碟上沒有資產編號
+### 部門與日期分層
 
-檔案落地之後就**不再搬動**。分類完全交給資料庫的標籤——磁碟負責保存，資料庫負責組織，兩者職責不重疊。這是「指標法」的核心。
-
-因此本類別沒有搬移檔案的方法，也沒有 `sanitize()`：使用者輸入完全不會進入路徑，標籤的正規化由 `CommandService.normalizeTag` 負責。
+正式圖片依完整部門代碼建立第一層資料夾，再依台北日期建立第二層。流水號只掃描當天資料夾，所以每個部門每天都從 `01` 開始，超過 `99` 才擴充位數。
 
 ### 相對路徑，不是絕對路徑
 
@@ -83,15 +86,15 @@ F:\資產庫\
 
 ### 路徑穿越防線
 
-現在使用者輸入完全不會進入路徑（路徑只由時間戳組成），所以攻擊面本來就關閉了。`resolve()` 的根目錄檢查保留下來當第二道防線：即使 `assets.db` 被竄改，也讀不到資產庫以外的檔案。
+只有通過嚴格格式驗證的大寫部門代碼會進入路徑；`resolve()` 仍會正規化並阻擋逃出資產庫根目錄的結果。
 
 ### 時區固定台北
 
 `ZoneId.of("Asia/Taipei")` 是寫死的。跟著容器時區跑的話，日期資料夾會在不同機器上跳動，同一天的照片被拆到兩個日期底下。
 
-### 檔名為什麼帶到毫秒
+### 每日流水號
 
-檔名是純時間戳（`20260727-224530123.jpg`），直接看資料夾就能依時間排序。毫秒仍碰撞時（同一毫秒兩張圖）由 `uniquePath` 補上 `-1`、`-2`，避免後者覆蓋前者。
+檔名格式為 `yyyyMMdd-流水號`。`01` 到 `99` 固定兩位數，之後依序使用 `100`、`101`；隔天建立新的日期資料夾並重新從 `01` 開始。
 
 ---
 
@@ -122,6 +125,7 @@ F:\資產庫\
 | `#標籤`／`#清單` | ❌ | 列出本群組所有編號與數量 |
 | `#報價` | ✅ | AI 提取 → 計算 → 產報價單 |
 | `#說明`／`#help` | ❌ | 用法 |
+| 標記機器人 + `ping` | ❌ | 回覆 `pong` 與本次事件的延遲毫秒數 |
 
 ### 為什麼資產編號不加井字號
 
@@ -170,14 +174,38 @@ F:\資產庫\
 
 `dev.myudog.assetsmanagerlinebot.service.quotation.QuotationService`
 
-**職責**：報價流程的串接者：資料提取 → 計算 → 產出 PDF。
+**職責**：舊版相容入口。正式 LINE 報價已改由 `QuotationLineWorkflowService` 與
+`QuotationGenerationCoordinator` 執行；新功能不可再接回這個三段式介面。
 
 | 方法 | 說明 |
 |---|---|
 | `QuotationResult quote(byte[] infoImage, String contentType)` | 執行完整流程，回傳結果與卡關資訊。 |
 | `boolean isAiConfigured()` | 供指令入口先行檢查設定。 |
 
-> **目前狀態**：三段之中只有第一段（AI 提取）是完成的。後兩段會拋出 `UnsupportedOperationException`，被這裡接住後轉成 `QuotationResult.blockedStep`。這樣安排的用意是 AI 提取現在就能單獨測試，補完公式與模板後不必再改串接邏輯。
+> **相容邊界**：此類別仍可能回傳舊版 `blockedStep`，但 LINE webhook 不再呼叫它。第一階段正式流程
+> 已支援直接數量計價、五格式 Excel、圖片、PDF 與交付；只有長寬高等第二階段數量推算尚未實作。
+
+---
+
+## 本機報價管理與 Excel 服務
+
+- `QuotationAdminService`：驗證並協調品項與方案固定資料異動。
+- `QuotationAiPromptService`：建立只含代碼、名稱與別名的 AI 目錄，不暴露價格。
+- `QuotationAiParsingService`：呼叫 OpenAI 相容端點後，立即套用固定 JSON 契約與資料庫解析。
+- `QuotationRequestValidationService`：拒絕未知欄位，解析主檔固定欄位，並以 `BigDecimal` 計算 DIRECT 複價。
+- `QuotationMasterDataCsvService`：輸出 UTF-8 CSV，並避免儲存格內容被 Excel 當成公式執行。
+- `QuotationMasterDataXlsxService`：輸出正式 XLSX 主檔，以文字儲存格隔離公式並保留數值欄位型別。
+- `QuotationWorkbookService`：只改寫範本中的表頭、明細與合計 XML；圖片、蓋章、列印設定與其餘套件內容保持原樣。船用格式只寫最終數字，不保留計算公式。
+- `QuotationConversationService`：控制多輪缺漏、圖片詢問、完整預覽、確認與取消狀態。
+- `QuotationCalculationService`：以正式主檔與 `BigDecimal` 建立五格式直接計價結果。
+- `QuotationAssetArchiveService`：將全部候選原圖由 `.pending` 搬入正式日期流水號資料夾並補償失敗。
+- `QuotationGenerationLauncher`：喚醒專用單工作者；工作本體由 SQLite 租約保存，可在重啟後恢復。
+- `QuotationGenerationCoordinator`：依序完成圖片歸檔、Excel、PDF 與 LINE 最終交付。
+- `QuotationPdfService`：以本機 Microsoft Excel 的既有列印設定匯出 PDF，失敗保留 Excel 與重試狀態。
+- `QuotationDeliveryService`：由正式快照建立 Flex 摘要與 HTTPS PDF 下載按鈕。
+
+這組服務已由 LINE 一對一 webhook 與 `/admin/` 管理頁共同使用。LINE 確認先同步配置流水號，
+再提交背景產出，避免 webhook 等待 Excel COM。
 
 ---
 
@@ -228,9 +256,10 @@ F:\資產庫\
 
 `dev.myudog.assetsmanagerlinebot.service.quotation.QuotationCalculator`
 
-**職責**：把 AI 擷取出來的規格換算成報價金額。
+**職責**：舊版第二階段工程尺寸推算的保留介面，不參與第一階段正式報價。
 
-> ⚠️ **佔位實作，公式尚未定義。** `FACTOR_A`、`FACTOR_B`、`BASE_COST`、`primaryMetric()` 都是假名，等實際公式確定後直接替換，呼叫端不需要跟著改。
+> ⚠️ 長寬高、周長、體積等第二階段數量推算仍待業務規則。第一階段直接數量的複價、5% 稅額與
+> 含稅總額已由 `QuotationCalculationService` 完成，不得把這個舊介面的例外誤認為正式流程未完成。
 
 | 方法 | 說明 |
 |---|---|
@@ -238,7 +267,7 @@ F:\資產庫\
 
 刻意拋例外而不是回傳 0——回傳一個看起來合理但其實是亂算的金額，比明確失敗危險得多。
 
-**待補**：參與運算的欄位名稱、各係數的實際數值、運算順序、金額進位規則。
+**延後**：工程尺寸推算使用的欄位、係數與數量換算規則。
 
 ---
 
@@ -246,19 +275,14 @@ F:\資產庫\
 
 `dev.myudog.assetsmanagerlinebot.service.quotation.QuotationPdfService`
 
-**職責**：把規格、金額與資訊圖套進 PDF 報價單模板，產出成品檔案。
-
-> ⚠️ **佔位實作，模板尚未提供。** `IMAGE_PAGE_INDEX`、`IMAGE_X/Y/WIDTH/HEIGHT` 皆為佔位常數。
+**職責**：把正式 XLSX 交給本機 Microsoft Excel，沿用原列印設定匯出同名 PDF。
 
 | 方法 | 說明 |
 |---|---|
-| `boolean isConfigured()` | 模板路徑有值時為 true。 |
-| `Path generate(spec, amounts, infoImage)` | 目前一律拋 `UnsupportedOperationException`。 |
+| `boolean isConfigured()` | 報價輸出根目錄已設定時為 true。 |
+| `PdfExportResult export(long quotationId)` | 以既有正式 XLSX 初次匯出 PDF。 |
+| `PdfExportResult retry(long quotationId)` | 只重試 `PDF_FAILED`，沿用原流水號與路徑。 |
 
-**待補**：
-
-1. 模板檔本身，以及它是「可填表單的 AcroForm」還是「純版面」
-2. 各欄位在模板上的名稱或座標
-3. 資訊圖要貼在第幾頁、左下角座標與寬高
-
-**為什麼還沒引入 PDF 函式庫**：若模板是 AcroForm 表單，填欄位即可；若是純版面，得靠絕對座標描繪。兩者做法差很多，先引入可能挑錯。等模板到位再決定。
+服務只呼叫固定的 `scripts/export-quotation-pdf.ps1`，不執行使用者文字。未安裝 Excel、無可用
+印表機、COM 或逾時失敗時會清理不完整 PDF、保留 XLSX 並保存 `PDF_FAILED`。專用背景執行器
+固定單一工作者，佇列容量由 `QUOTATION_GENERATION_QUEUE_CAPACITY` 控制。

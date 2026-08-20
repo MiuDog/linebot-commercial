@@ -200,17 +200,17 @@ gh release create "@assets-manager-linebot@0.1.0" --title "@assets-manager-lineb
 - 群組圖片自動收錄，落地至本機磁碟
 - 引用回覆輸入 `zd` 編號即自動建立資料夾並歸檔
 - `#查`／`#標籤`／`#說明` 指令
-- AI 規格資料提取（`#報價`）
+- LINE 一對一 AI／OCR 多輪報價、五格式 Excel、PDF 與 Flex 下載交付
 
 ### 修正
 - 執行階段映像改用非 Alpine，修正中文資料夾變成問號
 
 ### 已知限制
-- 報價公式尚未定義，`#報價` 只會回傳 AI 讀出的欄位
-- PDF 報價單模板尚未提供
+- 長寬高、周長與體積等第二階段數量推算尚待業務規則
+- Microsoft Excel 匯出 PDF 需要 Windows、已安裝 Excel 與可用印表機
 
 ### 升級注意
-- 新增 `AI_*` 四個環境變數，請參考 `.env.example` 更新 `.env`
+- 新增 `AI_*`、`QUOTATION_ROOT_PATH`、報價安全密鑰與背景佇列設定，請參考 `.env.example`
 ```
 
 「已知限制」與「升級注意」兩節不可省略。前者讓使用者不會把未完成當成 bug 回報，後者避免部署後才發現少設環境變數。

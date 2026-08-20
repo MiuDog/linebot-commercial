@@ -1,0 +1,125 @@
+name: Windows Release
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Dry-run version matching pom.xml
+        required: true
+        default: 0.1.0
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      # 外部 Action：取出目前 commit；完整 SHA 對應 actions/checkout v6.0.2。
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      # 外部 Action：安裝 Java 25；完整 SHA 對應 actions/setup-java v5.6.0。
+      - name: Set up JDK 25
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          check-latest: false
+
+      # 外部工具：建立未簽章、未公開的完整 Setup，供維護者驗收。
+      - name: Build dry-run Setup
+        shell: pwsh
+        run: powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version "${{ inputs.version }}"
+
+      # 外部工具：驗證版本、SBOM、notices、Setup 與非商用簽章狀態。
+      - name: Verify dry-run Setup
+        shell: pwsh
+        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ inputs.version }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ inputs.version }}.exe"
+
+      # 外部 Action：保存未公開診斷 artifact；完整 SHA 對應 actions/upload-artifact v7.0.1。
+      - name: Upload dry-run artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-setup-dry-run-${{ inputs.version }}
+          path: dist/AssetsManagerLinebot-Setup-${{ inputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    environment: commercial-release
+    permissions:
+      contents: write
+    steps:
+      # 外部 Action：以 Release job 專用憑證取出 Tag；完整 SHA 對應 actions/checkout v6.0.2。
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      # 外部 Action：安裝 Java 25；完整 SHA 對應 actions/setup-java v5.6.0。
+      - name: Set up JDK 25
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          check-latest: false
+
+      # 演算法步驟一：由受限制格式的 Tag 取得唯一版本號。
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $Version = "${{ github.ref_name }}".Substring(1)
+          "value=$Version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # 外部工具：完整測試、產生 SBOM、app image 與單一 Setup。
+      - name: Build release Setup
+        shell: pwsh
+        run: powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version "${{ steps.version.outputs.value }}"
+
+      # 發佈閘門：法律／品牌 placeholder 必須在接觸簽章秘密前先失敗。
+      - name: Verify commercial metadata
+        shell: pwsh
+        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata
+
+      # 外部工具：使用受保護 Environment PFX 簽署 Setup，secret 不寫入檔案或 Log。
+      - name: Sign Setup
+        shell: pwsh
+        env:
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: powershell.exe -NoProfile -File scripts\sign-windows-artifacts.ps1 -ArtifactPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe"
+
+      # 外部工具：簽章後重新驗證版本、商用欄位、SBOM 與 Authenticode，並取得 SHA-256。
+      - name: Verify signed Setup
+        id: verify
+        shell: pwsh
+        run: |
+          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata -RequireSignature
+          $Hash = ($Output | Where-Object { $_ -like "SHA256=*" }).Substring(7)
+          "sha256=$Hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # 外部工具：驗證通過後才建立 GitHub Release，公開資產僅有一份 Setup.exe。
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $Notes = "SHA-256: ${{ steps.verify.outputs.sha256 }}"
+          gh release create "${{ github.ref_name }}" "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" --draft --verify-tag --title "Assets Manager Linebot ${{ steps.version.outputs.value }}" --notes $Notes
+          gh release edit "${{ github.ref_name }}" --draft=false

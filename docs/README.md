@@ -12,8 +12,11 @@
 | [02 LINE Bot 規則與各階段處理](02-linebot-rules.md) | 動任何跟訊息收發有關的程式碼之前；測試或部署卡住時 |
 | [03 版本、Release 與 Push SOP](03-versioning-release-sop.md) | 要 commit、push、發版本、部署或回滾 |
 | [04 LINE Bot 建置流程](04-linebot-build-guide.md) | 第一次從零建立 LINE Bot，或要重新建一個 Channel |
-| [05 Excel 報價規格](05-quotation-excel-spec.md) | 要理解報價資料表、AI 契約與三種 Excel 模板 |
+| [05 Excel 報價規格](05-quotation-excel-spec.md) | 要理解報價資料表、AI 契約與五種 Excel 模板 |
 | [06 事件起點與完整呼叫鏈](06-event-call-chains.md) | 要從 LINE／HTTP／啟動事件一路追到資料庫、磁碟與外部 API |
+| [07 報價資料庫安全讀寫](07-quotation-database-operations.md) | 要查詢、批次更新主檔或匯出 XLSX／CSV |
+| [08 LINE AI 自動化報價 SRS](08-quotation-automation-srs.md) | 正式報價功能、對話流程、Excel／PDF、圖片與驗收規格 |
+| [10 驗收證據矩陣](10-acceptance-verification-matrix.md) | 查 AC-01 至 AC-22 的自動測試、實機證據與環境限制 |
 | [類別索引](reference/index.md) | 要改程式碼，想先知道該動哪個檔案 |
 
 ---
@@ -29,6 +32,10 @@ docs/
 ├── 04-linebot-build-guide.md      從零建立 LINE Bot 的完整流程
 ├── 05-quotation-excel-spec.md     Excel 報價資料層與模板規格
 ├── 06-event-call-chains.md        由事件起點追蹤所有功能呼叫鏈
+├── 07-quotation-database-operations.md  報價資料庫安全讀寫與 XLSX／CSV 匯出
+├── 08-quotation-automation-srs.md LINE AI 自動化報價 SRS
+├── 09-observability-runbook.md    日誌、資源與 AI 成本操作
+├── 10-acceptance-verification-matrix.md AC-01 至 AC-22 驗收證據
 └── reference/                     類別參考（內部維護）
     ├── index.md                   ← Navigator，所有類別由此進入
     ├── 01-application.md          Application
@@ -61,7 +68,7 @@ LINE 群組是資產的收件與取件窗口：
 2. 引用其中一張輸入 `zd20260728` → 檢查整組圖片是否收齊，等待使用者確認
 3. 輸入「確定」→ 整組存入 `{ASSETS_ROOT}/20260728/`，SQLite 建立資產並掛上 `zd20260728`
 4. 輸入 `#查 zd20260728` → 從資料庫查出指向，透過對外端點把圖片貼回群組
-5. 引用規格圖輸入 `#報價` → AI 讀出規格欄位（公式與報價檔輸出待補）
+5. LINE 一對一 `#報價` 會分輪補件、顯示完整預覽，確認後在背景產出 Excel／PDF 並推送下載連結
 
 核心設計仍是「**指標法**」：**磁碟只負責保存，資料庫負責組織**。
 圖片確認歸檔後不再因標籤變更而搬動；完整方法級呼叫順序見
