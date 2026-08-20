@@ -21,7 +21,7 @@ Repository、SQLite、磁碟與外部 API。若要理解單一類別的欄位與
 
 | 事件起點 | 第一個專案類別 | 最終效果 | 狀態 |
 |---|---|---|---|
-| Spring Boot 啟動 | `AssetsManagerLinebotApplication` | 建立目錄、SQLite、資料表與啟動狀態日誌 | ✅ |
+| Spring Boot 啟動 | `LinebotCommercialApplication` | 建立目錄、SQLite、資料表與啟動狀態日誌 | ✅ |
 | 任意 HTTP 請求 | `RequestCorrelationFilter` | 建立 Request ID、交給後續端點、記錄結果 | ✅ |
 | 任一 Spring 公開方法 | `MethodTraceLogger` | 記錄方法進入、完成／失敗與耗時 | ✅ |
 | LINE 圖片訊息 | `LineWebhookController` | 下載圖片並暫存到 `.pending` | ✅ |
@@ -100,7 +100,7 @@ RequestCorrelationFilter
 ## 事件 1：應用程式啟動
 
 ```text
-AssetsManagerLinebotApplication.main
+LinebotCommercialApplication.main
 └─ SpringApplication.run
 	├─ StorageConfig.dataSource
 	│	├─ Files.createDirectories(ASSETS_ROOT)

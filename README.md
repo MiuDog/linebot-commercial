@@ -91,7 +91,7 @@ powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1
 
 ```powershell
 powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 `
-	-InstallerPath dist\AssetsManagerLinebot-Setup-0.1.1.exe `
+	-InstallerPath dist\LinebotCommercial-Setup-0.1.1.exe `
 	-ExecuteLifecycle `
 	-TestPurge
 ```
@@ -100,7 +100,7 @@ powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 `
 
 因為安裝檔沒有程式碼簽章，Windows 會在第一次執行時顯示藍色的「Windows 已保護您的電腦」畫面。這是預期行為，不代表檔案有問題：
 
-1. 執行 `AssetsManagerLinebot-Setup-<版本>.exe`。
+1. 執行 `LinebotCommercial-Setup-<版本>.exe`。
 2. 出現 SmartScreen 藍色警告時，點左下角的**「其他資訊」**。
 3. 展開後點**「仍要執行」**。
 4. 依安裝精靈完成安裝；不需要系統管理員權限，只安裝給目前的 Windows 使用者。

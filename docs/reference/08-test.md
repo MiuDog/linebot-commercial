@@ -12,9 +12,9 @@
 
 ---
 
-## `AssetsManagerLinebotApplicationTests`
+## `LinebotCommercialApplicationTests`
 
-`dev.myudog.assetsmanagerlinebot.AssetsManagerLinebotApplicationTests`
+`dev.miudog.linebotcommercial.LinebotCommercialApplicationTests`
 
 | 測試 | 驗證內容 |
 |---|---|
@@ -26,7 +26,7 @@
 
 ## `AssetServiceTest`
 
-`dev.myudog.assetsmanagerlinebot.service.AssetServiceTest`
+`dev.miudog.linebotcommercial.service.AssetServiceTest`
 
 儲存路徑指向 `${java.io.tmpdir}/assets-manager-test`，不會污染專案目錄。
 
@@ -46,7 +46,7 @@
 
 ## `AiExtractionServiceTest`
 
-`dev.myudog.assetsmanagerlinebot.service.ai.AiExtractionServiceTest`
+`dev.miudog.linebotcommercial.service.ai.AiExtractionServiceTest`
 
 以 JDK 內建的 `com.sun.net.httpserver.HttpServer` 假扮模型端點，用 `@DynamicPropertySource` 把隨機埠號注入 `app.ai.api-url`。
 

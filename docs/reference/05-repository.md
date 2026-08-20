@@ -8,7 +8,7 @@
 
 ## `AssetRepository`
 
-`dev.myudog.assetsmanagerlinebot.repository.AssetRepository`
+`dev.miudog.linebotcommercial.repository.AssetRepository`
 
 **職責**：資產索引的唯一資料庫出入口。
 
@@ -69,7 +69,7 @@ asset_tag   (asset_id→asset, tag_id→tag)   PK(asset_id, tag_id), ON DELETE C
 
 ## `QuotationAdminRepository`
 
-`dev.myudog.assetsmanagerlinebot.repository.QuotationAdminRepository`
+`dev.miudog.linebotcommercial.repository.QuotationAdminRepository`
 
 報價方案、共用品項、方案固定資料與稽核紀錄的 SQLite 出入口。所有異動均使用參數化 SQL；
 方案範本就緒狀態以 `EXISTS` 查詢，避免未來加入多版本範本後重複方案列。批次查詢與安全更新

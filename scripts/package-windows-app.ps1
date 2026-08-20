@@ -16,7 +16,7 @@ $DistRoot = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "dist"))
 $ImageRoot = [System.IO.Path]::GetFullPath((Join-Path $DistRoot "app-image"))
 $JarPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "target\app.jar"))
 $LauncherPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\launcher.properties"))
-$ProductName = "AssetsManagerLinebot"
+$ProductName = "LinebotCommercial"
 
 #endregion
 

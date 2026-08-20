@@ -8,7 +8,7 @@ HTTP 端點，系統對外的入口。**Controller 不含業務判斷**，看懂
 
 ## `LineWebhookController`
 
-`dev.myudog.assetsmanagerlinebot.controller.LineWebhookController`
+`dev.miudog.linebotcommercial.controller.LineWebhookController`
 
 **端點**：`POST /callback`
 
@@ -42,7 +42,7 @@ HTTP 端點，系統對外的入口。**Controller 不含業務判斷**，看懂
 
 ## `MediaController`
 
-`dev.myudog.assetsmanagerlinebot.controller.MediaController`
+`dev.miudog.linebotcommercial.controller.MediaController`
 
 **端點**：`GET /media/{shareToken}`
 

@@ -46,14 +46,14 @@ jobs:
       # 外部工具：驗證版本、SBOM、notices、Setup 與非商用簽章狀態。
       - name: Verify dry-run Setup
         shell: pwsh
-        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ inputs.version }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ inputs.version }}.exe"
+        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ inputs.version }}" -InstallerPath "dist\LinebotCommercial-Setup-${{ inputs.version }}.exe"
 
       # 外部 Action：保存未公開診斷 artifact；完整 SHA 對應 actions/upload-artifact v7.0.1。
       - name: Upload dry-run artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: windows-setup-dry-run-${{ inputs.version }}
-          path: dist/AssetsManagerLinebot-Setup-${{ inputs.version }}.exe
+          path: dist/LinebotCommercial-Setup-${{ inputs.version }}.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -106,7 +106,7 @@ jobs:
       - name: Verify commercial metadata
         if: steps.signing.outputs.available == 'true'
         shell: pwsh
-        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata
+        run: powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\LinebotCommercial-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata
 
       # 外部工具：使用受保護 Environment PFX 簽署 Setup，secret 不寫入檔案或 Log。
       - name: Sign Setup
@@ -115,14 +115,14 @@ jobs:
         env:
           SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
           SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
-        run: powershell.exe -NoProfile -File scripts\sign-windows-artifacts.ps1 -ArtifactPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe"
+        run: powershell.exe -NoProfile -File scripts\sign-windows-artifacts.ps1 -ArtifactPath "dist\LinebotCommercial-Setup-${{ steps.version.outputs.value }}.exe"
 
       # 外部工具：簽章後重新驗證版本、商用欄位、SBOM 與 Authenticode，並取得 SHA-256。
       - name: Verify signed Setup
         if: steps.signing.outputs.available == 'true'
         shell: pwsh
         run: |
-          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata -RequireSignature
+          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\LinebotCommercial-Setup-${{ steps.version.outputs.value }}.exe" -RequireCommercialMetadata -RequireSignature
           $Hash = ($Output | Where-Object { $_ -like "SHA256=*" }).Substring(7)
           "SETUP_SHA256=$Hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -131,7 +131,7 @@ jobs:
         if: steps.signing.outputs.available != 'true'
         shell: pwsh
         run: |
-          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\AssetsManagerLinebot-Setup-${{ steps.version.outputs.value }}.exe"
+          $Output = powershell.exe -NoProfile -File scripts\verify-release.ps1 -Version "${{ steps.version.outputs.value }}" -Tag "${{ github.ref_name }}" -InstallerPath "dist\LinebotCommercial-Setup-${{ steps.version.outputs.value }}.exe"
           $Hash = ($Output | Where-Object { $_ -like "SHA256=*" }).Substring(7)
           "SETUP_SHA256=$Hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -146,7 +146,7 @@ jobs:
         run: |
           $Version = "${{ steps.version.outputs.value }}"
           $Tag = "${{ github.ref_name }}"
-          $Asset = "dist\AssetsManagerLinebot-Setup-$Version.exe"
+          $Asset = "dist\LinebotCommercial-Setup-$Version.exe"
 
           if ($env:SIGNED -eq "true") {
             $Lines = @("SHA-256: $env:SETUP_SHA256")
@@ -163,7 +163,7 @@ jobs:
           }
 
           $Notes = $Lines -join "`n"
-          $Title = "Assets Manager Linebot $Version"
+          $Title = "Linebot Commercial $Version"
 
           if ($env:SIGNED -eq "true") {
             gh release create $Tag $Asset --draft --verify-tag --title $Title --notes $Notes

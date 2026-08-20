@@ -63,7 +63,7 @@ if ([string]$Pom.project.version -ne $Version) {
 	throw "Maven 與 Release 版本不一致。"
 }
 
-if ([System.IO.Path]::GetFileName($ResolvedInstaller) -ne "AssetsManagerLinebot-Setup-$Version.exe") {
+if ([System.IO.Path]::GetFileName($ResolvedInstaller) -ne "LinebotCommercial-Setup-$Version.exe") {
 	throw "Setup 檔名與 Release 版本不一致。"
 }
 

@@ -8,7 +8,7 @@
 
 ## `Asset`
 
-`dev.myudog.assetsmanagerlinebot.domain.Asset`
+`dev.miudog.linebotcommercial.domain.Asset`
 
 **職責**：一筆資產索引的不可變快照，是資料庫列與各層之間的共同語言。
 
@@ -68,7 +68,7 @@ LINE 回傳的原始內容。
 
 ## `ExtractedSpec`
 
-`dev.myudog.assetsmanagerlinebot.service.ai.ExtractedSpec`
+`dev.miudog.linebotcommercial.service.ai.ExtractedSpec`
 
 **職責**：AI 從規格圖／資訊圖讀出來的結構化結果。
 
@@ -92,7 +92,7 @@ LINE 回傳的原始內容。
 
 ## `QuotationAmounts`
 
-`dev.myudog.assetsmanagerlinebot.service.quotation.QuotationAmounts`
+`dev.miudog.linebotcommercial.service.quotation.QuotationAmounts`
 
 **職責**：報價計算的結果，是計算器與 PDF 產生器之間的資料契約。
 

@@ -12,7 +12,7 @@
 
 ## `AssetService`
 
-`dev.myudog.assetsmanagerlinebot.service.AssetService`
+`dev.miudog.linebotcommercial.service.AssetService`
 
 **職責**：資產生命週期的協調者：收錄 → 歸檔 → 查詢。
 
@@ -47,7 +47,7 @@ LINE 在未收到 200 回應時會重送 webhook，因此 `ingest` 以 `messageI
 
 ## `FileStorageService`
 
-`dev.myudog.assetsmanagerlinebot.service.FileStorageService`
+`dev.miudog.linebotcommercial.service.FileStorageService`
 
 **職責**：圖片本體在磁碟上的落地、搬移與路徑安全。
 
@@ -100,7 +100,7 @@ F:\資產庫\
 
 ## `CommandService`
 
-`dev.myudog.assetsmanagerlinebot.service.CommandService`
+`dev.miudog.linebotcommercial.service.CommandService`
 
 **職責**：群組文字訊息的指令解析與回覆組裝。是「使用者說的話」與「領域服務」之間唯一的翻譯層，不碰檔案系統也不碰資料庫。
 
@@ -143,7 +143,7 @@ F:\資產庫\
 
 ## `LineStorageService`
 
-`dev.myudog.assetsmanagerlinebot.service.LineStorageService`
+`dev.miudog.linebotcommercial.service.LineStorageService`
 
 **職責**：與 LINE Messaging API 之間所有 HTTP 往來的唯一出口。憑證只在這裡出現。
 
@@ -172,7 +172,7 @@ F:\資產庫\
 
 ## `QuotationService`
 
-`dev.myudog.assetsmanagerlinebot.service.quotation.QuotationService`
+`dev.miudog.linebotcommercial.service.quotation.QuotationService`
 
 **職責**：舊版相容入口。正式 LINE 報價已改由 `QuotationLineWorkflowService` 與
 `QuotationGenerationCoordinator` 執行；新功能不可再接回這個三段式介面。
@@ -211,7 +211,7 @@ F:\資產庫\
 
 ## `AiExtractionService`
 
-`dev.myudog.assetsmanagerlinebot.service.ai.AiExtractionService`
+`dev.miudog.linebotcommercial.service.ai.AiExtractionService`
 
 **職責**：把規格圖／資訊圖送給 AI 模型，並把回應整理成結構化欄位。只做呼叫與結果處理，不知道報價公式，也不知道 PDF 長什麼樣。
 
@@ -254,7 +254,7 @@ F:\資產庫\
 
 ## `QuotationCalculator`
 
-`dev.myudog.assetsmanagerlinebot.service.quotation.QuotationCalculator`
+`dev.miudog.linebotcommercial.service.quotation.QuotationCalculator`
 
 **職責**：舊版第二階段工程尺寸推算的保留介面，不參與第一階段正式報價。
 
@@ -273,7 +273,7 @@ F:\資產庫\
 
 ## `QuotationPdfService`
 
-`dev.myudog.assetsmanagerlinebot.service.quotation.QuotationPdfService`
+`dev.miudog.linebotcommercial.service.quotation.QuotationPdfService`
 
 **職責**：把正式 XLSX 交給本機 Microsoft Excel，沿用原列印設定匯出同名 PDF。
 

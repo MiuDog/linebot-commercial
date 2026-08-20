@@ -44,7 +44,7 @@ java -jar target\app.jar --app.desktop.enabled=true
 ## Project Structure
 
 ```text
-src/main/java/dev/myudog/assetsmanagerlinebot/desktop/
+src/main/java/dev/miudog/linebotcommercial/desktop/
   DesktopApplication.java
   DesktopLifecycleCoordinator.java
   DesktopStatus.java
@@ -52,7 +52,7 @@ src/main/java/dev/myudog/assetsmanagerlinebot/desktop/
   tray/
   ui/
   log/
-src/test/java/dev/myudog/assetsmanagerlinebot/desktop/
+src/test/java/dev/miudog/linebotcommercial/desktop/
   對應單元與整合測試
 ```
 
