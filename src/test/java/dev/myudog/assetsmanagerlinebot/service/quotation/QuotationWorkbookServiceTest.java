@@ -1,5 +1,6 @@
 package dev.myudog.assetsmanagerlinebot.service.quotation;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -28,6 +29,13 @@ class QuotationWorkbookServiceTest {
 
 	@TempDir
 	Path root;
+
+	// Windows 的 TEMP 可能是 8.3 短檔名（例如 RUNNER~1），服務會把路徑解析成
+	// 真實長路徑後回傳；先在這裡正規化，讓預期值與服務回傳值使用同一種表示法。
+	@BeforeEach
+	void resolveRealRoot() throws Exception {
+		root = root.toRealPath();
+	}
 
 	@Test
 	void writesDirectItemsAndFormulaTotalsIntoTheConfiguredQuotationDirectory() throws Exception {
