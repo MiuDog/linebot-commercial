@@ -1,6 +1,17 @@
 # Windows 商用發佈 Runbook
 
-## 發佈前必要條件
+## 兩種發佈模式
+
+Tag workflow 依 `WINDOWS_SIGNING_CERTIFICATE_BASE64` 是否存在自動選擇模式：
+
+| 模式 | 觸發條件 | 行為 |
+| --- | --- | --- |
+| 未簽章個人發佈 | 未設定簽章 secret | 略過商用欄位與 Authenticode 閘門；Release 標記 pre-release，Notes 附 SmartScreen 說明與 SHA-256 |
+| 商用簽章發佈 | 已設定簽章 secret | 套用下方所有必要條件；任何一項未通過即中止，不建立 Release |
+
+未簽章模式仍會執行完整測試、產生 SBOM 與第三方 notices，並驗證版本一致性；放寬的只有法律／品牌欄位與簽章要求。
+
+## 商用發佈前必要條件
 
 1. `packaging/windows/release.properties` 不得含 `REPLACE_BEFORE_RELEASE` 或 `PRE_RELEASE`。
 2. `packaging/windows/license.rtf` 必須替換為核准 EULA，且不得含 `Pre-release` 或 `internal verification only`。

@@ -1,6 +1,6 @@
 # Assets Manager LINE Bot
 
-`@assets-manager-linebot@0.1.0`
+`@assets-manager-linebot@0.1.1`
 
 把 LINE 群組當成圖片資產的收件與取件窗口：群組上傳圖片後，引用圖片並輸入合法資料夾代碼即可直接歸檔；SQLite 保存圖片組與正式檔案索引。
 
@@ -51,21 +51,47 @@ system-data\
 
 Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用者另裝 JDK／JRE。第一次開啟會顯示繁體中文設定精靈；關閉視窗後仍可留在系統匣背景執行，再次開啟 App 可查看狀態與即時 Log。
 
-**目前版本導向為未簽章的個人使用版，不做公開發佈。** 功能完整，唯一差別是沒有 Authenticode 簽章，首次執行會出現 Windows SmartScreen 警告（處理方式見下方）。
+**目前版本導向為未簽章的個人使用版。** 功能完整，唯一差別是沒有 Authenticode 簽章，首次執行會出現 Windows SmartScreen 警告（處理方式見下方）。Release 建立在 private repo，只有具備存取權的人看得到，並一律標記為 pre-release。
 
-公開發佈的閘門刻意保持關閉：`packaging/windows/release.properties` 的 `licenseStatus` 仍是 `PRE_RELEASE`、`supportUrl` 仍是佔位值，`scripts/verify-release.ps1` 會在推送 `v*.*.*` tag 時擋下正式流程，因此不會意外產生公開的 GitHub Release。
+### 自動發佈到 GitHub Release
+
+推送符合 `v<主版號>.<次版號>.<修訂號>` 的 tag 即自動建置、驗證並建立 GitHub Release，資產只有一份 Setup.exe：
+
+```powershell
+powershell.exe -NoProfile -File scripts\release.ps1 -Version 0.1.2
+```
+
+腳本會依序完成前置檢查、改寫 `pom.xml` 與 README 版本、提交、本機完整驗證、推分支再推 tag。任何一項前置檢查不過就在改動版本庫之前中止：
+
+| 參數 | 用途 |
+| --- | --- |
+| `-DryRun` | 只印出將執行的指令，不改任何東西 |
+| `-SkipVerify` | 略過本機 `mvnw clean verify`（交給 CI 驗） |
+| `-Force` | 允許重新指向遠端已存在的 tag |
+| `-Branch` | 發版分支，預設 `main` |
+
+Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
+
+| 狀態 | 行為 |
+| --- | --- |
+| 未設定簽章憑證（目前） | 略過商用欄位與 Authenticode 閘門，Release 標記為 **pre-release**，Notes 附 SmartScreen 說明與 SHA-256 |
+| 已設定簽章憑證 | 套用商用欄位閘門、簽章並驗證 Authenticode，全部通過才建立正式 Release |
+
+版本號取自 tag，且必須與 `pom.xml` 一致，否則 `build-windows-installer.ps1` 會以「Maven 版本與 Setup 版本不一致」中止。`release.ps1` 會自動保持兩者同步，因此不需要手動改版本再打 tag。
+
+本 repo 目前是 private，因此 Release 只有具備存取權的人看得到。推 tag 時 `dry-run` job 會顯示 skipped，這是正常的：它只在手動 `workflow_dispatch` 時執行。
 
 建立個人使用的 Setup：
 
 ```powershell
-powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.0
+powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.1
 ```
 
 完整安裝、修復、預設保留資料與明確清除驗收：
 
 ```powershell
 powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 `
-	-InstallerPath dist\AssetsManagerLinebot-Setup-0.1.0.exe `
+	-InstallerPath dist\AssetsManagerLinebot-Setup-0.1.1.exe `
 	-ExecuteLifecycle `
 	-TestPurge
 ```
