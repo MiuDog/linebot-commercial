@@ -57,10 +57,18 @@ Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用�
 
 推送符合 `v<主版號>.<次版號>.<修訂號>` 的 tag 即自動建置、驗證並建立 GitHub Release，資產只有一份 Setup.exe：
 
-```bash
-git tag -a v0.1.1 -m "Release v0.1.1"
-git push origin v0.1.1
+```powershell
+powershell.exe -NoProfile -File scripts\release.ps1 -Version 0.1.2
 ```
+
+腳本會依序完成前置檢查、改寫 `pom.xml` 與 README 版本、提交、本機完整驗證、推分支再推 tag。任何一項前置檢查不過就在改動版本庫之前中止：
+
+| 參數 | 用途 |
+| --- | --- |
+| `-DryRun` | 只印出將執行的指令，不改任何東西 |
+| `-SkipVerify` | 略過本機 `mvnw clean verify`（交給 CI 驗） |
+| `-Force` | 允許重新指向遠端已存在的 tag |
+| `-Branch` | 發版分支，預設 `main` |
 
 Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
 
@@ -69,7 +77,7 @@ Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
 | 未設定簽章憑證（目前） | 略過商用欄位與 Authenticode 閘門，Release 標記為 **pre-release**，Notes 附 SmartScreen 說明與 SHA-256 |
 | 已設定簽章憑證 | 套用商用欄位閘門、簽章並驗證 Authenticode，全部通過才建立正式 Release |
 
-版本號取自 tag，**必須先把 `pom.xml` 的 `<version>` 改成同一個版本並合併進 main**，否則 `build-windows-installer.ps1` 會以「Maven 版本與 Setup 版本不一致」中止。tag 也必須打在已包含該版本號的 commit 上。
+版本號取自 tag，且必須與 `pom.xml` 一致，否則 `build-windows-installer.ps1` 會以「Maven 版本與 Setup 版本不一致」中止。`release.ps1` 會自動保持兩者同步，因此不需要手動改版本再打 tag。
 
 本 repo 目前是 private，因此 Release 只有具備存取權的人看得到。推 tag 時 `dry-run` job 會顯示 skipped，這是正常的：它只在手動 `workflow_dispatch` 時執行。
 
