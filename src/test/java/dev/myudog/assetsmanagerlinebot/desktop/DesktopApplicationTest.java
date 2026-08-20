@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.myudog.assetsmanagerlinebot.desktop.config.AppConfiguration;
 import dev.myudog.assetsmanagerlinebot.desktop.config.ConfigurationWizardResult;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
@@ -77,6 +79,8 @@ class DesktopApplicationTest {
 		DesktopApplication application = new DesktopApplication(
 			command -> SingleInstanceResult.NOTIFIED,
 			() -> {
+			},
+			() -> {
 				loaded.set(true);
 
 				return Optional.of(configuration());
@@ -96,6 +100,57 @@ class DesktopApplicationTest {
 		assertThat(started).isFalse();
 	}
 
+	// 方法：主視窗與系統匣必須在讀取設定之前建立，否則首次設定精靈沒有工作列按鈕時 App 形同隱形。
+	@Test
+	void shouldBootstrapUiBeforeLoadingConfiguration() {
+		List<String> order = new ArrayList<>();
+		DesktopApplication application = new DesktopApplication(
+			command -> SingleInstanceResult.PRIMARY,
+			() -> order.add("ui"),
+			() -> {
+				order.add("configuration");
+
+				return Optional.of(configuration());
+
+			},
+			configuration -> ConfigurationWizardResult.cancelled(configuration),
+			configuration(),
+			(coordinatorConfiguration, arguments) -> order.add("backend"),
+			() -> {
+			},
+			() -> {
+			}
+		);
+
+		assertThat(application.start(new String[0])).isTrue();
+		assertThat(order).containsExactly("ui", "configuration", "backend");
+	}
+
+	// 方法：首次設定取消時必須走完整停止流程，否則已建立的系統匣與 EDT 會留住程序。
+	@Test
+	void shouldStopUiWhenFirstConfigurationIsCancelled() {
+		AtomicBoolean stopped = new AtomicBoolean();
+		AtomicBoolean closed = new AtomicBoolean();
+		DesktopApplication application = new DesktopApplication(
+			command -> SingleInstanceResult.PRIMARY,
+			() -> {
+			},
+			Optional::empty,
+			configuration -> ConfigurationWizardResult.cancelled(configuration),
+			configuration(),
+			(coordinatorConfiguration, arguments) -> {
+				throw new AssertionError("取消設定不可啟動後端");
+
+			},
+			() -> stopped.set(true),
+			() -> closed.set(true)
+		);
+
+		assertThat(application.start(new String[0])).isFalse();
+		assertThat(stopped).isTrue();
+		assertThat(closed).isTrue();
+	}
+
 	// 方法：驗證無主執行個體時的關閉命令只釋放鎖定資源，不啟動設定或後端。
 	@Test
 	void shouldReleasePrimaryResourceWithoutStartingForShutdownCommand() {
@@ -108,6 +163,8 @@ class DesktopApplicationTest {
 
 				return SingleInstanceResult.PRIMARY;
 
+			},
+			() -> {
 			},
 			() -> {
 				loaded.set(true);

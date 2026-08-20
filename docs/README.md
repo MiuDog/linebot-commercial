@@ -1,6 +1,6 @@
 # 文件樹
 
-`assets-manager-linebot` 的內部維護文件。版本 `@assets-manager-linebot@0.1.0`。
+`linebot-commercial` 的內部維護文件。版本 `@linebot-commercial@0.1.0`。
 
 ---
 

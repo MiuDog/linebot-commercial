@@ -1,8 +1,8 @@
 # Doc 1: 部署與外部串接指南
 
-適用版本：`@assets-manager-linebot@0.1.0`
+適用版本：`@linebot-commercial@0.1.0`
 
-本文件說明如何在一台全新機器上把 `assets-manager-linebot` 跑起來。
+本文件說明如何在一台全新機器上把 `linebot-commercial` 跑起來。
 
 > 各階段的差異、驗收清單與安全注意事項在 [02-linebot-rules.md](02-linebot-rules.md)，本文只講「怎麼架起來」。
 

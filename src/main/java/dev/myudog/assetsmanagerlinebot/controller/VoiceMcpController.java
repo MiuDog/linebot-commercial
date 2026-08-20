@@ -86,7 +86,7 @@ public class VoiceMcpController {
 			"capabilities",
 			Map.of("tools", Map.of("listChanged", false)),
 			"serverInfo",
-			Map.of("name", "assets-manager-linebot", "version", "0.1.0")
+			Map.of("name", "linebot-commercial", "version", "0.1.0")
 		);
 	}
 

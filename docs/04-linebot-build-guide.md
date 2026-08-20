@@ -1,6 +1,6 @@
 # Doc 4: LINE Bot 建置流程
 
-適用版本：`@assets-manager-linebot@0.1.0`
+適用版本：`@linebot-commercial@0.1.0`
 
 從**完全沒有 LINE Bot** 到**群組可用**的完整流程。分成四段：
 
@@ -89,17 +89,17 @@ Provider 是「發布 Bot 的組織」，一個 Provider 底下可以有多個 C
 ### 3.1 取得原始碼
 
 ```bash
-git clone https://github.com/M4ng0D0g/assets-manager-linebot.git
+git clone https://github.com/M4ng0D0g/linebot-commercial.git
 ```
 
 ```bash
-cd assets-manager-linebot
+cd linebot-commercial
 ```
 
 正式部署時應該 checkout 特定版本標籤，而不是用 `main`：
 
 ```bash
-git fetch --tags && git checkout "@assets-manager-linebot@0.1.0"
+git fetch --tags && git checkout "@linebot-commercial@0.1.0"
 ```
 
 ### 3.2 建置方式擇一

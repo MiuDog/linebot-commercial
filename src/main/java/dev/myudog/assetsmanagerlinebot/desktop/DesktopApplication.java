@@ -38,6 +38,7 @@ public final class DesktopApplication {
 	private static volatile DesktopApplication activeApplication;
 
 	private final Function<DesktopIpcCommand, SingleInstanceResult> instanceGate;
+	private final Runnable uiBootstrap;
 	private final Supplier<Optional<AppConfiguration>> configurationLoader;
 	private final Function<AppConfiguration, ConfigurationWizardResult> firstConfigurationEditor;
 	private final AppConfiguration defaults;
@@ -58,6 +59,8 @@ public final class DesktopApplication {
 	) {
 		this(
 			command -> SingleInstanceResult.PRIMARY,
+			() -> {
+			},
 			configurationLoader,
 			firstConfigurationEditor,
 			defaults,
@@ -72,6 +75,7 @@ public final class DesktopApplication {
 	// 方法：建立包含單一執行個體與完整停止資源的正式桌面 bootstrap。
 	DesktopApplication(
 		Function<DesktopIpcCommand, SingleInstanceResult> instanceGate,
+		Runnable uiBootstrap,
 		Supplier<Optional<AppConfiguration>> configurationLoader,
 		Function<AppConfiguration, ConfigurationWizardResult> firstConfigurationEditor,
 		AppConfiguration defaults,
@@ -80,6 +84,7 @@ public final class DesktopApplication {
 		AutoCloseable instanceResource
 	) {
 		this.instanceGate = Objects.requireNonNull(instanceGate, "單一執行個體閘門不可為 null");
+		this.uiBootstrap = Objects.requireNonNull(uiBootstrap, "UI 前置啟動器不可為 null");
 		this.configurationLoader = Objects.requireNonNull(configurationLoader, "設定載入器不可為 null");
 		this.firstConfigurationEditor = Objects.requireNonNull(
 			firstConfigurationEditor,
@@ -118,7 +123,7 @@ public final class DesktopApplication {
 		AtomicReference<String[]> activeArguments = new AtomicReference<>(new String[0]);
 		AtomicReference<DesktopApplication> applicationReference = new AtomicReference<>();
 		AtomicReference<DesktopActions> actionsReference = new AtomicReference<>();
-		coordinator.addStatusListener(windowModel::updateStatus);
+		coordinator.addStatusListener(status -> onEdt(() -> windowModel.updateStatus(status)));
 		SingleInstanceCoordinator instanceCoordinator = new SingleInstanceCoordinator(
 			AppConfiguration.configurationRoot(localAppData)
 		);
@@ -156,15 +161,20 @@ public final class DesktopApplication {
 				command,
 				receivedCommand -> handleIpcCommand(receivedCommand, actionsReference.get())
 			),
+			() -> {
+				// 以預設資料根目錄先開視窗與系統匣；設定載入後再由 followLogDirectory 換成實際路徑。
+				desktopUi.start(actionsReference.get(), logDirectory(defaults));
+				onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
+			},
 			repository::load,
 			configuration -> showFirstConfiguration(configuration, repository),
 			defaults,
 			(configuration, arguments) -> {
 				activeConfiguration.set(configuration);
 				activeArguments.set(arguments.clone());
-				windowModel.updatePort(Integer.parseInt(configuration.value(AppConfigurationField.SERVER_PORT)));
+				onEdt(() -> windowModel.updatePort(Integer.parseInt(configuration.value(AppConfigurationField.SERVER_PORT))));
 				desktopUi.start(actionsReference.get(), logDirectory(configuration));
-				windowModel.updateStatus(DesktopStatus.STARTING);
+				onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
 				AppConfiguration preparedConfiguration = prepareNgrok(
 					configuration,
 					repository,
@@ -232,6 +242,10 @@ public final class DesktopApplication {
 			return false;
 		}
 
+		// 主視窗與系統匣必須在設定之前就建立：首次設定精靈是 JDialog，本身不會有工作列
+		// 按鈕，若此時 App 在系統上毫無存在感，使用者找不到它也無法重新開啟設定。
+		uiBootstrap.run();
+
 		Optional<AppConfiguration> loaded = configurationLoader.get();
 		AppConfiguration configuration;
 
@@ -244,7 +258,9 @@ public final class DesktopApplication {
 			if (!result.saved()) {
 				// 日誌：記錄首次設定取消，確認 Spring 後端未啟動。
 				log.info("event=desktop_first_configuration_cancelled");
-				closeInstanceResource();
+
+				// 取消時 UI 已經建立，必須走完整停止流程，否則系統匣與 EDT 會留住程序。
+				shutdown();
 
 				return false;
 			}
@@ -302,6 +318,9 @@ public final class DesktopApplication {
 		for (String argument : arguments) {
 			if ("--shutdown".equalsIgnoreCase(argument)) return DesktopIpcCommand.SHUTDOWN;
 
+			// 安裝完成後由安裝器帶入；首次啟動本來就會進入設定精靈，因此等同一般開啟。
+			if ("--configure-first-run".equalsIgnoreCase(argument)) return DesktopIpcCommand.SHOW_WINDOW;
+
 			if ("--configure".equalsIgnoreCase(argument)) return DesktopIpcCommand.OPEN_SETTINGS;
 		}
 
@@ -349,8 +368,8 @@ public final class DesktopApplication {
 		ngrokConnector.stop();
 		AppConfiguration configured = repository.load().orElse(activeConfiguration.get());
 		desktopUi.followLogDirectory(logDirectory(configured));
-		windowModel.updatePort(Integer.parseInt(configured.value(AppConfigurationField.SERVER_PORT)));
-		windowModel.updateStatus(DesktopStatus.STARTING);
+		onEdt(() -> windowModel.updatePort(Integer.parseInt(configured.value(AppConfigurationField.SERVER_PORT))));
+		onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
 		AppConfiguration prepared = prepareNgrok(configured, repository, ngrokConnector);
 
 		activeConfiguration.set(prepared);
@@ -436,12 +455,25 @@ public final class DesktopApplication {
 		DesktopWindowModel windowModel,
 		AppConfiguration configuration
 	) {
-		windowModel.updatePublicUrl(configuration.value(AppConfigurationField.PUBLIC_BASE_URL));
+		onEdt(() -> windowModel.updatePublicUrl(configuration.value(AppConfigurationField.PUBLIC_BASE_URL)));
 	}
 
 	// 方法：依目前資料根目錄取得既有 Logback 使用的固定 log 子目錄。
 	private static Path logDirectory(AppConfiguration configuration) {
 		return Path.of(configuration.value(AppConfigurationField.SYSTEM_ROOT_PATH)).resolve("log");
+	}
+
+	// 狀態來源包含 main、Spring lifecycle 與背景執行緒，而系統匣與視窗只能在 EDT 操作。
+	// 方法：把視窗模型更新統一轉交 EDT，呼叫端不需判斷自己目前在哪個執行緒。
+	private static void onEdt(Runnable operation) {
+		if (SwingUtilities.isEventDispatchThread()) {
+			operation.run();
+
+			return;
+		}
+
+		// 外部函式：非同步排入 EDT，避免與正在等待的 Swing 操作互鎖。
+		SwingUtilities.invokeLater(operation);
 	}
 
 	// 方法：建立具名背景執行緒，避免設定與 Spring 啟停阻塞 Swing EDT。

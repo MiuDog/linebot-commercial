@@ -3,7 +3,7 @@
 狀態：使用者已核准  
 版本：1.0  
 時區：Asia/Taipei  
-適用專案：assets-manager-linebot
+適用專案：linebot-commercial
 
 ## 1. 目標
 

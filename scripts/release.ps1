@@ -144,7 +144,7 @@ function Set-ProjectVersion {
 
 	# 演算法步驟：以專案 artifactId 定位，確保只取代 project 層級的版本節點。
 	$Content = Get-Content -LiteralPath $PomPath -Raw -Encoding UTF8
-	$Pattern = '(<artifactId>assets-manager-linebot</artifactId>\s*\r?\n\s*<version>)[^<]+(</version>)'
+	$Pattern = '(<artifactId>linebot-commercial</artifactId>\s*\r?\n\s*<version>)[^<]+(</version>)'
 	$Updated = [regex]::Replace($Content, $Pattern, "`${1}$Version`${2}", 1)
 
 	if ($Updated -eq $Content) {
@@ -159,7 +159,7 @@ function Set-ProjectVersion {
 # 方法：同步 README 開頭的版本標記，讓文件與實際發版一致。
 function Set-ReadmeVersion {
 	$Content = Get-Content -LiteralPath $ReadmePath -Raw -Encoding UTF8
-	$Pattern = '(`@assets-manager-linebot@)\d+\.\d+\.\d+(`)'
+	$Pattern = '(`@linebot-commercial@)\d+\.\d+\.\d+(`)'
 	$Updated = [regex]::Replace($Content, $Pattern, "`${1}$Version`${2}", 1)
 
 	if ($Updated -eq $Content) { return $false }

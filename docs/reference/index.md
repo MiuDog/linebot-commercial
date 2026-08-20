@@ -6,7 +6,7 @@
 > 若要由 LINE、HTTP 或啟動事件一路追蹤到外部 API、資料庫與磁碟，請先看
 > [事件起點與完整呼叫鏈](../06-event-call-chains.md)。該文件是目前執行流程的主索引。
 
-適用版本：`@assets-manager-linebot@0.1.0`
+適用版本：`@linebot-commercial@0.1.0`
 
 ---
 

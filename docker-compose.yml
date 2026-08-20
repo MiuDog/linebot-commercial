@@ -12,9 +12,9 @@ services:
   # LINE Bot 本體
   # ----------------------------------------------------------
   linebot:
-    image: assets-manager-linebot
+    image: linebot-commercial
     build: .
-    container_name: assets-manager-linebot-service
+    container_name: linebot-commercial-service
     volumes:
       # 一次掛載共同根目錄，圖片、資料庫、報價與日誌都保存在其子路徑。
       - "${SYSTEM_ROOT_PATH:-./system-data}:/data/system-root"
