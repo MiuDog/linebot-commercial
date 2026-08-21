@@ -26,7 +26,7 @@ public final class DesktopWindowModel {
 		if (port < 1 || port > 65535) throw new IllegalArgumentException("本機服務 Port 無效");
 
 		this.listeners = new CopyOnWriteArrayList<>();
-		this.localUrl = "http://127.0.0.1:" + port;
+		this.localUrl = "http://127.0.0.1:" + port + "/admin";
 		this.status = DesktopStatus.STOPPED;
 		this.publicUrl = "未啟用";
 	}
@@ -51,7 +51,7 @@ public final class DesktopWindowModel {
 	public synchronized void updatePort(int port) {
 		if (port < 1 || port > 65535) throw new IllegalArgumentException("本機服務 Port 無效");
 
-		this.localUrl = "http://127.0.0.1:" + port;
+		this.localUrl = "http://127.0.0.1:" + port + "/admin";
 		publish();
 	}
 

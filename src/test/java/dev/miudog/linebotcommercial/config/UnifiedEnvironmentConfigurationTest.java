@@ -78,7 +78,7 @@ class UnifiedEnvironmentConfigurationTest {
 		}
 
 		assertThat(properties.getProperty("app.storage.root"))
-			.isEqualTo("${app.system.root}/圖片資產");
+			.isEqualTo("${app.system.root}/data");
 		assertThat(properties.getProperty("app.quotation.output-path"))
 			.isEqualTo("${app.system.root}/報價單");
 	}

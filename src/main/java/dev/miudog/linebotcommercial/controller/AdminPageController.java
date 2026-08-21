@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class AdminPageController {
 
-	// 方法：將管理頁根路徑轉送到靜態首頁檔案。
-	@GetMapping({"/admin", "/admin/"})
+	// 方法：將首頁與管理頁根路徑轉送到靜態首頁檔案。
+	@GetMapping({"/", "/admin", "/admin/"})
 	public String adminPage() {
 		return "forward:/admin/index.html";
 	}

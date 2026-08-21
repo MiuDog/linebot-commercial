@@ -50,8 +50,9 @@ public final class CloudflareProcess implements CloudflareProcessControl {
 		String tunnelToken
 	) {
 		validateAgent(agent);
+		String token = sanitizeToken(tunnelToken);
 
-		if (tunnelToken == null || tunnelToken.isBlank()) throw new IllegalArgumentException("Cloudflare Tunnel Token 不可為空白");
+		if (token.isBlank()) throw new IllegalArgumentException("Cloudflare Tunnel Token 不可為空白");
 
 		if (childProcess != null) throw new IllegalStateException("cloudflared child process 已經啟動");
 
@@ -64,7 +65,7 @@ public final class CloudflareProcess implements CloudflareProcessControl {
 		ProcessBuilder builder = new ProcessBuilder(command);
 
 		// 外部函式：Tunnel Token 只注入 child environment，不放入命令列或 Log。
-		builder.environment().put("TUNNEL_TOKEN", tunnelToken);
+		builder.environment().put("TUNNEL_TOKEN", token);
 		builder.redirectErrorStream(true);
 		builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
 
@@ -124,15 +125,41 @@ public final class CloudflareProcess implements CloudflareProcessControl {
 		return status;
 	}
 
+	// 方法：淨化使用者可能包含指令前綴或前後空格的 Tunnel Token。
+	public static String sanitizeToken(String raw) {
+		if (raw == null) return "";
+
+		String trimmed = raw.trim();
+		int eyIndex = trimmed.indexOf("eyJ");
+
+		if (eyIndex >= 0) {
+			String candidate = trimmed.substring(eyIndex).trim();
+			int spaceIdx = candidate.indexOf(' ');
+
+			if (spaceIdx > 0) candidate = candidate.substring(0, spaceIdx);
+
+			int quoteIdx = candidate.indexOf('"');
+
+			if (quoteIdx > 0) candidate = candidate.substring(0, quoteIdx);
+
+			return candidate;
+		}
+
+		return trimmed;
+	}
+
 	// 方法：解析或搜尋可用的 cloudflared agent 路徑。
 	public static Path resolveAgent(String configuredPath) {
 		if (configuredPath != null && !configuredPath.isBlank()) return validateAgent(Path.of(configuredPath));
 
-		// 嘗試常見 Windows 位置與 PATH 搜尋
+		String userHome = System.getProperty("user.home", "");
 		List<Path> candidateLocations = List.of(
+			Path.of("C:\\Program Files (x86)\\cloudflared\\cloudflared.exe"),
 			Path.of("C:\\Program Files\\cloudflared\\cloudflared.exe"),
 			Path.of("C:\\ProgramData\\cloudflared\\cloudflared.exe"),
-			Path.of("C:\\cloudflared\\cloudflared.exe")
+			Path.of("C:\\cloudflared\\cloudflared.exe"),
+			Path.of(userHome, "Downloads", "cloudflared-windows-amd64.exe"),
+			Path.of(userHome, "Downloads", "cloudflared.exe")
 		);
 
 		for (Path candidate : candidateLocations) {

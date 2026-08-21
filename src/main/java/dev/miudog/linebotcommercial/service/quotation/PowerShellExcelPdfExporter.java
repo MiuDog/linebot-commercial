@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -43,10 +44,30 @@ public class PowerShellExcelPdfExporter implements ExcelPdfExporter {
 		this.scriptPath = scriptPath.toAbsolutePath().normalize();
 	}
 
+	// 方法：解析實體腳本路徑；若專案路徑不存在則由 classpath 提取至暫存檔。
+	private Path resolveScript() throws ExcelPdfExportException {
+		if (Files.isRegularFile(scriptPath)) return scriptPath;
+
+		try (InputStream stream = getClass().getResourceAsStream("/scripts/export-quotation-pdf.ps1")) {
+			if (stream != null) {
+				Path tempScript = Files.createTempFile("export-quotation-pdf-", ".ps1");
+				tempScript.toFile().deleteOnExit();
+				Files.copy(stream, tempScript, StandardCopyOption.REPLACE_EXISTING);
+				return tempScript;
+			}
+		}
+		catch (IOException exception) {
+			throw new ExcelPdfExportException("無法提取內嵌 Excel PDF 匯出腳本", exception);
+		}
+
+		throw new ExcelPdfExportException("找不到固定 Excel PDF 匯出腳本");
+	}
+
 	// 方法：以參數陣列啟動固定腳本，逾時時終止程序並回傳受控錯誤。
 	@Override
 	public void export(Path workbook, Path pdf, Duration timeout) throws IOException {
-		validateArguments(workbook, pdf, timeout);
+		Path targetScript = resolveScript();
+		validateArguments(targetScript, workbook, pdf, timeout);
 		List<String> command = List.of(
 			"powershell.exe",
 			"-NoLogo",
@@ -55,7 +76,7 @@ public class PowerShellExcelPdfExporter implements ExcelPdfExporter {
 			"-ExecutionPolicy",
 			"Bypass",
 			"-File",
-			scriptPath.toString(),
+			targetScript.toString(),
 			"-WorkbookPath",
 			workbook.toString(),
 			"-PdfPath",
@@ -98,8 +119,8 @@ public class PowerShellExcelPdfExporter implements ExcelPdfExporter {
 	}
 
 	// 方法：驗證腳本、輸入輸出與逾時均來自可信且明確的本機路徑。
-	private void validateArguments(Path workbook, Path pdf, Duration timeout) throws ExcelPdfExportException {
-		if (!Files.isRegularFile(scriptPath)) throw new ExcelPdfExportException("找不到固定 Excel PDF 匯出腳本");
+	private void validateArguments(Path targetScript, Path workbook, Path pdf, Duration timeout) throws ExcelPdfExportException {
+		if (!Files.isRegularFile(targetScript)) throw new ExcelPdfExportException("找不到固定 Excel PDF 匯出腳本");
 
 		if (workbook == null || pdf == null) throw new ExcelPdfExportException("Excel 與 PDF 路徑不可為 null");
 
@@ -138,56 +159,49 @@ public class PowerShellExcelPdfExporter implements ExcelPdfExporter {
 				int remaining = MAXIMUM_OUTPUT_BYTES - saved.size();
 				if (remaining > 0) saved.write(buffer, 0, Math.min(count, remaining));
 			}
-			return saved.toString(StandardCharsets.UTF_8).trim();
+
+			return saved.toString(StandardCharsets.UTF_8);
 		}
 		catch (IOException exception) {
-			return "無法讀取 Excel 匯出程序結果";
+			return "";
 		}
 	}
 
-	// 方法：等待已結束程序的有限輸出讀取，避免讀取執行緒無限懸掛。
-	private String completedOutput(CompletableFuture<String> output) throws ExcelPdfExportException {
+	// 方法：安全取出已完成的輸出字串，發生非預期例外時回傳空字串。
+	private String completedOutput(CompletableFuture<String> output) {
 		try {
-			return output.get(5, TimeUnit.SECONDS);
+			return output.get(200, TimeUnit.MILLISECONDS);
 		}
-		catch (InterruptedException exception) {
-			Thread.currentThread().interrupt();
-			throw new ExcelPdfExportException("讀取 Excel 匯出結果被中斷", exception);
-		}
-		catch (ExecutionException | TimeoutException exception) {
-			throw new ExcelPdfExportException("無法讀取 Excel 匯出程序結果", exception);
+		catch (InterruptedException | ExecutionException | TimeoutException exception) {
+			if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
+			return "";
 		}
 	}
 
-	// 方法：移除程序輸出中的本機絕對路徑並限制長度，只保留可供管理重試判斷的摘要。
+	// 方法：安全遮蔽子程序訊息中非結構化路徑，只保留簡潔錯誤原因。
 	private String safeProcessMessage(String details, Path workbook, Path pdf) {
 		if (details == null || details.isBlank()) return "Microsoft Excel 匯出 PDF 失敗";
 
-		String safe = details
-			.replace(scriptPath.toString(), "[固定腳本]")
-			.replace(workbook.toAbsolutePath().normalize().toString(), "[Excel 檔案]")
-			.replace(pdf.toAbsolutePath().normalize().toString(), "[PDF 檔案]")
-			.replace('\r', ' ')
-			.replace('\n', ' ')
-			.trim();
-		return safe.length() <= 1000 ? safe : safe.substring(0, 1000);
+		String line = details.lines()
+			.map(String::trim)
+			.filter(text -> !text.isBlank())
+			.findFirst()
+			.orElse("Microsoft Excel 匯出 PDF 失敗");
+		String masked = line.replace(workbook.toString(), "[WORKBOOK]")
+			.replace(pdf.toString(), "[PDF]");
+
+		if (masked.length() > 200) return masked.substring(0, 200);
+
+		return masked;
 	}
 
-	// 方法：先正常終止，短暫等待後再強制停止受控 Excel 匯出程序。
+	// 方法：以受控方式強制終止 Excel COM 程序樹。
 	private void terminate(Process process) {
-		List<ProcessHandle> descendants = process.descendants().toList();
-		process.destroy();
-		descendants.forEach(ProcessHandle::destroy);
 		try {
-			if (!process.waitFor(2, TimeUnit.SECONDS)) {
-				process.destroyForcibly();
-				descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
-			}
-		}
-		catch (InterruptedException exception) {
-			Thread.currentThread().interrupt();
 			process.destroyForcibly();
-			descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
+		}
+		catch (Exception exception) {
+			// 例外邊界：終止失敗不掩蓋呼叫端的原例外。
 		}
 	}
 }

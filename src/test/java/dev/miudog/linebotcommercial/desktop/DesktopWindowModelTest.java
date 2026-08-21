@@ -23,7 +23,7 @@ class DesktopWindowModelTest {
 
 		assertThat(snapshots).hasSize(2);
 		assertThat(snapshots.getLast().status()).isEqualTo(DesktopStatus.RUNNING);
-		assertThat(snapshots.getLast().localUrl()).isEqualTo("http://127.0.0.1:8088");
+		assertThat(snapshots.getLast().localUrl()).isEqualTo("http://127.0.0.1:8088/admin");
 		assertThat(snapshots.getLast().publicUrl()).isEqualTo("https://example.ngrok.app");
 	}
 
