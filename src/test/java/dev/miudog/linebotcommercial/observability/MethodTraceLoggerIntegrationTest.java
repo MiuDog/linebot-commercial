@@ -10,7 +10,10 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+	"app.observability.method-tracing-enabled=true",
+	"logging.level.FLOW_TRACE=DEBUG"
+})
 @ExtendWith(OutputCaptureExtension.class)
 class MethodTraceLoggerIntegrationTest {
 

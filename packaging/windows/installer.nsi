@@ -16,6 +16,10 @@ SetCompressor /SOLID lzma
 	!error "APP_IMAGE is required"
 !endif
 
+!ifndef APP_ICON
+	!error "APP_ICON is required"
+!endif
+
 !ifndef OUTPUT_FILE
 	!error "OUTPUT_FILE is required"
 !endif
@@ -38,7 +42,9 @@ SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "LinebotCommercial"
 !define DISPLAY_NAME "Linebot Commercial"
+!define SERVICE_NAME "LinebotCommercialService"
 !define PRODUCT_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 !define START_MENU_FOLDER "$SMPROGRAMS\${DISPLAY_NAME}"
 
 Name "${DISPLAY_NAME} ${APP_VERSION}"
@@ -62,8 +68,8 @@ Var PurgeCheckbox
 Var PurgeState
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
-!define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
+!define MUI_ICON "${APP_ICON}"
+!define MUI_UNICON "${APP_ICON}"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "license.rtf"
@@ -190,6 +196,12 @@ Section "${DISPLAY_NAME}（必要）" MainSection
 		IfFileExists "$ExistingInstallDir\${PRODUCT_NAME}.exe" 0 +3
 		ExecWait '"$ExistingInstallDir\${PRODUCT_NAME}.exe" --shutdown'
 		Sleep 3000
+		IfFileExists "$ExistingInstallDir\${PRODUCT_NAME}.exe" 0 +3
+		ExecWait '"$ExistingInstallDir\${PRODUCT_NAME}.exe" --shutdown'
+		Sleep 3000
+
+		# 等待 service 自身的有限停止保護完成，避免切換仍被 JVM 占用的 app image。
+		Sleep 12000
 	${EndIf}
 
 	# 步驟二：停止成功後才切換正式目錄，任何 Rename 失敗都保留或回復舊版。
@@ -205,6 +217,9 @@ Section "${DISPLAY_NAME}（必要）" MainSection
 			MessageBox MB_ICONSTOP|MB_OK "無法停止或備份既有 App，修復／升級已取消，舊版保持不變。"
 			Abort
 		${EndIf}
+	${Else}
+		# 首次或重裝復原：移除固定產品目錄中的中斷安裝殘留，再切換完整 staging。
+		RMDir /r "$INSTDIR"
 	${EndIf}
 
 	ClearErrors
@@ -221,8 +236,8 @@ Section "${DISPLAY_NAME}（必要）" MainSection
 
 	RMDir /r "$LOCALAPPDATA\Programs\${PRODUCT_NAME}.backup"
 	CreateDirectory "${START_MENU_FOLDER}"
-	CreateShortcut "${START_MENU_FOLDER}\${DISPLAY_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
-	CreateShortcut "${START_MENU_FOLDER}\編輯設定.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--configure"
+	CreateShortcut "${START_MENU_FOLDER}\${DISPLAY_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\${PRODUCT_NAME}.exe" 0
+	CreateShortcut "${START_MENU_FOLDER}\編輯設定.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--configure" "$INSTDIR\${PRODUCT_NAME}.exe" 0
 	CreateShortcut "${START_MENU_FOLDER}\解除安裝.lnk" "$INSTDIR\Uninstall.exe"
 	WriteRegStr HKCU "${PRODUCT_KEY}" "DisplayName" "${DISPLAY_NAME}"
 	WriteRegStr HKCU "${PRODUCT_KEY}" "DisplayVersion" "${APP_VERSION}"
@@ -235,9 +250,17 @@ Section "${DISPLAY_NAME}（必要）" MainSection
 	WriteRegDWORD HKCU "${PRODUCT_KEY}" "NoModify" 0
 	WriteRegDWORD HKCU "${PRODUCT_KEY}" "NoRepair" 0
 
+	# Windows 登入：只註冊目前使用者的背景 launcher，延續同一 DPAPI 身分且不要求管理員權限。
+	WriteRegStr HKCU "${RUN_KEY}" "${SERVICE_NAME}" '"$INSTDIR\${SERVICE_NAME}.exe"'
+
 	${If} $WasInstalled != "1"
 		${IfNot} ${Silent}
 			Exec '"$INSTDIR\${PRODUCT_NAME}.exe" --configure-first-run'
+		${EndIf}
+	${Else}
+		${IfNot} ${Silent}
+			# 互動升級：以新版固定 launcher 恢復背景 service；靜默部署留待登入或開啟 App 啟動。
+			Exec '"$INSTDIR\${SERVICE_NAME}.exe"'
 		${EndIf}
 	${EndIf}
 SectionEnd
@@ -245,7 +268,7 @@ SectionEnd
 # 方法：依使用者勾選建立目前使用者桌面捷徑。
 Section /o "建立桌面捷徑" DesktopShortcutSection
 	SetShellVarContext current
-	CreateShortcut "$DESKTOP\${DISPLAY_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
+	CreateShortcut "$DESKTOP\${DISPLAY_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\${PRODUCT_NAME}.exe" 0
 SectionEnd
 
 #endregion
@@ -288,6 +311,17 @@ Section "Uninstall"
 		Abort
 
 	SafeProgramPath:
+		# 解除安裝：先透過桌面控制器要求背景 service 釋放 Tunnel、Spring 與檔案鎖。
+		IfFileExists "$INSTDIR\${PRODUCT_NAME}.exe" 0 +3
+		ExecWait '"$INSTDIR\${PRODUCT_NAME}.exe" --shutdown'
+		Sleep 3000
+		IfFileExists "$INSTDIR\${PRODUCT_NAME}.exe" 0 +3
+		ExecWait '"$INSTDIR\${PRODUCT_NAME}.exe" --shutdown'
+		Sleep 3000
+
+		# 等待 service 自身的有限停止保護完成，再移除固定產品目錄。
+		Sleep 12000
+		DeleteRegValue HKCU "${RUN_KEY}" "${SERVICE_NAME}"
 		Delete "$DESKTOP\${DISPLAY_NAME}.lnk"
 		RMDir /r "${START_MENU_FOLDER}"
 		DeleteRegKey HKCU "${PRODUCT_KEY}"

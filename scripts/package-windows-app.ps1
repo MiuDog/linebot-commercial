@@ -16,7 +16,10 @@ $DistRoot = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "dist"))
 $ImageRoot = [System.IO.Path]::GetFullPath((Join-Path $DistRoot "app-image"))
 $JarPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "target\app.jar"))
 $LauncherPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\launcher.properties"))
+$ServiceLauncherPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\service-launcher.properties"))
+$AppIconPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\app-icon.ico"))
 $ProductName = "LinebotCommercial"
+$ServiceProductName = "LinebotCommercialService"
 
 #endregion
 
@@ -97,6 +100,14 @@ if (-not (Test-Path -LiteralPath $LauncherPath -PathType Leaf)) {
 	throw "找不到 desktop launcher 設定：$LauncherPath"
 }
 
+if (-not (Test-Path -LiteralPath $ServiceLauncherPath -PathType Leaf)) {
+	throw "找不到 service launcher 設定：$ServiceLauncherPath"
+}
+
+if (-not (Test-Path -LiteralPath $AppIconPath -PathType Leaf)) {
+	throw "找不到 commercial Windows 圖示：$AppIconPath"
+}
+
 $JpackageCommand = (Get-Command "jpackage.exe" -ErrorAction Stop).Source
 $MavenWrapper = Join-Path $ProjectRoot "mvnw.cmd"
 
@@ -135,9 +146,11 @@ $JpackageArguments = @(
 	"--app-version", $Version,
 	"--vendor", "MiuDog",
 	"--description", "LINE 群組資產管理與報價桌面應用程式",
+	"--icon", $AppIconPath,
 	"--input", $InputRoot,
 	"--main-jar", "app.jar",
 	"--dest", $ImageRoot,
+	"--add-launcher", "$ServiceProductName=$ServiceLauncherPath",
 	"--arguments", $LauncherArguments,
 	"--java-options", $JavaOptions,
 	"--java-options", $DesktopJavaOption
@@ -145,11 +158,16 @@ $JpackageArguments = @(
 Invoke-CheckedCommand -Command $JpackageCommand -Arguments $JpackageArguments
 
 $LauncherExe = Join-Path $ImageRoot "$ProductName\$ProductName.exe"
+$ServiceLauncherExe = Join-Path $ImageRoot "$ProductName\$ServiceProductName.exe"
 $BundledJvm = Join-Path $ImageRoot "$ProductName\runtime\bin\server\jvm.dll"
 $BundledJavaLibrary = Join-Path $ImageRoot "$ProductName\runtime\bin\java.dll"
 
 if (-not (Test-Path -LiteralPath $LauncherExe -PathType Leaf)) {
 	throw "jpackage 未產生預期 launcher：$LauncherExe"
+}
+
+if (-not (Test-Path -LiteralPath $ServiceLauncherExe -PathType Leaf)) {
+	throw "jpackage 未產生預期 service launcher：$ServiceLauncherExe"
 }
 
 if (-not (Test-Path -LiteralPath $BundledJvm -PathType Leaf)) {

@@ -4,6 +4,7 @@ import dev.miudog.linebotcommercial.observability.NetworkObservationLogger;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,6 +20,30 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LineStorageServicePushTest {
+
+	// 方法：驗證所有 LINE 發送請求套用客戶設定的單次逾時。
+	@Test
+	void appliesConfiguredTimeoutToLineRequests() throws Exception {
+		NetworkObservationLogger observations = mock(NetworkObservationLogger.class);
+		HttpClient http = mock(HttpClient.class);
+		HttpResponse<String> response = mock(HttpResponse.class);
+		when(observations.started("LINE", "reply_message")).thenReturn(30L);
+		when(response.statusCode()).thenReturn(200);
+		when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+		LineStorageService service = new LineStorageService(
+			observations,
+			http,
+			new ObjectMapper(),
+			"channel-token-for-test",
+			Duration.ofSeconds(7)
+		);
+
+		service.replyText("reply-token", "回覆");
+
+		ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+		verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+		assertThat(request.getValue().timeout()).contains(Duration.ofSeconds(7));
+	}
 
 	@Test
 	void exposesAStableExceptionWhenLineRejectsAReply() throws Exception {

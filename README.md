@@ -1,8 +1,8 @@
 # Linebot Commercial
 
-`@linebot-commercial@0.2.4`
+`@linebot-commercial@0.3.0`
 
-把 LINE 群組當成圖片資產的收件與取件窗口：群組上傳圖片後，引用圖片並輸入合法資料夾代碼即可直接歸檔；SQLite 保存圖片組與正式檔案索引。
+商用機的 LINE 自動報價系統：以私訊收集報價資料與工程圖片，經 AI／OCR 整理、人工確認後，在背景產生 Excel／PDF 並交付；圖片歸檔能力只作為報價流程的資產支援。
 
 ---
 
@@ -16,7 +16,6 @@
 | 輸入合法代碼但未引用圖片 | 回覆操作錯誤，不會無回應 |
 | 輸入 `#查 ZD12345` | 把該代碼的圖片貼回群組 |
 | 輸入 `#標籤` | 列出所有編號與各自張數 |
-| 傳送以「小京」開頭的群組語音 | AI 整理部門與日期；資料完整時透過 MCP 取出圖片並貼回群組 |
 | 一對一輸入 `#報價`，再依提示補資料 | AI／OCR 解析、完整預覽、確認後背景產生 Excel／PDF 並以 Flex 交付 |
 | 輸入 `#說明` | 顯示用法 |
 | 標記機器人並輸入 `ping` | 回覆 `pong` 與本次事件的延遲毫秒數 |
@@ -49,7 +48,9 @@ system-data\
 
 ## Windows App（未簽章，個人使用）
 
-Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用者另裝 JDK／JRE。第一次開啟會顯示繁體中文設定精靈；關閉視窗後仍可留在系統匣背景執行，再次開啟 App 可查看狀態與即時 Log。
+Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用者另裝 JDK／JRE。第一次開啟會顯示繁體中文設定精靈；Spring、Tunnel 與 LINE Bot 由目前使用者的獨立背景 service 執行，Windows 登入時自動啟動。再次開啟 App 只載入控制視窗，可查看狀態與即時 Log，不會建立第二份報價機器人程序。
+
+主視窗的「測試連線」可直接輸入公開或內網網域，分階段檢查本機服務、DNS、TCP、TLS、HTTP、LINE Bot API 與 AI API。AI API 僅匿名測試 endpoint，不傳送 API Key，也不會進行推論或消耗 Token。
 
 **目前版本導向為未簽章的個人使用版。** 功能完整，唯一差別是沒有 Authenticode 簽章，首次執行會出現 Windows SmartScreen 警告（處理方式見下方）。Release 建立在 private repo，只有具備存取權的人看得到，並一律標記為 pre-release。
 
@@ -58,7 +59,7 @@ Windows 桌面版會安裝為單一 App，內含 Java Runtime，不需要使用�
 推送符合 `v<主版號>.<次版號>.<修訂號>` 的 tag 即自動建置、驗證並建立 GitHub Release，資產只有一份 Setup.exe：
 
 ```powershell
-powershell.exe -NoProfile -File scripts\release.ps1 -Version 0.1.2
+powershell.exe -NoProfile -File scripts\release.ps1 -Version 0.3.0
 ```
 
 腳本會依序完成前置檢查、改寫 `pom.xml` 與 README 版本、提交、本機完整驗證、推分支再推 tag。任何一項前置檢查不過就在改動版本庫之前中止：
@@ -84,14 +85,14 @@ Release 內容取決於是否設定簽章憑證，workflow 會自動判斷：
 建立個人使用的 Setup：
 
 ```powershell
-powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.1.1
+powershell.exe -NoProfile -File scripts\build-windows-installer.ps1 -Version 0.3.0
 ```
 
 完整安裝、修復、預設保留資料與明確清除驗收：
 
 ```powershell
 powershell.exe -NoProfile -File scripts\test-windows-installer.ps1 `
-	-InstallerPath dist\LinebotCommercial-Setup-0.1.1.exe `
+	-InstallerPath dist\LinebotCommercial-Setup-0.3.0.exe `
 	-ExecuteLifecycle `
 	-TestPurge
 ```
@@ -125,41 +126,13 @@ cp .env.example .env
 ```
 
 填入 `LINE_BOT_CHANNEL_TOKEN`、`LINE_BOT_CHANNEL_SECRET`、`NGROK_AUTHTOKEN`、
-`SYSTEM_ROOT_PATH`、`ASSETS_SYNC_TOKEN` 與 AI 設定，然後：
+`SYSTEM_ROOT_PATH`、報價安全密鑰與 AI 設定，然後：
 
 ```bash
 docker compose --profile dev up --build -d
 ```
 
-資料庫同步預設改由腳本執行。單次同步：
-
-```powershell
-.\scripts\sync-assets.ps1
-```
-
-在隱藏的背景程序中每 30 秒同步：
-
-```powershell
-.\scripts\sync-assets.ps1 -Background
-```
-
 打開 http://localhost:4040 取得 ngrok 網址，填回 `.env` 的 `PUBLIC_BASE_URL` 並重啟，最後到 LINE Developers Console 把 Webhook URL 設成 `https://xxxx.ngrok-free.app/callback`。
-
-### 啟用群組語音
-
-在 `.env` 至少設定以下項目後重啟服務：
-
-```dotenv
-VOICE_COMMANDS_ENABLED=true
-AI_API_URL=https://api.openai.com/v1
-AI_API_KEY=你的_OpenAI_API_Key
-AI_MODEL=gpt-5.6-sol
-VOICE_MCP_AUTH_TOKEN=一段自行產生且不可猜測的長字串
-```
-
-`PUBLIC_BASE_URL` 必須是 OpenAI 能存取的公開 HTTPS 網址；未另填
-`VOICE_MCP_SERVER_URL` 時，程式會自動使用 `${PUBLIC_BASE_URL}/mcp`。
-在群組傳送「小京，圖片取出 ZD12345 八月十日的圖片」，資料完整時機器人會直接回覆查詢結果；缺少部門或日期時會以中文要求補充。只有開頭正確出現「小京」的語音才會進入任務分析。
 
 完整步驟見 [docs/01-bot-deployment.md](docs/01-bot-deployment.md)。
 

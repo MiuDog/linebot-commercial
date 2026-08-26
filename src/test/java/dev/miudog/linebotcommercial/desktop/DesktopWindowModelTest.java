@@ -2,6 +2,7 @@ package dev.miudog.linebotcommercial.desktop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareAgentIdentity;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -37,5 +38,22 @@ class DesktopWindowModelTest {
 
 			assertThat(model.snapshot().statusText()).isNotBlank();
 		}
+	}
+
+	// 方法：Cloudflare 啟用後在狀態快照顯示 Tunnel、Connector 與目前電腦身分。
+	@Test
+	void shouldPublishCloudflareConnectorIdentity() {
+		DesktopWindowModel model = new DesktopWindowModel(8088);
+
+		model.updateCloudflareIdentity(new CloudflareAgentIdentity(
+			"b5b327f7-ead7-449c-b5eb-97fc74fccbfb",
+			"58cc3df9-a8f2-41e7-831a-8e699240eb25",
+			"OFFICE-PC"
+		));
+
+		assertThat(model.snapshot().cloudflareIdentity())
+			.contains("OFFICE-PC")
+			.contains("b5b327f7")
+			.contains("58cc3df9");
 	}
 }

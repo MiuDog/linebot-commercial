@@ -1,8 +1,5 @@
 package dev.miudog.linebotcommercial.desktop;
 
-import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnection;
-import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnector;
-import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareConnectorException;
 import dev.miudog.linebotcommercial.desktop.config.AppConfiguration;
 import dev.miudog.linebotcommercial.desktop.config.AppConfigurationRepository;
 import dev.miudog.linebotcommercial.desktop.config.AppConfigurationField;
@@ -10,20 +7,24 @@ import dev.miudog.linebotcommercial.desktop.config.AppConfigurationValidator;
 import dev.miudog.linebotcommercial.desktop.config.ConfigurationWizard;
 import dev.miudog.linebotcommercial.desktop.config.ConfigurationWizardModel;
 import dev.miudog.linebotcommercial.desktop.config.ConfigurationWizardResult;
-import dev.miudog.linebotcommercial.desktop.config.DesktopSpringProperties;
 import dev.miudog.linebotcommercial.desktop.config.DpapiSecretStore;
-import dev.miudog.linebotcommercial.desktop.ngrok.NgrokConnection;
-import dev.miudog.linebotcommercial.desktop.ngrok.NgrokConnector;
-import dev.miudog.linebotcommercial.desktop.ngrok.NgrokConnectorException;
+import dev.miudog.linebotcommercial.desktop.control.PackagedServiceLauncher;
+import dev.miudog.linebotcommercial.desktop.control.ServiceControlClient;
+import dev.miudog.linebotcommercial.desktop.control.ServiceControlCommand;
+import dev.miudog.linebotcommercial.desktop.control.ServiceControlEndpointRepository;
+import dev.miudog.linebotcommercial.desktop.control.ServiceControlResponse;
+import dev.miudog.linebotcommercial.desktop.control.ServiceProcessSupervisor;
+import dev.miudog.linebotcommercial.desktop.diagnostic.ConnectionDiagnosticReport;
+import dev.miudog.linebotcommercial.desktop.diagnostic.ConnectionDiagnosticService;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,8 @@ public final class DesktopApplication {
 	private static final Logger log = LoggerFactory.getLogger(DesktopApplication.class);
 	private static final String DESKTOP_ARGUMENT = "--app.desktop.enabled=true";
 	private static final String DESKTOP_PROPERTY = "app.desktop.enabled";
+	private static final int SERVICE_READINESS_ATTEMPTS = 80;
+	private static final Duration SERVICE_READINESS_INTERVAL = Duration.ofMillis(250);
 	private static volatile DesktopApplication activeApplication;
 
 	private final Function<DesktopIpcCommand, SingleInstanceResult> instanceGate;
@@ -103,61 +106,67 @@ public final class DesktopApplication {
 
 	//#region 方法
 
-	// 方法：建立使用 Local AppData、DPAPI 與 Spring 後端的正式桌面應用程式。
+	// 方法：建立使用 Local AppData、DPAPI 與獨立背景 service 的桌面控制器。
 	public static DesktopApplication createDefault() {
 		Path localAppData = localAppData();
+		Path configurationRoot = AppConfiguration.configurationRoot(localAppData);
 		AppConfiguration defaults = AppConfiguration.defaults(localAppData);
+		DpapiSecretStore secretStore = new DpapiSecretStore();
 		AppConfigurationRepository repository = new AppConfigurationRepository(
-			AppConfiguration.configurationRoot(localAppData),
+			configurationRoot,
 			defaults,
-			new DpapiSecretStore(),
+			secretStore,
 			new AppConfigurationValidator()
 		);
-		DesktopLifecycleCoordinator coordinator = new DesktopLifecycleCoordinator(
-			new SpringDesktopBackend(),
-			new DesktopSpringProperties()::from
+		ServiceControlClient controlClient = new ServiceControlClient(
+			new ServiceControlEndpointRepository(configurationRoot, secretStore)
+		);
+		ServiceProcessSupervisor serviceSupervisor = new ServiceProcessSupervisor(
+			controlClient,
+			PackagedServiceLauncher.fromCurrentProcess("LinebotCommercialService.exe")
 		);
 		DesktopWindowModel windowModel = new DesktopWindowModel(
 			Integer.parseInt(defaults.value(AppConfigurationField.SERVER_PORT))
 		);
 		DesktopUi desktopUi = new DesktopUi(windowModel);
-		NgrokConnector ngrokConnector = new NgrokConnector();
-		CloudflareConnector cloudflareConnector = new CloudflareConnector();
+		ConnectionDiagnosticService connectionDiagnosticService = new ConnectionDiagnosticService();
 		AtomicReference<AppConfiguration> activeConfiguration = new AtomicReference<>();
-		AtomicReference<String[]> activeArguments = new AtomicReference<>(new String[0]);
 		AtomicReference<DesktopApplication> applicationReference = new AtomicReference<>();
 		AtomicReference<DesktopActions> actionsReference = new AtomicReference<>();
-		coordinator.addStatusListener(status -> onEdt(() -> windowModel.updateStatus(status)));
-		SingleInstanceCoordinator instanceCoordinator = new SingleInstanceCoordinator(
-			AppConfiguration.configurationRoot(localAppData)
-		);
+		SingleInstanceCoordinator instanceCoordinator = new SingleInstanceCoordinator(configurationRoot);
 		DesktopActions actions = new DesktopActions(
 			desktopUi::show,
 			() -> runInBackground(
 				"desktop-settings",
-				() -> editConfiguration(
+				() -> editServiceConfiguration(
 					repository,
-					coordinator,
+					controlClient,
 					desktopUi,
 					windowModel,
-					ngrokConnector,
-					cloudflareConnector,
-					activeConfiguration,
-					activeArguments
+					activeConfiguration
 				)
 			),
 			() -> runInBackground(
 				"desktop-restart",
-				() -> restartServices(
+				() -> restartService(
 					repository,
-					coordinator,
+					controlClient,
 					desktopUi,
 					windowModel,
-					ngrokConnector,
-					cloudflareConnector,
-					activeConfiguration,
-					activeArguments
+					activeConfiguration
 				)
+			),
+			(target, completion) -> runInBackground(
+				"desktop-connection-diagnostic",
+				() -> {
+					AppConfiguration configuration = Objects.requireNonNullElse(
+						activeConfiguration.get(),
+						defaults
+					);
+					ConnectionDiagnosticReport report = connectionDiagnosticService.run(configuration, target);
+
+					onEdt(() -> completion.accept(report));
+				}
 			),
 			() -> runInBackground("desktop-exit", () -> applicationReference.get().shutdown())
 		);
@@ -177,20 +186,20 @@ public final class DesktopApplication {
 			defaults,
 			(configuration, arguments) -> {
 				activeConfiguration.set(configuration);
-				activeArguments.set(arguments.clone());
 				onEdt(() -> windowModel.updatePort(Integer.parseInt(configuration.value(AppConfigurationField.SERVER_PORT))));
 				desktopUi.start(actionsReference.get(), logDirectory(configuration));
+				updateWindowConfiguration(windowModel, configuration);
 				onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
-				AppConfiguration preparedConfiguration = prepareTunnels(
-					configuration,
-					repository,
-					ngrokConnector,
-					cloudflareConnector
-				);
 
-				activeConfiguration.set(preparedConfiguration);
-				updateWindowConfiguration(windowModel, preparedConfiguration);
-				coordinator.start(preparedConfiguration, arguments);
+				// 背景程序：沿用已運行 service，或從安裝目錄啟動一次並有限等待就緒。
+				boolean serviceReady = serviceSupervisor.ensureRunning(
+					SERVICE_READINESS_ATTEMPTS,
+					SERVICE_READINESS_INTERVAL
+				);
+				applyServiceResponse(
+					windowModel,
+					serviceReady ? ServiceControlResponse.RUNNING : ServiceControlResponse.UNAVAILABLE
+				);
 
 				if (requestedCommand(arguments) == DesktopIpcCommand.OPEN_SETTINGS) {
 					actionsReference.get().settings().run();
@@ -198,9 +207,11 @@ public final class DesktopApplication {
 			},
 			() -> {
 				ConfigurationWizard.closeActive();
-				coordinator.stop();
-				ngrokConnector.stop();
-				cloudflareConnector.stop();
+				onEdt(() -> windowModel.updateStatus(DesktopStatus.STOPPING));
+
+				// 本機控制通道：明確結束 App 時要求背景 service 釋放 Tunnel 與 Spring。
+				controlClient.request(ServiceControlCommand.SHUTDOWN);
+				onEdt(() -> windowModel.updateStatus(DesktopStatus.STOPPED));
 				desktopUi.close();
 			},
 			instanceCoordinator
@@ -335,16 +346,13 @@ public final class DesktopApplication {
 		return DesktopIpcCommand.SHOW_WINDOW;
 	}
 
-	// 方法：顯示編輯設定精靈，成功保存後以新設定重新啟動 Spring 後端。
-	private static void editConfiguration(
+	// 方法：顯示設定精靈，保存後要求背景 service 重新載入最新設定。
+	private static void editServiceConfiguration(
 		AppConfigurationRepository repository,
-		DesktopLifecycleCoordinator coordinator,
+		ServiceControlClient controlClient,
 		DesktopUi desktopUi,
 		DesktopWindowModel windowModel,
-		NgrokConnector ngrokConnector,
-		CloudflareConnector cloudflareConnector,
-		AtomicReference<AppConfiguration> activeConfiguration,
-		AtomicReference<String[]> activeArguments
+		AtomicReference<AppConfiguration> activeConfiguration
 	) {
 		AppConfiguration current = repository.load().orElse(activeConfiguration.get());
 		ConfigurationWizardResult result = showConfiguration(current, repository, false);
@@ -352,201 +360,54 @@ public final class DesktopApplication {
 		if (!result.saved()) return;
 
 		activeConfiguration.set(result.configuration());
-		restartServices(
-			repository,
-			coordinator,
-			desktopUi,
-			windowModel,
-			ngrokConnector,
-			cloudflareConnector,
-			activeConfiguration,
-			activeArguments
-		);
+		desktopUi.followLogDirectory(logDirectory(result.configuration()));
+		onEdt(() -> windowModel.updatePort(Integer.parseInt(
+			result.configuration().value(AppConfigurationField.SERVER_PORT)
+		)));
+		updateWindowConfiguration(windowModel, result.configuration());
+		onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
+
+		// 本機控制通道：設定已由 repository 安全保存後，通知 service 停止舊資源並重新載入。
+		ServiceControlResponse response = controlClient.request(ServiceControlCommand.RESTART);
+		applyServiceResponse(windowModel, response);
 	}
 
-	// 方法：依受控順序停止 Spring、ngrok 與 Cloudflare，再以最新設定重新建立兩者。
-	private static void restartServices(
+	// 方法：要求背景 service 依 repository 最新設定重新啟動，不在桌面程序建立 Spring 或 Tunnel。
+	private static void restartService(
 		AppConfigurationRepository repository,
-		DesktopLifecycleCoordinator coordinator,
+		ServiceControlClient controlClient,
 		DesktopUi desktopUi,
 		DesktopWindowModel windowModel,
-		NgrokConnector ngrokConnector,
-		CloudflareConnector cloudflareConnector,
-		AtomicReference<AppConfiguration> activeConfiguration,
-		AtomicReference<String[]> activeArguments
+		AtomicReference<AppConfiguration> activeConfiguration
 	) {
-		coordinator.stop();
-		ngrokConnector.stop();
-		cloudflareConnector.stop();
-		AppConfiguration configured = repository.load().orElse(activeConfiguration.get());
-		desktopUi.followLogDirectory(logDirectory(configured));
-		onEdt(() -> windowModel.updatePort(Integer.parseInt(configured.value(AppConfigurationField.SERVER_PORT))));
+		AppConfiguration configuration = repository.load().orElse(activeConfiguration.get());
+		activeConfiguration.set(configuration);
+		desktopUi.followLogDirectory(logDirectory(configuration));
+		onEdt(() -> windowModel.updatePort(Integer.parseInt(
+			configuration.value(AppConfigurationField.SERVER_PORT)
+		)));
+		updateWindowConfiguration(windowModel, configuration);
 		onEdt(() -> windowModel.updateStatus(DesktopStatus.STARTING));
-		AppConfiguration prepared = prepareTunnels(configured, repository, ngrokConnector, cloudflareConnector);
 
-		activeConfiguration.set(prepared);
-		updateWindowConfiguration(windowModel, prepared);
-		coordinator.start(prepared, activeArguments.get());
+		// 本機控制通道：只傳送固定列舉命令，service 自行重新讀取 DPAPI 設定。
+		ServiceControlResponse response = controlClient.request(ServiceControlCommand.RESTART);
+		applyServiceResponse(windowModel, response);
 	}
 
-	// 方法：在 Spring 前準備 ngrok 或 Cloudflare Tunnel。
-	private static AppConfiguration prepareTunnels(
-		AppConfiguration configuration,
-		AppConfigurationRepository repository,
-		NgrokConnector ngrokConnector,
-		CloudflareConnector cloudflareConnector
+	// 方法：將固定 service 控制結果映射為非技術使用者可理解的桌面狀態。
+	static void applyServiceResponse(
+		DesktopWindowModel windowModel,
+		ServiceControlResponse response
 	) {
-		AppConfiguration afterNgrok = prepareNgrok(configuration, repository, ngrokConnector);
-		return prepareCloudflare(afterNgrok, repository, cloudflareConnector);
-	}
+		Objects.requireNonNull(windowModel, "桌面視窗模型不可為 null");
+		DesktopStatus status = switch (Objects.requireNonNull(response, "Service 控制結果不可為 null")) {
+			case RUNNING, RESTARTED -> DesktopStatus.RUNNING;
+			case SHUTTING_DOWN -> DesktopStatus.STOPPING;
+			case STOPPED -> DesktopStatus.STOPPED;
+			case REJECTED, FAILED, UNAVAILABLE -> DesktopStatus.FAILED;
+		};
 
-	// 方法：在 Spring 前取得 ngrok URL，失敗時提供重試、設定或本機模式選項。
-	private static AppConfiguration prepareNgrok(
-		AppConfiguration configuration,
-		AppConfigurationRepository repository,
-		NgrokConnector ngrokConnector
-	) {
-		AppConfiguration candidate = configuration;
-
-		while (true) {
-			try {
-				NgrokConnection connection = ngrokConnector.start(candidate, java.time.Duration.ofSeconds(15));
-
-				return connection.configuration();
-			}
-			catch (NgrokConnectorException exception) {
-				int decision = showNgrokFailureDecision();
-
-				if (decision == 0) continue;
-
-				if (decision == 1) {
-					ConfigurationWizardResult result = showConfiguration(candidate, repository, false);
-
-					if (result.saved()) candidate = result.configuration();
-
-					continue;
-				}
-
-				if (decision == 2) {
-					return candidate
-						.withValue(AppConfigurationField.NGROK_ENABLED, "false")
-						.withValue(AppConfigurationField.PUBLIC_BASE_URL, "");
-				}
-
-				throw exception;
-			}
-		}
-	}
-
-	// 方法：在 Spring 前啟動 Cloudflare Tunnel，失敗時提供重試、設定或關閉選項。
-	private static AppConfiguration prepareCloudflare(
-		AppConfiguration configuration,
-		AppConfigurationRepository repository,
-		CloudflareConnector cloudflareConnector
-	) {
-		AppConfiguration candidate = configuration;
-
-		while (true) {
-			try {
-				CloudflareConnection connection = cloudflareConnector.start(candidate, java.time.Duration.ofSeconds(10));
-
-				return connection.configuration();
-			}
-			catch (CloudflareConnectorException exception) {
-				int decision = showCloudflareFailureDecision(exception.getMessage());
-
-				if (decision == 0) continue;
-
-				if (decision == 1) {
-					ConfigurationWizardResult result = showConfiguration(candidate, repository, false);
-
-					if (result.saved()) candidate = result.configuration();
-
-					continue;
-				}
-
-				if (decision == 2) {
-					return candidate
-						.withValue(AppConfigurationField.CLOUDFLARE_ENABLED, "false");
-				}
-
-				throw exception;
-			}
-		}
-	}
-
-	// 方法：在 Swing EDT 顯示 Cloudflare 失敗處理選項。
-	private static int showCloudflareFailureDecision(String errorMessage) {
-		AtomicReference<Integer> decision = new AtomicReference<>(JOptionPane.CLOSED_OPTION);
-		String message = (errorMessage != null && !errorMessage.isBlank())
-			? "Cloudflare Tunnel 啟動失敗: " + errorMessage + "\n可重試、修改設定，或關閉 Tunnel 啟動。"
-			: "Cloudflare Tunnel 無法啟動。可重試、修改設定，或關閉 Tunnel 啟動。";
-
-		Runnable dialog = () -> decision.set(JOptionPane.showOptionDialog(
-			null,
-			message,
-			"Cloudflare Tunnel 啟動失敗",
-			JOptionPane.DEFAULT_OPTION,
-			JOptionPane.WARNING_MESSAGE,
-			null,
-			new String[] {"重試", "設定", "關閉 Tunnel"},
-			"重試"
-		));
-
-		try {
-			if (SwingUtilities.isEventDispatchThread()) {
-				dialog.run();
-			}
-			else {
-				// 外部函式：所有 Cloudflare 錯誤選項都在 Swing EDT 顯示與操作。
-				SwingUtilities.invokeAndWait(dialog);
-			}
-		}
-		catch (InterruptedException exception) {
-			Thread.currentThread().interrupt();
-
-			return JOptionPane.CLOSED_OPTION;
-		}
-		catch (InvocationTargetException exception) {
-			return JOptionPane.CLOSED_OPTION;
-		}
-
-		return decision.get();
-	}
-
-	// 方法：在 Swing EDT 顯示不含 Token 的 ngrok 失敗處理選項。
-	private static int showNgrokFailureDecision() {
-		AtomicReference<Integer> decision = new AtomicReference<>(JOptionPane.CLOSED_OPTION);
-		Runnable dialog = () -> decision.set(JOptionPane.showOptionDialog(
-			null,
-			"ngrok 無法建立公開連線。可重試、修改設定，或只以本機模式啟動。",
-			"ngrok 啟動失敗",
-			JOptionPane.DEFAULT_OPTION,
-			JOptionPane.WARNING_MESSAGE,
-			null,
-			new String[] {"重試", "設定", "本機模式"},
-			"重試"
-		));
-
-		try {
-			if (SwingUtilities.isEventDispatchThread()) {
-				dialog.run();
-			}
-			else {
-				// 外部函式：所有 ngrok 錯誤選項都在 Swing EDT 顯示與操作。
-				SwingUtilities.invokeAndWait(dialog);
-			}
-		}
-		catch (InterruptedException exception) {
-			Thread.currentThread().interrupt();
-
-			return JOptionPane.CLOSED_OPTION;
-		}
-		catch (InvocationTargetException exception) {
-			return JOptionPane.CLOSED_OPTION;
-		}
-
-		return decision.get();
+		onEdt(() -> windowModel.updateStatus(status));
 	}
 
 	// 方法：同步公開網址至主視窗；未啟用時顯示本機模式。

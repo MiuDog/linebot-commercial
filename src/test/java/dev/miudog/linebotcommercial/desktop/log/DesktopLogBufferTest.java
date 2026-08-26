@@ -21,9 +21,32 @@ class DesktopLogBufferTest {
 		assertThat(buffer.entries("ALL", ""))
 			.extracting(DesktopLogEntry::text)
 			.containsExactly(
-				"{\"level\":\"WARN\",\"message\":\"second\"}",
-				"{\"level\":\"ERROR\",\"message\":\"third\"}"
+				"[WARN] [Application] second",
+				"[ERROR] [Application] third"
 			);
+	}
+
+	// 方法：JSON Log 只顯示短元件名稱與訊息，不把內部欄位外殼交給客戶閱讀。
+	@Test
+	void shouldFormatJsonAsReadableDesktopText() {
+		DesktopLogBuffer buffer = new DesktopLogBuffer(10);
+
+		buffer.add("{\"timestamp\":0,\"level\":\"INFO\",\"loggerName\":\"dev.example.LineWebhookController\",\"message\":\"event=line_request_completed durationMs={}\",\"formattedMessage\":\"event=line_request_completed durationMs=12\",\"sequenceNumber\":9}");
+
+		assertThat(buffer.entries("ALL", "")).singleElement().satisfies(entry -> assertThat(entry.text())
+			.isEqualTo("[1970-01-01T00:00:00Z] [INFO] [LineWebhookController] event=line_request_completed durationMs=12")
+			.doesNotContain("sequenceNumber", "loggerName"));
+	}
+
+	// 方法：損毀的超大 timestamp 不可中斷後續 Log 顯示。
+	@Test
+	void shouldIgnoreAnInvalidTimestamp() {
+		DesktopLogBuffer buffer = new DesktopLogBuffer(10);
+
+		buffer.add("{\"timestamp\":999999999999999999999,\"level\":\"INFO\",\"message\":\"ready\"}");
+
+		assertThat(buffer.entries("ALL", "")).singleElement().satisfies(entry -> assertThat(entry.text())
+			.isEqualTo("[INFO] [Application] ready"));
 	}
 
 	// 方法：依等級與文字搜尋篩選，並遮罩常見 JSON 密鑰與 Bearer Token。

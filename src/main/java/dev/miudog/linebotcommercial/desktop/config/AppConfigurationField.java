@@ -1,6 +1,7 @@
 package dev.miudog.linebotcommercial.desktop.config;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -15,6 +16,8 @@ public enum AppConfigurationField {
 	PUBLIC_BASE_URL("PUBLIC_BASE_URL", "app.public-base-url", "公開 HTTPS 網址", Group.SYSTEM, false, false, "", Format.HTTPS_URL),
 	LINE_BOT_CHANNEL_TOKEN("LINE_BOT_CHANNEL_TOKEN", "line.bot.channel-token", "LINE Channel Token", Group.LINE, true, true, "", Format.NONE),
 	LINE_BOT_CHANNEL_SECRET("LINE_BOT_CHANNEL_SECRET", "line.bot.channel-secret", "LINE Channel Secret", Group.LINE, true, true, "", Format.NONE),
+	LINE_CONNECT_TIMEOUT_SECONDS("LINE_CONNECT_TIMEOUT_SECONDS", "app.line.connect-timeout-seconds", "LINE 連線逾時秒數", Group.LINE, false, false, "10", Format.POSITIVE_INTEGER),
+	LINE_REQUEST_TIMEOUT_SECONDS("LINE_REQUEST_TIMEOUT_SECONDS", "app.line.request-timeout-seconds", "LINE 請求逾時秒數", Group.LINE, false, false, "30", Format.POSITIVE_INTEGER),
 	AI_API_URL("AI_API_URL", "app.ai.api-url", "AI API 網址", Group.AI, false, false, "https://api.openai.com/v1", Format.HTTP_URL),
 	AI_API_KEY("AI_API_KEY", "app.ai.api-key", "AI API Key", Group.AI, true, false, "", Format.NONE),
 	AI_MODEL("AI_MODEL", "app.ai.model", "AI Model", Group.AI, false, false, "", Format.NONE),
@@ -24,11 +27,10 @@ public enum AppConfigurationField {
 	AI_INPUT_RATE_PER_MILLION("AI_INPUT_RATE_PER_MILLION", "app.ai.pricing.input-per-million", "AI 輸入單價", Group.AI, false, false, "", Format.NON_NEGATIVE_DECIMAL),
 	AI_CACHED_INPUT_RATE_PER_MILLION("AI_CACHED_INPUT_RATE_PER_MILLION", "app.ai.pricing.cached-input-per-million", "AI 快取輸入單價", Group.AI, false, false, "", Format.NON_NEGATIVE_DECIMAL),
 	AI_OUTPUT_RATE_PER_MILLION("AI_OUTPUT_RATE_PER_MILLION", "app.ai.pricing.output-per-million", "AI 輸出單價", Group.AI, false, false, "", Format.NON_NEGATIVE_DECIMAL),
-	VOICE_COMMANDS_ENABLED("VOICE_COMMANDS_ENABLED", "app.voice.enabled", "啟用語音命令", Group.VOICE, false, false, "false", Format.BOOLEAN),
-	VOICE_MCP_SERVER_URL("VOICE_MCP_SERVER_URL", "app.voice.mcp-server-url", "語音 MCP 網址", Group.VOICE, false, false, "", Format.HTTP_URL),
-	VOICE_MCP_AUTH_TOKEN("VOICE_MCP_AUTH_TOKEN", "app.voice.mcp-auth-token", "語音 MCP Token", Group.VOICE, true, false, "", Format.NONE),
 	QUOTATION_POSTBACK_SECRET("QUOTATION_POSTBACK_SECRET", "QUOTATION_POSTBACK_SECRET", "報價 Postback Secret", Group.QUOTATION, true, false, "", Format.NONE),
 	QUOTATION_IMAGE_LINK_SECRET("QUOTATION_IMAGE_LINK_SECRET", "QUOTATION_IMAGE_LINK_SECRET", "報價圖片連結 Secret", Group.QUOTATION, true, false, "", Format.NONE),
+	QUOTATION_TAX_RATE("QUOTATION_TAX_RATE", "app.quotation.tax-rate", "報價稅率", Group.QUOTATION, false, false, "0.05", Format.RATE),
+	QUOTATION_VALIDITY_DAYS("QUOTATION_VALIDITY_DAYS", "app.quotation.validity-days", "報價有效天數", Group.QUOTATION, false, false, "15", Format.DAYS_1_TO_3650),
 	QUOTATION_DELIVERY_LINK_TTL_HOURS("QUOTATION_DELIVERY_LINK_TTL_HOURS", "app.quotation.delivery-link-ttl-hours", "交付連結有效小時", Group.QUOTATION, false, false, "168", Format.POSITIVE_INTEGER),
 	QUOTATION_PDF_TIMEOUT_SECONDS("QUOTATION_PDF_TIMEOUT_SECONDS", "app.quotation.pdf-timeout-seconds", "PDF Timeout 秒數", Group.QUOTATION, false, false, "90", Format.POSITIVE_INTEGER),
 	QUOTATION_GENERATION_QUEUE_CAPACITY("QUOTATION_GENERATION_QUEUE_CAPACITY", "app.quotation.generation-queue-capacity", "報價佇列容量", Group.QUOTATION, false, false, "20", Format.POSITIVE_INTEGER),
@@ -37,7 +39,7 @@ public enum AppConfigurationField {
 	QUOTATION_GENERATION_POLL_INTERVAL_MS("QUOTATION_GENERATION_POLL_INTERVAL_MS", "app.quotation.generation-poll-interval-ms", "報價輪詢週期", Group.QUOTATION, false, false, "5000", Format.POSITIVE_INTEGER),
 	QUOTATION_GENERATION_POLL_INITIAL_DELAY_MS("QUOTATION_GENERATION_POLL_INITIAL_DELAY_MS", "app.quotation.generation-poll-initial-delay-ms", "報價首次輪詢延遲", Group.QUOTATION, false, false, "5000", Format.NON_NEGATIVE_INTEGER),
 	QUOTATION_GENERATION_WORKER_ENABLED("QUOTATION_GENERATION_WORKER_ENABLED", "app.quotation.generation-worker-enabled", "啟用報價背景工作", Group.QUOTATION, false, false, "true", Format.BOOLEAN),
-	METHOD_TRACING_ENABLED("METHOD_TRACING_ENABLED", "app.observability.method-tracing-enabled", "啟用方法追蹤", Group.LOG, false, false, "true", Format.BOOLEAN),
+	METHOD_TRACING_ENABLED("METHOD_TRACING_ENABLED", "app.observability.method-tracing-enabled", "啟用方法追蹤", Group.LOG, false, false, "false", Format.BOOLEAN),
 	LOG_LEVEL_ROOT("LOG_LEVEL_ROOT", "logging.level.root", "Log Level", Group.LOG, false, false, "INFO", Format.LOG_LEVEL),
 	LOG_MAX_FILE_SIZE("LOG_MAX_FILE_SIZE", "LOG_MAX_FILE_SIZE", "Log 單檔大小", Group.LOG, false, false, "20MB", Format.DATA_SIZE),
 	LOG_MAX_HISTORY("LOG_MAX_HISTORY", "LOG_MAX_HISTORY", "Log 保留天數", Group.LOG, false, false, "30", Format.POSITIVE_INTEGER),
@@ -48,9 +50,38 @@ public enum AppConfigurationField {
 	NGROK_AUTHTOKEN("NGROK_AUTHTOKEN", "app.desktop.ngrok.authtoken", "ngrok Authtoken", Group.NGROK, true, false, "", Format.NONE),
 	CLOUDFLARE_ENABLED("CLOUDFLARE_ENABLED", "app.desktop.cloudflare.enabled", "使用 Cloudflare", Group.CLOUDFLARE, false, false, "false", Format.BOOLEAN),
 	CLOUDFLARE_AGENT_PATH("CLOUDFLARE_AGENT_PATH", "app.desktop.cloudflare.agent-path", "cloudflared 執行檔", Group.CLOUDFLARE, false, false, "", Format.ABSOLUTE_PATH),
+	CLOUDFLARE_PROTOCOL("CLOUDFLARE_PROTOCOL", "app.desktop.cloudflare.protocol", "Cloudflare 連線協定", Group.CLOUDFLARE, false, false, "http2", Format.CLOUDFLARE_PROTOCOL),
+	CLOUDFLARE_TUNNEL_ID("CLOUDFLARE_TUNNEL_ID", "app.desktop.cloudflare.tunnel-id", "此 App 專用 Tunnel ID", Group.CLOUDFLARE, false, false, "", Format.UUID),
 	CLOUDFLARE_TUNNEL_TOKEN("CLOUDFLARE_TUNNEL_TOKEN", "app.desktop.cloudflare.tunnel-token", "Cloudflare Tunnel Token", Group.CLOUDFLARE, true, false, "", Format.NONE);
 
 	//#region 欄位
+
+	private static final Set<AppConfigurationField> CUSTOMER_HIDDEN_FIELDS = Set.of(
+		SERVER_PORT,
+		LINE_CONNECT_TIMEOUT_SECONDS,
+		LINE_REQUEST_TIMEOUT_SECONDS,
+		AI_TIMEOUT_SECONDS,
+		AI_PRICE_CURRENCY,
+		AI_INPUT_RATE_PER_MILLION,
+		AI_CACHED_INPUT_RATE_PER_MILLION,
+		AI_OUTPUT_RATE_PER_MILLION,
+		QUOTATION_DELIVERY_LINK_TTL_HOURS,
+		QUOTATION_PDF_TIMEOUT_SECONDS,
+		QUOTATION_GENERATION_QUEUE_CAPACITY,
+		QUOTATION_GENERATION_LEASE_SECONDS,
+		QUOTATION_GENERATION_BATCH_SIZE,
+		QUOTATION_GENERATION_POLL_INTERVAL_MS,
+		QUOTATION_GENERATION_POLL_INITIAL_DELAY_MS,
+		QUOTATION_GENERATION_WORKER_ENABLED,
+		METHOD_TRACING_ENABLED,
+		LOG_MAX_FILE_SIZE,
+		LOG_MAX_HISTORY,
+		LOG_TOTAL_SIZE_CAP,
+		RESOURCE_LOG_INTERVAL_MS
+	);
+	private static final List<AppConfigurationField> CUSTOMER_VISIBLE_FIELDS = Arrays.stream(values())
+		.filter(AppConfigurationField::customerVisible)
+		.toList();
 
 	private final String environmentKey;
 	private final String propertyKey;
@@ -130,6 +161,23 @@ public enum AppConfigurationField {
 		return format;
 	}
 
+	// 方法：判斷欄位是否適合由客戶在一般 App 設定畫面直接調整。
+	public boolean customerVisible() {
+		return !CUSTOMER_HIDDEN_FIELDS.contains(this);
+	}
+
+	// 方法：依宣告順序取得客戶日常操作需要的精簡設定欄位。
+	public static List<AppConfigurationField> customerVisibleFields() {
+		return CUSTOMER_VISIBLE_FIELDS;
+	}
+
+	// 方法：依群組取得客戶日常操作需要的精簡設定欄位。
+	public static List<AppConfigurationField> customerVisibleFields(Group group) {
+		return customerVisibleFields().stream()
+			.filter(field -> field.group == group)
+			.toList();
+	}
+
 	// 方法：取得所有需要加密保存的欄位。
 	public static Set<AppConfigurationField> secretFields() {
 		return Arrays.stream(values())
@@ -153,7 +201,6 @@ public enum AppConfigurationField {
 		SYSTEM,
 		LINE,
 		AI,
-		VOICE,
 		QUOTATION,
 		LOG,
 		NGROK,
@@ -170,10 +217,14 @@ public enum AppConfigurationField {
 		POSITIVE_INTEGER,
 		NON_NEGATIVE_INTEGER,
 		NON_NEGATIVE_DECIMAL,
+		RATE,
+		DAYS_1_TO_3650,
 		HTTP_URL,
 		HTTPS_URL,
 		ABSOLUTE_PATH,
 		LOG_LEVEL,
-		DATA_SIZE
+		DATA_SIZE,
+		UUID,
+		CLOUDFLARE_PROTOCOL
 	}
 }

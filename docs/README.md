@@ -1,6 +1,6 @@
 # 文件樹
 
-`linebot-commercial` 的內部維護文件。版本 `@linebot-commercial@0.1.0`。
+`linebot-commercial` 的內部維護文件。版本 `@linebot-commercial@0.3.0`。
 
 ---
 
@@ -73,6 +73,18 @@ LINE 群組是資產的收件與取件窗口：
 核心設計仍是「**指標法**」：**磁碟只負責保存，資料庫負責組織**。
 圖片確認歸檔後不再因標籤變更而搬動；完整方法級呼叫順序見
 [事件起點與完整呼叫鏈](06-event-call-chains.md)。
+
+## Cloudflare Tunnel 與移機
+
+Commercial 與 Document 必須各自建立一條 Tunnel，分別使用不同的 Tunnel ID、Token 與公開網域。若把同一個 Token 安裝到另一台電腦，Cloudflare 會把它視為同一條 Tunnel 的另一個 Connector，而不是自動取代舊電腦。
+
+同一台 Windows 電腦上，App 會阻止兩個產品同時占用相同 Tunnel；啟動後主畫面會顯示電腦名稱、Tunnel ID 與 Connector ID。跨電腦移機請依序進行：
+
+1. 先關閉舊電腦上的 App，確認舊 Connector 已離線。
+2. 在新電腦填入該 App 專用的 Tunnel ID 與 Token，確認連線測試通過。
+3. 回到 Cloudflare 更新 Tunnel Token，使舊電腦保存的 Token 失效。
+
+App 不會要求 Cloudflare API 管理權限，因此無法自行關閉另一台電腦上的 Connector；這項限制刻意保留，避免客戶端軟體持有可修改 Cloudflare 帳號的高權限憑證。
 
 資產庫位置由 `ASSETS_ROOT` 指定，可以是任意路徑，例如 `F:/資產庫`：
 

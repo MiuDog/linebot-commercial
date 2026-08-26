@@ -9,12 +9,14 @@ import java.util.Objects;
 public record CloudflareConnection(
 	boolean enabled,
 	String publicUrl,
-	AppConfiguration configuration
+	AppConfiguration configuration,
+	CloudflareAgentIdentity identity
 ) {
 
 	// 方法：建立不允許 null 的 Cloudflare 連線結果。
 	public CloudflareConnection {
 		publicUrl = Objects.requireNonNullElse(publicUrl, "");
 		Objects.requireNonNull(configuration, "桌面設定不可為 null");
+		identity = Objects.requireNonNullElseGet(identity, CloudflareAgentIdentity::empty);
 	}
 }

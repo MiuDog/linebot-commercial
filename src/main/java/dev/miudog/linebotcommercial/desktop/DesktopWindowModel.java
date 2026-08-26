@@ -1,5 +1,6 @@
 package dev.miudog.linebotcommercial.desktop;
 
+import dev.miudog.linebotcommercial.desktop.cloudflare.CloudflareAgentIdentity;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -16,6 +17,7 @@ public final class DesktopWindowModel {
 	private String localUrl;
 	private DesktopStatus status;
 	private String publicUrl;
+	private String cloudflareIdentity;
 
 	//#endregion
 
@@ -29,6 +31,7 @@ public final class DesktopWindowModel {
 		this.localUrl = "http://127.0.0.1:" + port + "/admin";
 		this.status = DesktopStatus.STOPPED;
 		this.publicUrl = "未啟用";
+		this.cloudflareIdentity = "未啟用";
 	}
 
 	//#endregion
@@ -47,6 +50,12 @@ public final class DesktopWindowModel {
 		publish();
 	}
 
+	// 方法：更新 Cloudflare Tunnel、Connector 與本機電腦身分並發布快照。
+	public synchronized void updateCloudflareIdentity(CloudflareAgentIdentity identity) {
+		this.cloudflareIdentity = Objects.requireNonNull(identity, "Cloudflare connector 身分不可為 null").displayText();
+		publish();
+	}
+
 	// 方法：設定變更後更新本機服務 Port 並發布完整快照。
 	public synchronized void updatePort(int port) {
 		if (port < 1 || port > 65535) throw new IllegalArgumentException("本機服務 Port 無效");
@@ -59,7 +68,7 @@ public final class DesktopWindowModel {
 	public synchronized DesktopWindowSnapshot snapshot() {
 		String callbackUrl = publicUrl.startsWith("http") ? publicUrl + "/callback" : "未啟用";
 
-		return new DesktopWindowSnapshot(status, statusText(status), localUrl, publicUrl, callbackUrl);
+		return new DesktopWindowSnapshot(status, statusText(status), localUrl, publicUrl, callbackUrl, cloudflareIdentity);
 	}
 
 	// 方法：加入視窗或系統匣顯示狀態監聽器。

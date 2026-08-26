@@ -23,22 +23,22 @@
 欄位分組：
 
 - 必要：LINE Channel Token、LINE Channel Secret、資料根目錄。
+- LINE 網路：連線逾時與單次請求逾時秒數。
 - AI：API URL、API Key、Model、必要欄位、Timeout、價格設定。
-- 語音：啟用狀態、MCP URL、MCP Token、相關 Model。
-- 報價：簽章 Secret、圖片連結 Secret、輸出與工作排程設定。
+- 報價：簽章 Secret、圖片連結 Secret、輸出、工作排程、營業稅率與有效天數設定。
 - Log：Level、單檔大小、保留天數、總容量及資源記錄週期。
 - ngrok：是否啟用、agent 路徑、Authtoken；公開網址由 `ngrok-connector` 回填。
+- Cloudflare：是否啟用、agent 路徑、Tunnel Token 與 `auto`／`http2`／`quic` 協定；公司 VPN 預設 `http2`。
 
 以下欄位視為機密，畫面只可顯示遮罩值：
 
 - `LINE_BOT_CHANNEL_TOKEN`
 - `LINE_BOT_CHANNEL_SECRET`
 - `AI_API_KEY`
-- `VOICE_MCP_AUTH_TOKEN`
-- `ASSETS_SYNC_TOKEN`
 - `QUOTATION_POSTBACK_SECRET`
 - `QUOTATION_IMAGE_LINK_SECRET`
 - `NGROK_AUTHTOKEN`
+- `CLOUDFLARE_TUNNEL_TOKEN`
 
 ## Tech Stack
 

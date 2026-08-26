@@ -13,10 +13,13 @@ $ErrorActionPreference = "Stop"
 
 $ResolvedInstaller = [System.IO.Path]::GetFullPath($InstallerPath)
 $ProductName = "LinebotCommercial"
+$ServiceName = "${ProductName}Service"
 $InstallRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "Programs\$ProductName"))
 $DataRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $ProductName))
 $LauncherPath = Join-Path $InstallRoot "$ProductName.exe"
+$ServiceLauncherPath = Join-Path $InstallRoot "$ServiceName.exe"
 $UninstallerPath = Join-Path $InstallRoot "Uninstall.exe"
+$RunKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $InstalledNoticesPath = Join-Path $InstallRoot "THIRD-PARTY-NOTICES.md"
 $InstalledSbomPath = Join-Path $InstallRoot "sbom.cdx.json"
 $EvidenceRoot = [System.IO.Path]::GetFullPath((Join-Path (Split-Path $ResolvedInstaller -Parent) "installer-evidence"))
@@ -68,7 +71,7 @@ function Wait-ProductPathRemoval {
 		[string]$Path
 	)
 
-	for ($Attempt = 0; $Attempt -lt 100; $Attempt++) {
+	for ($Attempt = 0; $Attempt -lt 300; $Attempt++) {
 		if (-not (Test-Path -LiteralPath $Path)) {
 			return
 
@@ -77,6 +80,26 @@ function Wait-ProductPathRemoval {
 		# 外部函式：短暫等待 Uninstaller 完成 Windows 延後的檔案刪除。
 		Start-Sleep -Milliseconds 100
 	}
+}
+
+# 方法：安全讀取背景服務登入啟動值，不把尚未註冊或已移除視為 PowerShell 錯誤。
+function Get-AutoStartValue {
+	# 外部平台：讀取目前使用者的 Windows 登入啟動設定，供安裝與卸載狀態比對。
+	$RunProperties = Get-ItemProperty -Path $RunKey -ErrorAction SilentlyContinue
+
+	if ($null -eq $RunProperties) {
+		return $null
+
+	}
+
+	$RunProperty = $RunProperties.PSObject.Properties[$ServiceName]
+
+	if ($null -eq $RunProperty) {
+		return $null
+
+	}
+
+	return [string]$RunProperty.Value
 }
 
 #endregion
@@ -109,6 +132,9 @@ $Evidence = [ordered]@{
 	lifecycleExecuted = $false
 	defaultUninstallPreservedData = $false
 	purgeRemovedData = $false
+	serviceLauncherInstalled = $false
+	autoStartRegistered = $false
+	autoStartRemoved = $false
 	noticesInstalled = $false
 	sbomInstalled = $false
 }
@@ -134,6 +160,18 @@ if ($ExecuteLifecycle) {
 		throw "首次安裝後找不到 App launcher。"
 	}
 
+	if (-not (Test-Path -LiteralPath $ServiceLauncherPath -PathType Leaf)) {
+		throw "首次安裝後找不到背景 Service launcher。"
+	}
+
+	# 外部平台：讀取目前使用者的 Windows 登入啟動設定，確認背景服務已完成註冊。
+	$AutoStartValue = Get-AutoStartValue
+	$ExpectedAutoStartValue = "`"$ServiceLauncherPath`""
+
+	if ($AutoStartValue -ne $ExpectedAutoStartValue) {
+		throw "背景 Service 的 Windows 登入啟動設定不正確。"
+	}
+
 	if (-not (Test-Path -LiteralPath $InstalledNoticesPath -PathType Leaf)) {
 		throw "首次安裝後找不到第三方授權聲明。"
 	}
@@ -144,6 +182,8 @@ if ($ExecuteLifecycle) {
 
 	$Evidence.noticesInstalled = $true
 	$Evidence.sbomInstalled = $true
+	$Evidence.serviceLauncherInstalled = $true
+	$Evidence.autoStartRegistered = $true
 
 	Invoke-InstallerProcess -Executable $ResolvedInstaller -Arguments @("/S")
 
@@ -163,8 +203,16 @@ if ($ExecuteLifecycle) {
 		throw "預設解除安裝錯誤刪除了使用者資料。"
 	}
 
+	# 外部平台：再次讀取 Windows 登入啟動設定，確認解除安裝沒有留下失效入口。
+	$AutoStartValue = Get-AutoStartValue
+
+	if ($null -ne $AutoStartValue) {
+		throw "解除安裝後仍殘留背景 Service 的 Windows 登入啟動設定。"
+	}
+
 	$Evidence.lifecycleExecuted = $true
 	$Evidence.defaultUninstallPreservedData = $true
+	$Evidence.autoStartRemoved = $true
 
 	# 步驟五：只有資料目錄原本不存在且明確指定時才驗證完整 purge。
 	if ($TestPurge) {

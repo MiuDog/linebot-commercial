@@ -28,16 +28,19 @@ public class QuotationConfirmationService {
 	private final JdbcTemplate jdbc;
 	private final TransactionTemplate transactions;
 	private final QuotationGenerationJobRepository generationJobs;
+	private final QuotationBusinessRules businessRules;
 
 	// 方法：建立正式確認交易服務。
 	public QuotationConfirmationService(
 		JdbcTemplate jdbc,
 		PlatformTransactionManager transactionManager,
-		QuotationGenerationJobRepository generationJobs
+		QuotationGenerationJobRepository generationJobs,
+		QuotationBusinessRules businessRules
 	) {
 		this.jdbc = jdbc;
 		this.transactions = new TransactionTemplate(transactionManager);
 		this.generationJobs = generationJobs;
+		this.businessRules = businessRules;
 	}
 
 	// 方法：驗證確認意圖，並以冪等交易配置流水號與建立快照。
@@ -77,7 +80,7 @@ public class QuotationConfirmationService {
 			? "S" + compactDate + String.format("%02d", sequence)
 			: compactDate + String.format("%02d", sequence);
 		String fileBaseName = draftRecord.companyName() + "-" + draftRecord.workName() + " " + folderName;
-		LocalDate validUntil = quotationDate.plusDays(15);
+		LocalDate validUntil = quotationDate.plusDays(businessRules.validityDays());
 
 		long quotationId = insertQuotation(
 			draftRecord,
@@ -228,7 +231,7 @@ public class QuotationConfirmationService {
 					contact_name, project_location, sales_representative, additional_header,
 					subtotal, tax_rate, tax_amount, total_amount, status
 				)
-				VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.05, ?, ?, 'CONFIRMED')
+				VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED')
 				""", Statement.RETURN_GENERATED_KEYS);
 			statement.setLong(1, draft.draftId());
 			statement.setString(2, quotationNumber);
@@ -250,8 +253,9 @@ public class QuotationConfirmationService {
 			statement.setString(18, draft.salesRepresentative());
 			statement.setString(19, draft.additionalHeader());
 			statement.setBigDecimal(20, calculation.subtotal());
-			statement.setBigDecimal(21, calculation.tax());
-			statement.setBigDecimal(22, calculation.total());
+			statement.setBigDecimal(21, businessRules.taxRate());
+			statement.setBigDecimal(22, calculation.tax());
+			statement.setBigDecimal(23, calculation.total());
 			return statement;
 
 		}, keys);

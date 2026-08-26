@@ -1,5 +1,6 @@
 package dev.miudog.linebotcommercial.observability;
 
+import java.util.UUID;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -9,8 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /**
  * 【跨事件觀測鏈】追蹤所有由 Spring 管理的公開專案方法，但不記錄參數或回傳值。
@@ -30,7 +29,7 @@ import java.util.UUID;
  */
 @Aspect
 @Component
-@ConditionalOnProperty(name = "app.observability.method-tracing-enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.observability.method-tracing-enabled", havingValue = "true", matchIfMissing = false)
 public class MethodTraceLogger {
 
 	private static final Logger log = LoggerFactory.getLogger("FLOW_TRACE");
@@ -39,8 +38,10 @@ public class MethodTraceLogger {
 	@Around("""
             execution(public * dev.miudog.linebotcommercial..*(..))
             && !within(dev.miudog.linebotcommercial.observability..*)
-            """)
+			""")
 	public Object trace(ProceedingJoinPoint joinPoint) throws Throwable {
+		if (!log.isDebugEnabled()) return traceFailuresOnly(joinPoint);
+
 		MethodSignature signature = (MethodSignature) joinPoint.getSignature();
 		String className = signature.getDeclaringType().getSimpleName();
 		String methodName = signature.getName();
@@ -53,11 +54,11 @@ public class MethodTraceLogger {
 		String requestId = MDC.get("requestId");
 		long startedAt = System.nanoTime();
 		// 日誌：記錄方法開始執行。
-		log.info("event=method_entered requestId={} class={} method={}", requestId, className, methodName);
+		log.debug("event=method_entered requestId={} class={} method={}", requestId, className, methodName);
 		try {
 			Object result = joinPoint.proceed();
 			// 日誌：記錄方法完成與執行耗時。
-			log.info(
+			log.debug(
 				"event=method_completed requestId={} class={} method={} durationMs={}",
 				requestId,
 				className,
@@ -82,6 +83,28 @@ public class MethodTraceLogger {
 			if (ownsRequestId) {
 				MDC.remove("requestId");
 			}
+		}
+	}
+
+	// 方法：一般 INFO 模式直接執行原方法，只在實際失敗時建立簽章與錯誤追蹤資料。
+	private Object traceFailuresOnly(ProceedingJoinPoint joinPoint) throws Throwable {
+		try {
+			return joinPoint.proceed();
+		}
+		catch (Throwable error) {
+			MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+			String requestId = MDC.get("requestId");
+
+			// 日誌：一般模式只記錄實際方法失敗，成功呼叫不產生追蹤成本。
+			log.error(
+				"event=method_failed requestId={} class={} method={} errorType={}",
+				requestId == null ? "background" : requestId,
+				signature.getDeclaringType().getSimpleName(),
+				signature.getName(),
+				error.getClass().getSimpleName()
+			);
+
+			throw error;
 		}
 	}
 

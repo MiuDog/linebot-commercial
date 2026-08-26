@@ -23,7 +23,7 @@ class AppConfigurationTest {
 			.isEqualTo(localAppData.resolve("LinebotCommercial/data").toString());
 	}
 
-	// 方法：驗證規格指定的八個機密欄位具有單一且完整的分類。
+	// 方法：驗證商用報價系統的機密欄位具有單一且完整的分類。
 	@Test
 	void shouldClassifyEverySpecifiedSecretField() {
 		Set<String> secretEnvironmentKeys = AppConfigurationField.secretFields().stream()
@@ -34,12 +34,44 @@ class AppConfigurationTest {
 			"LINE_BOT_CHANNEL_TOKEN",
 			"LINE_BOT_CHANNEL_SECRET",
 			"AI_API_KEY",
-			"VOICE_MCP_AUTH_TOKEN",
 			"QUOTATION_POSTBACK_SECRET",
 			"QUOTATION_IMAGE_LINK_SECRET",
 			"NGROK_AUTHTOKEN",
 			"CLOUDFLARE_TUNNEL_TOKEN"
 		);
+	}
+
+	// 方法：商用報價設定不得顯示文書機的語音或資產同步槽位。
+	@Test
+	void shouldContainOnlyCommercialProductGroups() {
+		assertThat(AppConfigurationField.values())
+			.extracting(AppConfigurationField::environmentKey)
+			.noneMatch(key -> key.startsWith("VOICE_") || key.startsWith("ASSETS_SYNC_"));
+		assertThat(AppConfigurationField.Group.values())
+			.extracting(Enum::name)
+			.doesNotContain("VOICE");
+	}
+
+	// 方法：客戶設定只顯示日常營運必要欄位，隱藏 token 計量與內部效能參數。
+	@Test
+	void shouldExposeOnlyCustomerRelevantFields() {
+		assertThat(AppConfigurationField.customerVisibleFields())
+			.contains(
+				AppConfigurationField.LINE_BOT_CHANNEL_TOKEN,
+				AppConfigurationField.AI_API_KEY,
+				AppConfigurationField.AI_MODEL,
+				AppConfigurationField.QUOTATION_TAX_RATE,
+				AppConfigurationField.CLOUDFLARE_TUNNEL_TOKEN
+			)
+			.doesNotContain(
+				AppConfigurationField.AI_PRICE_CURRENCY,
+				AppConfigurationField.AI_INPUT_RATE_PER_MILLION,
+				AppConfigurationField.AI_CACHED_INPUT_RATE_PER_MILLION,
+				AppConfigurationField.AI_OUTPUT_RATE_PER_MILLION,
+				AppConfigurationField.QUOTATION_GENERATION_QUEUE_CAPACITY,
+				AppConfigurationField.METHOD_TRACING_ENABLED,
+				AppConfigurationField.RESOURCE_LOG_INTERVAL_MS
+			);
 	}
 
 	// 方法：驗證修改設定會建立新物件，不會改變既有設定快照。

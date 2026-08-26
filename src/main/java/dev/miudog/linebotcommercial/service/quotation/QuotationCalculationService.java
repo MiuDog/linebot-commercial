@@ -19,7 +19,6 @@ import java.util.Set;
 @Service
 public class QuotationCalculationService {
 
-	private static final BigDecimal TAX_RATE = new BigDecimal("0.05");
 	private static final int MONEY_SCALE = 2;
 	private static final int MAXIMUM_FIXED_SCHEME_CUSTOM_ITEMS = 2;
 	private static final int MAXIMUM_DYNAMIC_ITEMS = 200;
@@ -28,10 +27,15 @@ public class QuotationCalculationService {
 	private static final Set<String> SUPPORTED_SCHEMES = Set.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES");
 
 	private final QuotationAdminRepository repository;
+	private final QuotationBusinessRules businessRules;
 
 	// 方法：建立報價列解析與計價服務。
-	public QuotationCalculationService(QuotationAdminRepository repository) {
+	public QuotationCalculationService(
+		QuotationAdminRepository repository,
+		QuotationBusinessRules businessRules
+	) {
 		this.repository = repository;
+		this.businessRules = businessRules;
 	}
 
 	// 方法：建立完整報價列並由程式重算複價、小計、稅額與總額。
@@ -54,7 +58,7 @@ public class QuotationCalculationService {
 			.filter(amount -> amount != null)
 			.reduce(money(BigDecimal.ZERO), BigDecimal::add)
 			.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-		BigDecimal tax = money(subtotal.multiply(TAX_RATE));
+		BigDecimal tax = money(subtotal.multiply(businessRules.taxRate()));
 		BigDecimal total = money(subtotal.add(tax));
 
 		// 步驟 3：船用只提供合計，其餘方案依各列客戶可見狀態產生明細。

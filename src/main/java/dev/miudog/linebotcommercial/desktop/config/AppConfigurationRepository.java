@@ -69,7 +69,7 @@ public final class AppConfigurationRepository {
 		try {
 			Properties publicProperties = loadProperties(Files.readAllBytes(publicFile));
 			EnumMap<AppConfigurationField, String> values = new EnumMap<>(defaults.values());
-			int schemaVersion = parseSchemaVersion(publicProperties);
+			int loadedSchemaVersion = parseSchemaVersion(publicProperties);
 
 			// 步驟一：只載入已知且非機密的一般設定欄位。
 			applyKnownValues(publicProperties, values, false);
@@ -82,6 +82,9 @@ public final class AppConfigurationRepository {
 				plaintextSecrets = secretStore.unprotect(protectedSecrets);
 				applyKnownValues(loadProperties(plaintextSecrets), values, true);
 			}
+
+			// 步驟三：套用一次性效能遷移，避免舊版隱藏診斷值永久常駐。
+			int schemaVersion = migrate(loadedSchemaVersion, values);
 
 			// 日誌：記錄設定成功載入，不輸出任何欄位值或機密內容。
 			log.info("event=desktop_configuration_loaded schemaVersion={} publicFile={} secretFilePresent={}",
@@ -207,6 +210,25 @@ public final class AppConfigurationRepository {
 		catch (NumberFormatException exception) {
 			return AppConfiguration.CURRENT_SCHEMA_VERSION;
 		}
+	}
+
+	// 方法：升級舊設定並關閉曾經永久保存的方法追蹤，保留目前版本的明確診斷設定。
+	private int migrate(
+		int schemaVersion,
+		Map<AppConfigurationField, String> values
+	) {
+		if (schemaVersion >= AppConfiguration.CURRENT_SCHEMA_VERSION) return schemaVersion;
+
+		values.put(AppConfigurationField.METHOD_TRACING_ENABLED, "false");
+
+		// 日誌：記錄設定格式與效能保護已升級，不輸出任何設定值。
+		log.info(
+			"event=desktop_configuration_migrated fromSchemaVersion={} toSchemaVersion={} methodTracingReset=true",
+			schemaVersion,
+			AppConfiguration.CURRENT_SCHEMA_VERSION
+		);
+
+		return AppConfiguration.CURRENT_SCHEMA_VERSION;
 	}
 
 	// 方法：先建立兩份暫存檔，再共同替換正式檔並於失敗時回復舊版。

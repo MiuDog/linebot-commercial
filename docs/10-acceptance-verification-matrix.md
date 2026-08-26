@@ -37,7 +37,7 @@
 | AC-19 | 通過 | `QuotationWorkbookServiceTest`、`QuotationContractTest` | `outputs/excel-templates/previews/final-single/` 有五格式預覽；五份範本曾由 Microsoft Excel 開啟核對，原圖、蓋章、正定信箱與電話保留。 |
 | AC-20 | 部分通過 | 完整 Maven `309/309` 測試、package、各 Controller MockMvc、`LocalAdminAccessFilterTest`、packaged app 瀏覽器檢查 | 完整測試、打包、管理頁 reload／console、桌面與窄螢幕版面均通過；尚缺使用真實 LINE／AI 憑證的沙盒流程及有印表機的 PDF 成功路徑。 |
 | AC-21 | 通過 | `LogbackConfigurationTest`、`RequestCorrelationFilterTest`、`MethodTraceLoggerIntegrationTest`、`SensitiveDataSanitizerTest`、`OperationalStatusLoggerTest` | `docs/09-observability-runbook.md` 記錄輪替、correlation ID 與敏感資料處理。 |
-| AC-22 | 通過 | `AiUsageCostCalculatorTest`、`AiUsageAuditServiceTest`、`AiExtractionServiceTest`、`OpenAiVoiceGatewayTest`、`ObservabilitySecurityConfigurationTest` | 報價、圖片提取、語音轉錄與語音任務的成功、HTTP 錯誤、逾時／網路錯誤、未設定皆留下同 correlation ID 的安全稽核；未知 token 為 `null`，缺費率為 `UNCONFIGURED`，不猜價。 |
+| AC-22 | 通過 | `AiUsageCostCalculatorTest`、`AiUsageAuditServiceTest`、`AiExtractionServiceTest`、`ObservabilitySecurityConfigurationTest` | 報價與圖片提取的成功、HTTP 錯誤、逾時／網路錯誤、未設定皆留下同 correlation ID 的安全稽核；未知 token 為 `null`，缺費率為 `UNCONFIGURED`，不猜價。 |
 
 ## Packaged app 瀏覽器證據
 

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -38,20 +39,28 @@ class CloudflareProcessTest {
 		Path agent = temporaryDirectory.resolve("cloudflared.exe").toAbsolutePath();
 		Files.write(agent, new byte[] {0});
 		Process child = mock(Process.class);
+		when(child.getInputStream()).thenReturn(InputStream.nullInputStream());
 		ProcessBuilder[] capturedBuilder = new ProcessBuilder[1];
 		CloudflareProcess process = new CloudflareProcess(builder -> {
 			capturedBuilder[0] = builder;
 
 			return child;
 
-		});
+		}, () -> 23001, (port, timeout) -> true);
 
-		process.start(agent, "ey-test-sensitive-token");
+		process.start(agent, "ey-test-sensitive-token", CloudflareProtocol.HTTP2);
 
 		assertThat(capturedBuilder[0].command())
 			.containsExactly(
 				agent.toString(),
 				"tunnel",
+				"--no-autoupdate",
+				"--protocol",
+				"http2",
+				"--loglevel",
+				"info",
+				"--metrics",
+				"127.0.0.1:23001",
 				"run"
 			)
 			.doesNotContain("ey-test-sensitive-token");
@@ -65,12 +74,37 @@ class CloudflareProcessTest {
 		Files.write(agent, new byte[] {0});
 		Process child = mock(Process.class);
 		when(child.isAlive()).thenReturn(true);
-		CloudflareProcess process = new CloudflareProcess(builder -> child);
+		when(child.getInputStream()).thenReturn(InputStream.nullInputStream());
+		CloudflareProcess process = new CloudflareProcess(
+			builder -> child,
+			() -> 23002,
+			(port, timeout) -> true
+		);
 
-		process.start(agent, "test-token");
+		process.start(agent, "test-token", CloudflareProtocol.HTTP2);
 		process.stop(Duration.ofMillis(50));
 
 		verify(child).destroy();
 		assertThat(process.status()).isEqualTo(CloudflareStatus.STOPPED);
+	}
+
+	// 方法：只有 readiness endpoint 成功時才把 Tunnel 視為可用。
+	@Test
+	void shouldRequireTheCloudflareReadinessEndpoint() throws Exception {
+		Path agent = temporaryDirectory.resolve("cloudflared.exe").toAbsolutePath();
+		Files.write(agent, new byte[] {0});
+		Process child = mock(Process.class);
+		when(child.isAlive()).thenReturn(true);
+		when(child.getInputStream()).thenReturn(InputStream.nullInputStream());
+		CloudflareProcess process = new CloudflareProcess(
+			builder -> child,
+			() -> 23003,
+			(port, timeout) -> port == 23003
+		);
+
+		process.start(agent, "test-token", CloudflareProtocol.HTTP2);
+
+		assertThat(process.awaitReady(Duration.ofSeconds(1))).isTrue();
+		assertThat(process.status()).isEqualTo(CloudflareStatus.RUNNING);
 	}
 }

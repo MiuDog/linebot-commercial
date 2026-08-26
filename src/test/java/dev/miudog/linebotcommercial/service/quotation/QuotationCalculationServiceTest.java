@@ -18,10 +18,37 @@ class QuotationCalculationServiceTest {
 	QuotationAdminRepository repository;
 	QuotationCalculationService service;
 
+	// 方法：以正式預設報價規則建立計價服務。
 	@BeforeEach
 	void setUp() {
 		repository = mock(QuotationAdminRepository.class);
-		service = new QuotationCalculationService(repository);
+		service = new QuotationCalculationService(
+			repository,
+			new QuotationBusinessRules(new BigDecimal("0.05"), 15)
+		);
+	}
+
+	// 方法：驗證計價結果使用注入的客戶稅率，不再依賴固定 5%。
+	@Test
+	void calculatesTaxWithConfiguredBusinessRate() {
+		service = new QuotationCalculationService(
+			repository,
+			new QuotationBusinessRules(new BigDecimal("0.08"), 15)
+		);
+		when(repository.findActiveSchemeItems("GENERAL")).thenReturn(
+			List.of(master("ITEM", "測試品項", "", "式", "100", 1))
+		);
+		QuotationCalculationRequest request = request(
+			"GENERAL",
+			List.of(intent("ITEM", "1", "999999")),
+			List.of(),
+			Set.of()
+		);
+
+		QuotationCalculationResult result = service.calculate(request);
+
+		assertThat(result.tax()).isEqualByComparingTo("8.00");
+		assertThat(result.total()).isEqualByComparingTo("108.00");
 	}
 
 	@Test

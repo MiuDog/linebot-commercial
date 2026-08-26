@@ -22,7 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestPropertySource(
 	properties = {
 		"app.storage.root=${java.io.tmpdir}/assets-manager-confirmation-test",
-		"spring.datasource.url=jdbc:sqlite::memory:"
+		"spring.datasource.url=jdbc:sqlite::memory:",
+		"app.quotation.validity-days=21"
 	}
 )
 class QuotationConfirmationServiceTest {
@@ -46,7 +47,7 @@ class QuotationConfirmationServiceTest {
 		assertThat(result.quotationNumber()).isEqualTo(today.toString().replace("-", "") + "01");
 		assertThat(result.fileBaseName()).isEqualTo("正定工程股份有限公司-中壢案 " + result.folderName());
 		assertThat(result.quotationDate()).isEqualTo(today);
-		assertThat(result.validUntil()).isEqualTo(today.plusDays(15));
+		assertThat(result.validUntil()).isEqualTo(today.plusDays(21));
 
 		// 外部呼叫：讀取正式報價與明細快照以確認金額與空白數量列完整保存。
 		Map<String, Object> quotation = jdbcTemplate.queryForMap(

@@ -57,6 +57,41 @@ class AppConfigurationRepositoryTest {
 		assertThat(loaded.value(AppConfigurationField.LOG_MAX_HISTORY)).isEqualTo("30");
 	}
 
+	// 方法：舊設定升級時關閉永久方法追蹤，避免隱藏欄位持續消耗 CPU 與磁碟。
+	@Test
+	void shouldDisablePersistentMethodTracingWhenMigratingLegacyConfiguration() throws IOException {
+		AppConfigurationRepository repository = repository(new XorSecretStore());
+
+		Files.createDirectories(repository.publicFile().getParent());
+		Files.writeString(
+			repository.publicFile(),
+			"schema.version=1\nMETHOD_TRACING_ENABLED=true\n",
+			StandardCharsets.ISO_8859_1
+		);
+
+		AppConfiguration loaded = repository.load().orElseThrow();
+
+		assertThat(loaded.schemaVersion()).isEqualTo(AppConfiguration.CURRENT_SCHEMA_VERSION);
+		assertThat(loaded.value(AppConfigurationField.METHOD_TRACING_ENABLED)).isEqualTo("false");
+	}
+
+	// 方法：目前版本明確開啟追蹤時保留設定，供受控診斷流程使用。
+	@Test
+	void shouldPreserveExplicitMethodTracingInCurrentConfiguration() throws IOException {
+		AppConfigurationRepository repository = repository(new XorSecretStore());
+
+		Files.createDirectories(repository.publicFile().getParent());
+		Files.writeString(
+			repository.publicFile(),
+			"schema.version=" + AppConfiguration.CURRENT_SCHEMA_VERSION + "\nMETHOD_TRACING_ENABLED=true\n",
+			StandardCharsets.ISO_8859_1
+		);
+
+		AppConfiguration loaded = repository.load().orElseThrow();
+
+		assertThat(loaded.value(AppConfigurationField.METHOD_TRACING_ENABLED)).isEqualTo("true");
+	}
+
 	// 方法：驗證保護機密失敗時不會覆蓋上一份有效設定。
 	@Test
 	void shouldPreserveThePreviousConfigurationWhenProtectionFails() {

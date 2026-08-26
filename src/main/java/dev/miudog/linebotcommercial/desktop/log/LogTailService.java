@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,9 +134,8 @@ public final class LogTailService implements AutoCloseable {
 		String combined = partialLine + addedText;
 		String[] lines = combined.split("\\R", -1);
 
-		for (int index = 0; index < lines.length - 1; index++) {
-			buffer.add(lines[index]);
-		}
+		// 同一演算法：整批送入 buffer，只觸發一次 UI 快照更新。
+		buffer.addAll(Arrays.asList(lines).subList(0, lines.length - 1));
 
 		partialLine = lines[lines.length - 1];
 	}

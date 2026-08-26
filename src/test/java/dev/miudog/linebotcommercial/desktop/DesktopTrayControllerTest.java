@@ -43,7 +43,7 @@ class DesktopTrayControllerTest {
 		assertThat(window.shown).isTrue();
 	}
 
-	// 方法：建立具備四項系統匣操作的測試控制器。
+	// 方法：建立具備完整系統匣操作的測試控制器。
 	private DesktopTrayController controller(
 		DesktopWindowHandle window,
 		DesktopTrayAccess tray
@@ -57,6 +57,8 @@ class DesktopTrayControllerTest {
 				() -> {
 				},
 				() -> {
+				},
+				(target, completion) -> {
 				},
 				() -> {
 				}

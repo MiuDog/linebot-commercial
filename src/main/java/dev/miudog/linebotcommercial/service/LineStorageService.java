@@ -7,6 +7,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ public class LineStorageService {
 	private final HttpClient httpClient;
 	private final ObjectMapper objectMapper;
 	private final NetworkObservationLogger networkLogger;
+	private final Duration requestTimeout;
 
 	/** LINE 回傳的原始內容與其 Content-Type，副檔名要靠後者決定。 */
 	public record LineContent(InputStream stream, String contentType) {}
@@ -66,8 +68,18 @@ public class LineStorageService {
 
 	// 方法：注入外部網路 RED 觀測器，且不讓 LINE 憑證或訊息內容進入日誌。
 	@Autowired
-	public LineStorageService(NetworkObservationLogger networkLogger) {
-		this(networkLogger, HttpClient.newHttpClient(), new ObjectMapper(), null);
+	public LineStorageService(
+		NetworkObservationLogger networkLogger,
+		@Value("${app.line.connect-timeout-seconds:10}") int connectTimeoutSeconds,
+		@Value("${app.line.request-timeout-seconds:30}") int requestTimeoutSeconds
+	) {
+		this(
+			networkLogger,
+			createHttpClient(Duration.ofSeconds(connectTimeoutSeconds)),
+			new ObjectMapper(),
+			null,
+			Duration.ofSeconds(requestTimeoutSeconds)
+		);
 	}
 
 	// 方法：提供測試使用的可替換 HTTP 邊界，避免實際呼叫 LINE。
@@ -77,10 +89,26 @@ public class LineStorageService {
 		ObjectMapper objectMapper,
 		String channelToken
 	) {
+		this(networkLogger, httpClient, objectMapper, channelToken, Duration.ofSeconds(30));
+	}
+
+	// 方法：提供測試使用的完整 HTTP 邊界與請求逾時設定。
+	LineStorageService(
+		NetworkObservationLogger networkLogger,
+		HttpClient httpClient,
+		ObjectMapper objectMapper,
+		String channelToken,
+		Duration requestTimeout
+	) {
 		this.networkLogger = networkLogger;
 		this.httpClient = httpClient;
 		this.objectMapper = objectMapper;
 		this.channelToken = channelToken;
+		if (requestTimeout == null || requestTimeout.isZero() || requestTimeout.isNegative()) {
+			throw new IllegalArgumentException("LINE 請求逾時必須大於零");
+		}
+
+		this.requestTimeout = requestTimeout;
 	}
 
 	// 方法：執行 downloadContent 方法的處理流程。
@@ -92,6 +120,7 @@ public class LineStorageService {
 			// 步驟 1：使用 Java HTTP API 建立帶有 LINE 權杖的圖片下載請求。
 			HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(url))
+				.timeout(requestTimeout)
 				.header("Authorization", "Bearer " + channelToken)
 				.GET()
 				.build();
@@ -197,6 +226,7 @@ public class LineStorageService {
 			// 步驟 2：使用 Java HTTP API 建立帶有 LINE 權杖的回覆請求。
 			HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(url))
+				.timeout(requestTimeout)
 				.header("Content-Type", "application/json")
 				.header("Authorization", "Bearer " + channelToken)
 				.POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
@@ -234,6 +264,7 @@ public class LineStorageService {
 			String payload = objectMapper.writeValueAsString(body);
 			HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
 				.uri(URI.create(url))
+				.timeout(requestTimeout)
 				.header("Content-Type", "application/json")
 				.header("Authorization", "Bearer " + channelToken)
 				.POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
@@ -277,5 +308,15 @@ public class LineStorageService {
 		catch (RuntimeException exception) {
 			return null;
 		}
+	}
+
+	// 方法：建立具有限連線等待時間的共用 LINE HTTP 用戶端。
+	private static HttpClient createHttpClient(Duration connectTimeout) {
+		if (connectTimeout == null || connectTimeout.isZero() || connectTimeout.isNegative()) {
+			throw new IllegalArgumentException("LINE 連線逾時必須大於零");
+		}
+
+		// 外部函式：建立限制 TCP／TLS 連線等待時間的 Java HTTP 用戶端。
+		return HttpClient.newBuilder().connectTimeout(connectTimeout).build();
 	}
 }

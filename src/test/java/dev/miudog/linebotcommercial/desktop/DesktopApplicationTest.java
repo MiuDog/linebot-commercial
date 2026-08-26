@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.miudog.linebotcommercial.desktop.config.AppConfiguration;
 import dev.miudog.linebotcommercial.desktop.config.ConfigurationWizardResult;
+import dev.miudog.linebotcommercial.desktop.control.ServiceControlResponse;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -186,6 +188,33 @@ class DesktopApplicationTest {
 		assertThat(loaded).isFalse();
 		assertThat(stopped).isTrue();
 		assertThat(closed).isTrue();
+	}
+
+	// 方法：將背景 service 固定回應轉換成使用者可見的桌面狀態。
+	@Test
+	void shouldMapServiceControlResponseToDesktopStatus() throws Exception {
+		DesktopWindowModel windowModel = new DesktopWindowModel(8088);
+
+		DesktopApplication.applyServiceResponse(windowModel, ServiceControlResponse.RUNNING);
+
+		// 外部 Swing：等待先前排入 EDT 的狀態更新完成後再驗證畫面模型。
+		SwingUtilities.invokeAndWait(() -> {
+		});
+		assertThat(windowModel.snapshot().status()).isEqualTo(DesktopStatus.RUNNING);
+
+		DesktopApplication.applyServiceResponse(windowModel, ServiceControlResponse.RESTARTED);
+
+		// 外部 Swing：等待重新啟動狀態完成發布。
+		SwingUtilities.invokeAndWait(() -> {
+		});
+		assertThat(windowModel.snapshot().status()).isEqualTo(DesktopStatus.RUNNING);
+
+		DesktopApplication.applyServiceResponse(windowModel, ServiceControlResponse.UNAVAILABLE);
+
+		// 外部 Swing：等待不可用狀態完成發布。
+		SwingUtilities.invokeAndWait(() -> {
+		});
+		assertThat(windowModel.snapshot().status()).isEqualTo(DesktopStatus.FAILED);
 	}
 
 	// 方法：建立桌面 bootstrap 測試用預設設定。

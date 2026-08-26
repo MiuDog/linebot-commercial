@@ -33,7 +33,10 @@ class AppConfigurationValidatorTest {
 			.withValue(AppConfigurationField.AI_API_URL, "not-a-url")
 			.withValue(AppConfigurationField.SERVER_PORT, "70000")
 			.withValue(AppConfigurationField.AI_TIMEOUT_SECONDS, "0")
-			.withValue(AppConfigurationField.VOICE_COMMANDS_ENABLED, "sometimes")
+			.withValue(AppConfigurationField.LINE_CONNECT_TIMEOUT_SECONDS, "0")
+			.withValue(AppConfigurationField.QUOTATION_TAX_RATE, "1.01")
+			.withValue(AppConfigurationField.QUOTATION_VALIDITY_DAYS, "0")
+			.withValue(AppConfigurationField.CLOUDFLARE_PROTOCOL, "udp")
 			.withValue(AppConfigurationField.SYSTEM_ROOT_PATH, "relative/data");
 
 		assertThat(validator.validate(configuration))
@@ -43,7 +46,10 @@ class AppConfigurationValidatorTest {
 				AppConfigurationField.AI_API_URL,
 				AppConfigurationField.SERVER_PORT,
 				AppConfigurationField.AI_TIMEOUT_SECONDS,
-				AppConfigurationField.VOICE_COMMANDS_ENABLED,
+				AppConfigurationField.LINE_CONNECT_TIMEOUT_SECONDS,
+				AppConfigurationField.QUOTATION_TAX_RATE,
+				AppConfigurationField.QUOTATION_VALIDITY_DAYS,
+				AppConfigurationField.CLOUDFLARE_PROTOCOL,
 				AppConfigurationField.SYSTEM_ROOT_PATH
 			);
 	}
@@ -52,6 +58,18 @@ class AppConfigurationValidatorTest {
 	@Test
 	void shouldAcceptAValidMinimumConfiguration() {
 		assertThat(validator.validate(validConfiguration())).isEmpty();
+	}
+
+	// 方法：啟用 Cloudflare 時要求綁定標準 Tunnel UUID，避免客戶誤貼其他機器人的 Token。
+	@Test
+	void shouldRequireAValidTunnelIdWhenCloudflareIsEnabled() {
+		AppConfiguration configuration = validConfiguration()
+			.withValue(AppConfigurationField.CLOUDFLARE_ENABLED, "true")
+			.withValue(AppConfigurationField.CLOUDFLARE_TUNNEL_ID, "wrong-tunnel");
+
+		assertThat(validator.validate(configuration))
+			.extracting(AppConfigurationValidator.Violation::field)
+			.contains(AppConfigurationField.CLOUDFLARE_TUNNEL_ID);
 	}
 
 	// 方法：建立可通過驗證的最小設定快照。

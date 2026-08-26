@@ -5,6 +5,7 @@ import dev.miudog.linebotcommercial.desktop.config.AppConfigurationField;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,10 +18,10 @@ public final class CloudflareConnector {
 
 	private static final Logger log = LoggerFactory.getLogger(CloudflareConnector.class);
 	private static final Duration STOP_TIMEOUT = Duration.ofSeconds(3);
-	private static final Duration STARTUP_VERIFY_DELAY = Duration.ofMillis(300);
 
 	private final CloudflareProcessControl process;
-	private final Sleeper sleeper;
+	private final CloudflareTunnelLease lease;
+	private CloudflareAgentIdentity currentIdentity;
 
 	//#endregion
 
@@ -28,16 +29,22 @@ public final class CloudflareConnector {
 
 	// 方法：建立使用正式 cloudflared process 的 connector。
 	public CloudflareConnector() {
-		this(new CloudflareProcess(), Thread::sleep);
+		this(new CloudflareProcess(), CloudflareTunnelLease.platformDefault());
 	}
 
-	// 方法：建立可替換程序與等待機制的 connector 供測試使用。
+	// 方法：建立可替換程序的 connector 供測試使用。
+	CloudflareConnector(CloudflareProcessControl process) {
+		this(process, CloudflareTunnelLease.disabled());
+	}
+
+	// 方法：建立可替換程序與同機租約的 connector 供整合測試使用。
 	CloudflareConnector(
 		CloudflareProcessControl process,
-		Sleeper sleeper
+		CloudflareTunnelLease lease
 	) {
 		this.process = Objects.requireNonNull(process, "cloudflared process 不可為 null");
-		this.sleeper = Objects.requireNonNull(sleeper, "cloudflared 等待機制不可為 null");
+		this.lease = Objects.requireNonNull(lease, "Cloudflare Tunnel 租約不可為 null");
+		this.currentIdentity = CloudflareAgentIdentity.empty();
 	}
 
 	//#endregion
@@ -54,10 +61,13 @@ public final class CloudflareConnector {
 		boolean enabled = Boolean.parseBoolean(configuration.value(AppConfigurationField.CLOUDFLARE_ENABLED));
 
 		if (!enabled) {
+			currentIdentity = CloudflareAgentIdentity.empty();
+
 			return new CloudflareConnection(
 				false,
 				configuration.value(AppConfigurationField.PUBLIC_BASE_URL),
-				configuration
+				configuration,
+				CloudflareAgentIdentity.empty()
 			);
 		}
 
@@ -70,6 +80,23 @@ public final class CloudflareConnector {
 			throw new CloudflareConnectorException("Cloudflare Tunnel Token 不可為空白", null);
 		}
 
+		UUID expectedTunnelId;
+		UUID tokenTunnelId;
+		String expectedTunnelSource = configuration.value(AppConfigurationField.CLOUDFLARE_TUNNEL_ID);
+		if (expectedTunnelSource.isBlank()) throw new CloudflareConnectorException("Cloudflare Tunnel ID 不可為空白", null);
+
+		try {
+			expectedTunnelId = UUID.fromString(expectedTunnelSource);
+			tokenTunnelId = CloudflareTunnelToken.tunnelId(token);
+		}
+		catch (IllegalArgumentException exception) {
+			throw new CloudflareConnectorException("Cloudflare Tunnel ID 或 Token 格式無效", exception);
+		}
+
+		if (!expectedTunnelId.equals(tokenTunnelId)) {
+			throw new CloudflareConnectorException("Cloudflare Tunnel ID 與 Token 不符，請勿共用其他機器人的 Token", null);
+		}
+
 		Path agent;
 		try {
 			agent = CloudflareProcess.resolveAgent(configuration.value(AppConfigurationField.CLOUDFLARE_AGENT_PATH));
@@ -78,14 +105,22 @@ public final class CloudflareConnector {
 			throw new CloudflareConnectorException(exception.getMessage(), exception);
 		}
 
+		if (!lease.acquire(expectedTunnelId, "LinebotCommercial")) {
+			throw new CloudflareConnectorException("此電腦已有其他 App 使用相同 Cloudflare Tunnel，Commercial 與 Document 必須使用不同 Tunnel", null);
+		}
+
 		try {
-			process.start(agent, token);
+			CloudflareProtocol protocol = CloudflareProtocol.parse(
+				configuration.value(AppConfigurationField.CLOUDFLARE_PROTOCOL)
+			);
+			process.start(agent, token, protocol);
 
-			// 短暫等待驗證 child process 正常運行
-			sleeper.sleep(STARTUP_VERIFY_DELAY);
+			// 外部函式：等待 cloudflared 官方 readiness endpoint，避免只以程序存活誤判連線成功。
+			if (!process.awaitReady(startupTimeout)) {
+				String diagnostic = process.diagnostic();
+				String detail = diagnostic.isBlank() ? "未建立 Cloudflare Edge 連線" : diagnostic;
 
-			if (process.status() != CloudflareStatus.RUNNING) {
-				throw new CloudflareConnectorException("cloudflared agent 已提前結束", null);
+				throw new CloudflareConnectorException("cloudflared 尚未就緒：" + detail, null);
 			}
 
 			String publicUrl = configuration.value(AppConfigurationField.PUBLIC_BASE_URL);
@@ -93,16 +128,22 @@ public final class CloudflareConnector {
 			// 日誌：記錄 Cloudflare tunnel 已啟動。
 			log.info("event=cloudflare_tunnel_ready publicUrl={}", publicUrl);
 
-			return new CloudflareConnection(true, publicUrl, configuration);
-		}
-		catch (InterruptedException exception) {
-			Thread.currentThread().interrupt();
-			process.stop(STOP_TIMEOUT);
+			CloudflareAgentIdentity identity = process.identity();
+			currentIdentity = identity;
 
-			throw new CloudflareConnectorException("等待 cloudflared 啟動時被中斷", exception);
+			// 日誌：記錄非機密 connector 身分，協助辨識是否在錯誤電腦形成 replica。
+			log.info(
+				"event=cloudflare_connector_identified tunnelId={} connectorId={} computerName={}",
+				identity.tunnelId(),
+				identity.connectorId(),
+				identity.computerName()
+			);
+
+			return new CloudflareConnection(true, publicUrl, configuration, identity);
 		}
 		catch (RuntimeException exception) {
 			process.stop(STOP_TIMEOUT);
+			lease.release();
 
 			if (exception instanceof CloudflareConnectorException safeException) throw safeException;
 
@@ -113,17 +154,14 @@ public final class CloudflareConnector {
 	// 方法：停止且只停止本 connector 所管理的 cloudflared child process。
 	public synchronized void stop() {
 		process.stop(STOP_TIMEOUT);
+		lease.release();
+		currentIdentity = CloudflareAgentIdentity.empty();
+	}
+
+	// 方法：取得目前 App 所管理且不包含 Token 的 Cloudflare connector 身分。
+	public synchronized CloudflareAgentIdentity identity() {
+		return currentIdentity;
 	}
 
 	//#endregion
-
-	/**
-	 * 隔離等待以提供快速且可重現的測試。
-	 */
-	@FunctionalInterface
-	interface Sleeper {
-
-		// 方法：暫停指定期間。
-		void sleep(Duration duration) throws InterruptedException;
-	}
 }

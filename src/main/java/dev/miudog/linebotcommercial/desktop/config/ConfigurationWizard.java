@@ -119,7 +119,7 @@ public final class ConfigurationWizard implements AutoCloseable {
 		resetValidationPresentation();
 
 		// 步驟一：將所有控制項內容完整同步至精靈模型。
-		for (AppConfigurationField field : AppConfigurationField.values()) {
+		for (AppConfigurationField field : AppConfigurationField.customerVisibleFields()) {
 			model.update(field, fieldText(fields.get(field)));
 		}
 
@@ -196,7 +196,7 @@ public final class ConfigurationWizard implements AutoCloseable {
 	// 方法：建立包含說明、群組分頁及驗證訊息的主內容。
 	private JPanel buildContent() {
 		JPanel panel = new JPanel(new BorderLayout(0, 8));
-		JLabel description = new JLabel("請完成必要設定；密碼欄留空會保留既有值。");
+		JLabel description = new JLabel("請完成必要設定；進階效能與計量項目會自動使用安全預設值。");
 
 		// 外部函式：建立一致的 Swing 邊界與偏好尺寸，讓安裝與編輯畫面可直接使用。
 		panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -204,6 +204,8 @@ public final class ConfigurationWizard implements AutoCloseable {
 		errorLabel.setForeground(java.awt.Color.RED.darker());
 
 		for (AppConfigurationField.Group group : AppConfigurationField.Group.values()) {
+			if (AppConfigurationField.customerVisibleFields(group).isEmpty()) continue;
+
 			addGroupTab(group);
 		}
 
@@ -219,10 +221,12 @@ public final class ConfigurationWizard implements AutoCloseable {
 		JPanel form = new JPanel(new GridBagLayout());
 		int row = 0;
 
-		// 單一演算法：依中繼資料順序加入此群組的標籤與輸入控制項。
-		for (AppConfigurationField field : AppConfigurationField.values()) {
-			if (field.group() != group) continue;
+		if (group == AppConfigurationField.Group.CLOUDFLARE) {
+			row = addCloudflareGuidance(form, row);
+		}
 
+		// 單一演算法：依中繼資料順序加入此群組的標籤與輸入控制項。
+		for (AppConfigurationField field : AppConfigurationField.customerVisibleFields(group)) {
 			addField(form, field, row);
 			row++;
 		}
@@ -235,6 +239,25 @@ public final class ConfigurationWizard implements AutoCloseable {
 
 		// 外部函式：以可捲動分頁容納不同螢幕尺寸下的完整設定表單。
 		tabs.addTab(groupLabel(group), new JScrollPane(form));
+	}
+
+	// 方法：在 Cloudflare 分頁顯示 Tunnel 歸屬與安全移機順序。
+	private int addCloudflareGuidance(
+		JPanel form,
+		int row
+	) {
+		JLabel guidance = new JLabel(
+			"<html>Commercial 與 Document 必須使用不同 Tunnel。移機時請先關閉舊電腦，確認新電腦連線後再更新 Token。</html>"
+		);
+		GridBagConstraints guidanceConstraints = constraints(0, row);
+
+		guidanceConstraints.gridwidth = 2;
+		guidanceConstraints.fill = GridBagConstraints.HORIZONTAL;
+
+		// 外部函式：將移機警示加入設定表單，避免客戶在不同電腦複製出 Connector。
+		form.add(guidance, guidanceConstraints);
+
+		return row + 1;
 	}
 
 	// 方法：依欄位機密屬性建立文字或密碼控制項並加入表單。
@@ -317,7 +340,6 @@ public final class ConfigurationWizard implements AutoCloseable {
 			case SYSTEM -> "系統";
 			case LINE -> "LINE";
 			case AI -> "AI";
-			case VOICE -> "語音";
 			case QUOTATION -> "報價";
 			case LOG -> "記錄";
 			case NGROK -> "ngrok";

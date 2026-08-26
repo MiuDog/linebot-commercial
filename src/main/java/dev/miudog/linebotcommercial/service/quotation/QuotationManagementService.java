@@ -61,8 +61,6 @@ public class QuotationManagementService {
 		"image/gif",
 		"image/webp"
 	);
-	private static final BigDecimal TAX_RATE = new BigDecimal("0.05");
-
 	private final QuotationManagementRepository repository;
 	private final QuotationPdfService pdfService;
 	private final QuotationDeliveryService deliveryService;
@@ -72,6 +70,7 @@ public class QuotationManagementService {
 	private final FileStorageService storage;
 	private final Path outputRoot;
 	private final Duration downloadLinkTimeToLive;
+	private final QuotationBusinessRules businessRules;
 
 	// 方法：建立只使用既有正式報價、PDF、LINE 與權杖服務的管理邊界。
 	public QuotationManagementService(
@@ -82,6 +81,7 @@ public class QuotationManagementService {
 		QuotationGenerationJobRepository generationJobs,
 		QuotationGenerationJobWorker generationWorker,
 		FileStorageService storage,
+		QuotationBusinessRules businessRules,
 		@Value("${app.quotation.root-path:}") String outputRoot,
 		@Value("${app.quotation.delivery-link-ttl-hours:168}") long downloadLinkTimeToLiveHours
 	) {
@@ -92,6 +92,7 @@ public class QuotationManagementService {
 		this.generationJobs = generationJobs;
 		this.generationWorker = generationWorker;
 		this.storage = storage;
+		this.businessRules = businessRules;
 		this.outputRoot = outputRoot == null || outputRoot.isBlank()
 			? null
 			: Paths.get(outputRoot).toAbsolutePath().normalize();
@@ -397,8 +398,13 @@ public class QuotationManagementService {
 			.map(item -> item.quantity().multiply(item.unitPrice()))
 			.reduce(BigDecimal.ZERO, BigDecimal::add);
 		subtotal = money(subtotal);
-		BigDecimal taxAmount = money(subtotal.multiply(TAX_RATE));
-		return new DraftAmounts(subtotal, TAX_RATE, taxAmount, money(subtotal.add(taxAmount)));
+		BigDecimal taxAmount = money(subtotal.multiply(businessRules.taxRate()));
+		return new DraftAmounts(
+			subtotal,
+			businessRules.taxRate(),
+			taxAmount,
+			money(subtotal.add(taxAmount))
+		);
 	}
 
 	// 方法：以報價金額精度四捨五入至小數點後二位。

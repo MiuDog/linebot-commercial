@@ -16,6 +16,7 @@ $NsisRoot = [System.IO.Path]::GetFullPath((Join-Path $TargetRoot "nsis"))
 $MakensisPath = Join-Path $NsisRoot "makensis.exe"
 $AppImage = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "dist\app-image\LinebotCommercial"))
 $InstallerScript = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\installer.nsi"))
+$AppIconPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\app-icon.ico"))
 $LicensePath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\license.rtf"))
 $ReleaseMetadataPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "packaging\windows\release.properties"))
 $ThirdPartyNoticesPath = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot "docs\third-party-notices.md"))
@@ -127,6 +128,10 @@ if (-not (Test-Path -LiteralPath $AppImage -PathType Container)) {
 	throw "找不到 app image：$AppImage"
 }
 
+if (-not (Test-Path -LiteralPath $AppIconPath -PathType Leaf)) {
+	throw "找不到 commercial Windows 圖示：$AppIconPath"
+}
+
 if (-not (Test-Path -LiteralPath $LicensePath -PathType Leaf)) {
 	throw "找不到安裝授權文件：$LicensePath"
 }
@@ -159,6 +164,7 @@ $MakensisArguments = @(
 	"/V3",
 	"/DAPP_VERSION=$Version",
 	"/DAPP_IMAGE=$AppImage",
+	"/DAPP_ICON=$AppIconPath",
 	"/DOUTPUT_FILE=$OutputPath",
 	"/DTHIRD_PARTY_NOTICES=$ThirdPartyNoticesPath",
 	"/DSBOM_FILE=$SbomPath",

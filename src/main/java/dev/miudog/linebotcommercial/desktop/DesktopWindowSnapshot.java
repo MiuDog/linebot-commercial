@@ -8,6 +8,7 @@ public record DesktopWindowSnapshot(
 	String statusText,
 	String localUrl,
 	String publicUrl,
-	String callbackUrl
+	String callbackUrl,
+	String cloudflareIdentity
 ) {
 }
