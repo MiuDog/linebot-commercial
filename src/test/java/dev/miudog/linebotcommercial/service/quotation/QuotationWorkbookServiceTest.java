@@ -59,8 +59,8 @@ class QuotationWorkbookServiceTest {
 			assertThat(workbook.text("C4")).isEqualTo("範例客戶");
 			assertThat(workbook.text("G4")).isEqualTo("Q-2026-001");
 			assertThat(workbook.text("G6")).isEqualTo("業務員");
-			assertThat(workbook.text("G7")).isEqualTo("zd0975305717@gmail.com");
-			assertThat(workbook.text("G8")).isEqualTo("04-26380655  正定傳真:04-26380605");
+			assertThat(workbook.text("G7")).isEqualTo("sales@example.invalid");
+			assertThat(workbook.text("G8")).isEqualTo("TEST PHONE / TEST FAX");
 			assertThat(workbook.text("B11")).isEqualTo("外部鷹架");
 			assertThat(workbook.number("D11")).isEqualByComparingTo("2.5");
 			assertThat(workbook.formula("G11")).isEqualTo("IFERROR(D11*F11,0)");
@@ -75,7 +75,7 @@ class QuotationWorkbookServiceTest {
 		}
 
 		assertEmbeddedMediaUnchanged(
-			Path.of("outputs/excel-templates/quotation-template-CNS.xlsx"),
+			Path.of("src/test/resources/quotation/templates/quotation-template-CNS.xlsx"),
 			result.path()
 		);
 	}
@@ -150,7 +150,7 @@ class QuotationWorkbookServiceTest {
 			);
 
 			assertEmbeddedMediaUnchanged(
-				Path.of("outputs/excel-templates/quotation-template-" + schemeCode + ".xlsx"),
+				Path.of("src/test/resources/quotation/templates/quotation-template-" + schemeCode + ".xlsx"),
 				result.path()
 			);
 		}
@@ -166,7 +166,7 @@ class QuotationWorkbookServiceTest {
 			java.time.LocalDate.of(2026, 8, 26),
 			3,
 			"20260811-03",
-			"正定工程-台中港案 20260811-03"
+			"範例工程-台中港案 20260811-03"
 		);
 		QuotationCalculationResult calculation = new QuotationCalculationResult(
 			"GENERAL",
@@ -188,7 +188,7 @@ class QuotationWorkbookServiceTest {
 		);
 
 		assertThat(result.path()).isEqualTo(
-			root.resolve("報價單/20260811-03/正定工程-台中港案 20260811-03.xlsx")
+			root.resolve("報價單/20260811-03/範例工程-台中港案 20260811-03.xlsx")
 				.toAbsolutePath()
 				.normalize()
 		);
@@ -214,7 +214,7 @@ class QuotationWorkbookServiceTest {
 			java.time.LocalDate.of(2026, 8, 26),
 			4,
 			"20260811-04",
-			"正定工程-圖片案 20260811-04"
+			"範例工程-圖片案 20260811-04"
 		);
 		QuotationCalculationResult calculation = new QuotationCalculationResult(
 			"BLANK",
@@ -248,7 +248,7 @@ class QuotationWorkbookServiceTest {
 		}
 
 		assertEmbeddedMediaUnchanged(
-			Path.of("outputs/excel-templates/quotation-template-BLANK.xlsx"),
+			Path.of("src/test/resources/quotation/templates/quotation-template-BLANK.xlsx"),
 			result.path()
 		);
 		assertThat(Files.readAllBytes(selectedImage)).isNotEmpty();
@@ -414,7 +414,7 @@ class QuotationWorkbookServiceTest {
 			java.time.LocalDate.of(2026, 8, 26),
 			sequence,
 			folder,
-			"正定工程-" + workName + " " + folder
+			"範例工程-" + workName + " " + folder
 		);
 	}
 

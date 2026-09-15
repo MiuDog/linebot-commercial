@@ -162,8 +162,8 @@ class QuotationFixedSchemeFormalFlowTest {
 				customer_email, project_location, scheme_id, status,
 				confirmation_revision, revision
 			)
-			SELECT ?, 'user', ?, 'U001', '正定工程-正式整合測試',
-				'正定工程', ?, '王先生', '04-12345678',
+			SELECT ?, 'user', ?, 'U001', '範例工程-正式整合測試',
+				'範例工程', ?, '王先生', '04-12345678',
 				'quote@example.test', '台中市', id, 'AWAITING_CONFIRMATION', 2, 2
 			FROM quotation_scheme
 			WHERE code = ?
@@ -201,7 +201,7 @@ class QuotationFixedSchemeFormalFlowTest {
 			3,
 			QuotationDraftStatus.CONFIRMED,
 			schemeCode,
-			Map.of("companyName", "正定工程", "workName", schemeCode + "正式整合測試"),
+			Map.of("companyName", "範例工程", "workName", schemeCode + "正式整合測試"),
 			List.of(),
 			List.of(),
 			null,
@@ -221,7 +221,7 @@ class QuotationFixedSchemeFormalFlowTest {
 		return new QuotationWorkbookService.Header(
 			confirmation.quotationNumber(),
 			confirmation.quotationDate().toString(),
-			"正定工程",
+			"範例工程",
 			"04-12345678",
 			"quote@example.test",
 			"王先生",

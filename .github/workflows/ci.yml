@@ -41,29 +41,56 @@ jobs:
         shell: bash
         run: ./mvnw --batch-mode --no-transfer-progress clean verify
 
-      # 外部工具：Windows runner 同時覆蓋 DPAPI native round trip。
+      # 外部工具：Windows runner 驗證 server 模式的跨平台相容性。
       - name: Verify on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: .\mvnw.cmd --batch-mode --no-transfer-progress clean verify
 
-      # 外部工具：只在 Windows 驗證 jpackage launcher 與自帶 Runtime 的相容性。
-      - name: Verify Windows app image
-        if: runner.os == 'Windows'
-        shell: pwsh
+  container:
+    name: Container, manifests and supply chain
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Validate Compose and Kubernetes manifests
+        shell: bash
         run: |
-          [xml]$Pom = Get-Content -LiteralPath pom.xml -Raw -Encoding utf8
-          $Version = [string]$Pom.project.version
-          powershell.exe -NoProfile -File scripts\package-windows-app.ps1 -Version $Version -SkipBuild
+          docker compose config --quiet
+          kubectl kustomize k8s/base >/tmp/manifests.yaml
+          test -s /tmp/manifests.yaml
 
-      # 外部工具：移除系統 Java 環境後執行 desktop shutdown，證明 launcher 使用 app image Runtime。
-      - name: Smoke test bundled runtime
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: powershell.exe -NoProfile -File scripts\test-windows-app-image.ps1 -AppImagePath dist\app-image\LinebotCommercial
+      - name: Build immutable candidate image
+        shell: bash
+        run: docker build --pull --tag linebot-commercial:${GITHUB_SHA} .
 
-      # 外部工具：檢查兩份 workflow 的 SHA 鎖定與最小權限規則。
-      - name: Verify workflow policy
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: powershell.exe -NoProfile -File scripts\verify-workflows.ps1
+      - name: Create SBOM and scan image
+        shell: bash
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${PWD}:/work" \
+            aquasec/trivy:0.72.0 image \
+            --format cyclonedx --output /work/sbom.cdx.json \
+            linebot-commercial:${GITHUB_SHA}
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.72.0 image \
+            --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL \
+            linebot-commercial:${GITHUB_SHA}
+          docker image inspect --format='imageId={{.Id}}' \
+            linebot-commercial:${GITHUB_SHA} | tee image-metadata.txt
+
+      - name: Upload SBOM and image metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linebot-commercial-supply-chain-${{ github.sha }}
+          path: |
+            sbom.cdx.json
+            image-metadata.txt
+          if-no-files-found: error
+          retention-days: 30

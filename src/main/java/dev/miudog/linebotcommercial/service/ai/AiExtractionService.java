@@ -106,6 +106,9 @@ public class AiExtractionService implements AiJsonCompletionClient {
 	@Value("${app.ai.model:}")
 	private String model;
 
+	@Value("${app.ai.max-completion-tokens:4000}")
+	private int maxCompletionTokens = 4000;
+
 	/** 必要欄位；留空代表不做欄位檢查，任何回應都算成功。 */
 	@Value("${app.ai.required-fields:}")
 	private String requiredFieldsRaw;
@@ -167,6 +170,12 @@ public class AiExtractionService implements AiJsonCompletionClient {
 	// 方法：以固定 system/user 邊界與候選圖片取得模型輸出的 JSON 文字。
 	@Override
 	public String completeJson(String systemPrompt, String userPrompt, List<AiImageInput> images) {
+		return completeJson(systemPrompt, userPrompt, images, null);
+	}
+
+	// 方法：將 Schema 交給供應商約束解碼；不支援時由既有 HTTP 錯誤處理明確拒絕。
+	@Override
+	public String completeJson(String systemPrompt, String userPrompt, List<AiImageInput> images, JsonNode responseSchema) {
 		long startedAt = System.nanoTime();
 		List<AiImageInput> safeImages = validateCompletionInput(systemPrompt, userPrompt, images);
 
@@ -188,8 +197,15 @@ public class AiExtractionService implements AiJsonCompletionClient {
 				throw new AiExtractionException("AI 服務尚未設定（AI_API_URL／AI_API_KEY／AI_MODEL）", (Throwable) null);
 			}
 
+			Map<String, Object> body = buildJsonCompletionRequestBody(systemPrompt, userPrompt, safeImages);
+			if (responseSchema != null) {
+				body.put("response_format", Map.of(
+					"type", "json_schema",
+					"json_schema", Map.of("name", "quotation_patch", "strict", true, "schema", responseSchema)
+				));
+			}
 			String responseBody = callModel(
-				buildJsonCompletionRequestBody(systemPrompt, userPrompt, safeImages),
+				body,
 				"quotation_json_completion"
 			);
 			String content = extractContent(responseBody);
@@ -503,7 +519,10 @@ public class AiExtractionService implements AiJsonCompletionClient {
 		Map<String, Object> body = new LinkedHashMap<>();
 		body.put("model", model);
 		body.put("messages", List.of(systemMessage, userMessage));
-		body.put("max_completion_tokens", 4000);
+		if (maxCompletionTokens < 256 || maxCompletionTokens > 32000) {
+			throw new IllegalArgumentException("AI_MAX_COMPLETION_TOKENS 必須介於 256 與 32000");
+		}
+		body.put("max_completion_tokens", maxCompletionTokens);
 		return body;
 	}
 
@@ -601,6 +620,17 @@ public class AiExtractionService implements AiJsonCompletionClient {
 		try {
 			// 外部呼叫：使用 Jackson 解析模型回應並沿固定路徑取得 assistant 文字。
 			JsonNode root = objectMapper.readTree(responseBody);
+			JsonNode choice = root.path("choices").path(0);
+			String finishReason = choice.path("finish_reason").asString("");
+			if ("length".equals(finishReason)) throw new AiCompletionException("AI_OUTPUT_TRUNCATED");
+
+			JsonNode refusal = choice.path("message").path("refusal");
+			if ("content_filter".equals(finishReason) || (refusal.isString() && !refusal.asString().isBlank())) {
+				throw new AiCompletionException("AI_REFUSED");
+			}
+			if (!finishReason.isEmpty() && !"stop".equals(finishReason)) {
+				throw new AiCompletionException("AI_RESPONSE_INVALID");
+			}
 			JsonNode content = root.path("choices").path(0).path("message").path("content");
 			if (!content.isString()) {
 				throw new AiExtractionException("模型回應結構不符預期：" + truncate(responseBody), (Throwable) null);

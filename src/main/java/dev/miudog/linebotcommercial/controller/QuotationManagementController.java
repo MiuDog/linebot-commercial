@@ -1,7 +1,7 @@
 package dev.miudog.linebotcommercial.controller;
 
 import dev.miudog.linebotcommercial.service.quotation.QuotationManagementService;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -97,7 +97,7 @@ public class QuotationManagementController {
 			.contentLength(file.fileSize())
 			.cacheControl(CacheControl.noStore())
 			.header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-			.body(new FileSystemResource(file.path()));
+			.body(new ByteArrayResource(file.content()));
 	}
 
 	// 方法：串流本機管理頁所屬草稿的選定暫存圖片。
@@ -152,6 +152,6 @@ public class QuotationManagementController {
 			.contentLength(image.fileSize())
 			.cacheControl(CacheControl.noStore())
 			.header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-			.body(new FileSystemResource(image.path()));
+			.body(new ByteArrayResource(image.content()));
 	}
 }

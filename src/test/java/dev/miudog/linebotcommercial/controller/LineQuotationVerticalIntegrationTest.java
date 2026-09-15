@@ -62,7 +62,7 @@ class LineQuotationVerticalIntegrationTest {
 			QuotationAiParsingService parser = mock(QuotationAiParsingService.class);
 			QuotationCalculationService calculator = mock(QuotationCalculationService.class);
 			LineStorageService line = mock(LineStorageService.class);
-			String instruction = "#報價 空白格式，正定公司，船塢工程，業務王先生";
+			String instruction = "#報價 空白格式，範例公司，船塢工程，業務王先生";
 			when(parser.parse(eq(instruction), anyList(), eq("BLANK"))).thenReturn(
 				new QuotationAiParsingService.ParseResult(validatedRequest(), "{}")
 			);
@@ -112,7 +112,7 @@ class LineQuotationVerticalIntegrationTest {
 			assertThat(jdbc.queryForList(
 				"SELECT field_key, field_value FROM quotation_draft_field ORDER BY field_key"
 			)).contains(
-				java.util.Map.of("field_key", "companyName", "field_value", "正定公司"),
+				java.util.Map.of("field_key", "companyName", "field_value", "範例公司"),
 				java.util.Map.of("field_key", "workName", "field_value", "船塢工程"),
 				java.util.Map.of("field_key", "salesRepresentative", "field_value", "王先生")
 			);
@@ -137,7 +137,7 @@ class LineQuotationVerticalIntegrationTest {
 
 	// 方法：建立完整且高信心的 AI 解析結果，讓流程直接進入船用／空白補圖階段。
 	private QuotationRequestValidationService.ValidatedQuotationRequest validatedRequest() {
-		QuotationRequestValidationService.ExtractedString company = extracted("正定公司");
+		QuotationRequestValidationService.ExtractedString company = extracted("範例公司");
 		QuotationRequestValidationService.ExtractedString work = extracted("船塢工程");
 		QuotationRequestValidationService.ExtractedString sales = extracted("王先生");
 		return new QuotationRequestValidationService.ValidatedQuotationRequest(

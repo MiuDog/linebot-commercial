@@ -2,6 +2,7 @@ package dev.miudog.linebotcommercial.config;
 
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -12,8 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * 這裡刻意自己建立 DataSource，而不是交給 auto-configuration。
- *S
+ * 舊版 SQLite 資料來源，只在搬遷工具或相容性測試明確啟用時建立。
  * <p>原因：SQLite 不會幫你建立資料庫檔案的父目錄，若 storage 目錄還不存在，
  * 連線會直接以「path does not exist」失敗，整個應用程式起不來。
  * 由自己建立 bean 才能保證「先建目錄、再開連線」的順序。
@@ -24,6 +24,7 @@ import java.nio.file.Paths;
  * 這條鏈只在 Spring 啟動與建立測試 Context 時執行，不由 LINE 事件直接呼叫。
  */
 @Configuration
+@ConditionalOnProperty(name = "app.database.legacy-sqlite-enabled", havingValue = "true")
 public class StorageConfig {
 
 	// 方法：執行 dataSource 方法的處理流程。

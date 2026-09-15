@@ -317,7 +317,7 @@ class QuotationLineWorkflowServiceTest {
 			4,
 			QuotationDraftStatus.AWAITING_CONFIRMATION,
 			"MARINE",
-			Map.of("companyName", "正定", "workName", "船用工程", "salesRepresentative", "王先生"),
+			Map.of("companyName", "範例", "workName", "船用工程", "salesRepresentative", "王先生"),
 			List.of(),
 			List.of("IMG-001"),
 			"IMG-001",

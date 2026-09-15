@@ -1,5 +1,7 @@
 # Spec：release-pipeline
 
+狀態：Superseded。Setup.exe Release 已由 OCI 映像與部署 artifact 流程取代。
+
 ## Objective
 
 在 GitHub 建立可重現且權限最小化的 CI/CD。Pull Request 與 main push 自動驗證 Java 專案；符合 `v<major>.<minor>.<patch>` 的 Tag 自動在 Windows 建置、測試、封裝、簽章，並建立只含單一 Setup.exe 的 GitHub Release。

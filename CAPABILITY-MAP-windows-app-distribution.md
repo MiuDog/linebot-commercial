@@ -1,5 +1,7 @@
 # Capability Map：Windows 商用 App 發佈
 
+狀態：Superseded。已由 `CAPABILITY-MAP-cloud-local-deployment.md` 取代，僅保留作為歷史決策紀錄。
+
 ## 能力模組
 
 | Module id | 責任 | Depends on |

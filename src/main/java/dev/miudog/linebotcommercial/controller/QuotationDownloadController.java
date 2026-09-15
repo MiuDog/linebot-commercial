@@ -2,7 +2,7 @@ package dev.miudog.linebotcommercial.controller;
 
 import dev.miudog.linebotcommercial.service.quotation.QuotationDownloadResource;
 import dev.miudog.linebotcommercial.service.quotation.QuotationDownloadService;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -42,6 +42,6 @@ public class QuotationDownloadController {
 			.contentLength(resource.fileSize())
 			.cacheControl(CacheControl.noStore())
 			.header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-			.body(new FileSystemResource(resource.path()));
+			.body(new ByteArrayResource(resource.content()));
 	}
 }

@@ -5,9 +5,14 @@ import dev.miudog.linebotcommercial.service.quotation.QuotationDeliveryRepositor
 import dev.miudog.linebotcommercial.service.quotation.QuotationDeliverySnapshot;
 import java.math.BigDecimal;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -107,6 +112,7 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 
 	// 方法：將超過五分鐘未完成的 SENDING 嘗試轉為失敗，釋放唯一索引供同 retry key 重送。
 	private void recoverExpiredLease(long quotationId, String destinationId) {
+		Object leaseCutoff = leaseCutoff();
 		int recovered = jdbc.update("""
 			UPDATE quotation_delivery_attempt
 			SET status = 'FAILED', error_message = 'DELIVERY_LEASE_EXPIRED',
@@ -116,14 +122,30 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 			  AND destination_id = ?
 			  AND delivery_kind = 'FINAL'
 			  AND status = 'SENDING'
-			  AND attempted_at <= datetime('now', '-5 minutes')
-			""", quotationId, destinationId);
+			  AND attempted_at <= ?
+			""", quotationId, destinationId, leaseCutoff);
 		if (recovered == 0) return;
 
 		jdbc.update(
 			"UPDATE quotation SET status = 'READY' WHERE id = ? AND status = 'SENDING'",
 			quotationId
 		);
+	}
+
+	// 方法：依資料庫驅動提供可正確比較的 UTC 租約截止時間。
+	private Object leaseCutoff() {
+		Instant cutoff = Instant.now().minus(5, java.time.temporal.ChronoUnit.MINUTES);
+		return jdbc.execute((ConnectionCallback<Object>) connection -> {
+			String database = connection.getMetaData().getDatabaseProductName();
+			if (database.toLowerCase(java.util.Locale.ROOT).contains("sqlite")) {
+				return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+					.withZone(ZoneOffset.UTC)
+					.format(cutoff);
+			}
+
+			return Timestamp.from(cutoff);
+
+		});
 	}
 
 	// 方法：將取得發送權的嘗試標記成功，並同步正式報價整體狀態。

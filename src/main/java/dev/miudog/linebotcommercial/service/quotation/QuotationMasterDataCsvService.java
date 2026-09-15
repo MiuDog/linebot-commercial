@@ -62,32 +62,7 @@ public class QuotationMasterDataCsvService {
 	// 方法：以匯出的同一份欄位格式整批覆蓋主檔；未出現在檔案中的資料一律停用而非刪除。
 	@Transactional
 	public ImportResult importCsv(byte[] content) {
-		List<List<String>> rows = readRows(content);
-		if (rows.isEmpty()) throw invalid("主檔 CSV 沒有任何內容");
-
-		List<String> header = rows.getFirst();
-		List<String> expectedHeader = List.of(HEADER.split(","));
-		if (!header.equals(expectedHeader)) {
-			throw invalid("主檔 CSV 標題必須與匯出格式相同：" + HEADER);
-		}
-
-		List<ParsedRow> parsedRows = new ArrayList<>();
-		Set<String> seenItemCodes = new LinkedHashSet<>();
-		Set<String> seenSchemeItemKeys = new LinkedHashSet<>();
-		for (int index = 1; index < rows.size(); index++) {
-			ParsedRow row = parseRow(rows.get(index), index + 1);
-			if (row.schemeCode() == null) {
-				if (!seenItemCodes.add(row.itemCode())) {
-					throw invalid("第 " + (index + 1) + " 列品項代碼重複：" + row.itemCode());
-				}
-			}
-			else if (!seenSchemeItemKeys.add(row.schemeCode() + "/" + row.itemCode())) {
-				throw invalid(
-					"第 " + (index + 1) + " 列格式品項重複：" + row.schemeCode() + "／" + row.itemCode()
-				);
-			}
-			parsedRows.add(row);
-		}
+		List<ParsedRow> parsedRows = parseContent(content);
 
 		// 外部 API：先整批停用，再依檔案內容重新建立，達成「匯出→編輯→上傳覆蓋」的完整取代。
 		repository.deactivateAllMasterData();
@@ -131,6 +106,43 @@ public class QuotationMasterDataCsvService {
 			schemeItems++;
 		}
 		return new ImportResult(createdItems, updatedItems, schemeItems);
+	}
+
+	// 方法：只驗證公司資產品項主檔，不改變目前正式主檔。
+	public void validateCsv(byte[] content) {
+		parseContent(content);
+	}
+
+	// 方法：完整解析標題、唯一鍵與每列欄位，供 stage 與正式匯入共用。
+	private List<ParsedRow> parseContent(byte[] content) {
+		List<List<String>> rows = readRows(content);
+		if (rows.isEmpty()) throw invalid("主檔 CSV 沒有任何內容");
+
+		List<String> header = rows.getFirst();
+		List<String> expectedHeader = List.of(HEADER.split(","));
+		if (!header.equals(expectedHeader)) {
+			throw invalid("主檔 CSV 標題必須與匯出格式相同：" + HEADER);
+		}
+
+		List<ParsedRow> parsedRows = new ArrayList<>();
+		Set<String> seenItemCodes = new LinkedHashSet<>();
+		Set<String> seenSchemeItemKeys = new LinkedHashSet<>();
+		for (int index = 1; index < rows.size(); index++) {
+			ParsedRow row = parseRow(rows.get(index), index + 1);
+			if (row.schemeCode() == null) {
+				if (!seenItemCodes.add(row.itemCode())) {
+					throw invalid("第 " + (index + 1) + " 列品項代碼重複：" + row.itemCode());
+				}
+			}
+			else if (!seenSchemeItemKeys.add(row.schemeCode() + "/" + row.itemCode())) {
+				throw invalid(
+					"第 " + (index + 1) + " 列格式品項重複：" + row.schemeCode() + "／" + row.itemCode()
+				);
+			}
+			parsedRows.add(row);
+		}
+
+		return List.copyOf(parsedRows);
 	}
 
 	// 方法：解析一列主檔資料，任何欄位不合法都立即中止整份匯入。

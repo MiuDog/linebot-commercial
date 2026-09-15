@@ -33,7 +33,7 @@ class QuotationConversationServiceTest {
 	void revalidatesOnlyRemainingBaseFieldsAfterPartialPatch() {
 		QuotationDraftSnapshot draft = draft("", "", "CNS", List.of(standardItem("FRAME", "10")));
 		QuotationDraftPatch patch = new QuotationDraftPatch(
-			Map.of("companyName", "正定公司"),
+			Map.of("companyName", "範例公司"),
 			Map.of(),
 			List.of(),
 			null,
@@ -43,13 +43,13 @@ class QuotationConversationServiceTest {
 		QuotationConversationDecision decision = service.applyPatch(draft, patch);
 
 		assertThat(decision.missingBaseFields()).containsExactly("workName");
-		assertThat(decision.draft().baseFields().get("companyName")).isEqualTo("正定公司");
+		assertThat(decision.draft().baseFields().get("companyName")).isEqualTo("範例公司");
 	}
 
 	// 方法：低信心欄位以 null 補入時仍列為缺漏而不猜測內容。
 	@Test
 	void keepsNullLowConfidenceFieldAsMissing() {
-		QuotationDraftSnapshot draft = draft("正定公司", "碼頭工程", "CNS", List.of(standardItem("FRAME", "10")));
+		QuotationDraftSnapshot draft = draft("範例公司", "碼頭工程", "CNS", List.of(standardItem("FRAME", "10")));
 		Map<String, String> baseFieldPatch = new LinkedHashMap<>();
 		baseFieldPatch.put("workName", null);
 		QuotationDraftPatch patch = new QuotationDraftPatch(baseFieldPatch, Map.of(), List.of(), null, null);
@@ -65,7 +65,7 @@ class QuotationConversationServiceTest {
 	void reportsAllMissingItemFieldsInOneDecision() {
 		QuotationDraftItem standard = standardItem("FRAME", "");
 		QuotationDraftItem custom = customItem("custom-1", Map.of("itemName", "特殊材料"));
-		QuotationDraftSnapshot draft = draft("正定公司", "碼頭工程", "CNS", List.of(standard, custom));
+		QuotationDraftSnapshot draft = draft("範例公司", "碼頭工程", "CNS", List.of(standard, custom));
 
 		QuotationConversationDecision decision = service.review(draft);
 
@@ -82,7 +82,7 @@ class QuotationConversationServiceTest {
 	// 方法：船用報價沒有圖片時必須先詢問圖片。
 	@Test
 	void marineRequiresImageQuestionBeforePreview() {
-		QuotationDraftSnapshot draft = draft("正定公司", "船塢工程", "MARINE", List.of(standardItem("PACKAGE", "1")));
+		QuotationDraftSnapshot draft = draft("範例公司", "船塢工程", "MARINE", List.of(standardItem("PACKAGE", "1")));
 
 		QuotationConversationDecision decision = service.review(draft);
 
@@ -93,7 +93,7 @@ class QuotationConversationServiceTest {
 	// 方法：空白報價經圖片詢問且明確拒絕後可以進入完整預覽。
 	@Test
 	void blankCanSkipImageOnlyAfterExplicitDecline() {
-		QuotationDraftSnapshot draft = draft("正定公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
+		QuotationDraftSnapshot draft = draft("範例公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
 		QuotationConversationDecision awaitingImage = service.review(draft);
 		QuotationDraftSnapshot asked = service.markImageQuestionAsked(awaitingImage.draft());
 		QuotationDraftPatch decline = new QuotationDraftPatch(Map.of(), Map.of(), List.of(), true, null);
@@ -107,7 +107,7 @@ class QuotationConversationServiceTest {
 	// 測試：取消報表嵌入後仍保留候選資產，空白格式可經再次詢問後明確拒絕。
 	@Test
 	void blankCanDeclineEmbeddingWhileRetainingCandidateAssets() {
-		QuotationDraftSnapshot base = draft("正定公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
+		QuotationDraftSnapshot base = draft("範例公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
 		QuotationDraftSnapshot candidatesWithoutSelection = new QuotationDraftSnapshot(
 			base.draftId(),
 			base.revision(),
@@ -139,7 +139,7 @@ class QuotationConversationServiceTest {
 	// 方法：尚未詢問圖片時不可直接接受拒絕圖片。
 	@Test
 	void rejectsImageDeclineBeforeQuestionWasAsked() {
-		QuotationDraftSnapshot draft = draft("正定公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
+		QuotationDraftSnapshot draft = draft("範例公司", "臨時工程", "BLANK", List.of(customItemComplete("custom-1")));
 		QuotationDraftPatch decline = new QuotationDraftPatch(Map.of(), Map.of(), List.of(), true, null);
 
 		assertThatThrownBy(() -> service.applyPatch(draft, decline))
@@ -150,7 +150,7 @@ class QuotationConversationServiceTest {
 	// 方法：只有顯示完整預覽後才可接受明確確認並產生確認意圖。
 	@Test
 	void confirmsOnlyAfterFullPreviewWithoutAllocatingNumber() {
-		QuotationDraftSnapshot draft = draft("正定公司", "廠房工程", "CNS", List.of(standardItem("FRAME", "10")));
+		QuotationDraftSnapshot draft = draft("範例公司", "廠房工程", "CNS", List.of(standardItem("FRAME", "10")));
 		QuotationConversationDecision preview = service.review(draft);
 		QuotationDraftSnapshot awaitingConfirmation = service.markPreviewPresented(preview.draft());
 
@@ -165,7 +165,7 @@ class QuotationConversationServiceTest {
 	@Test
 	void confirmationAndCancellationAreIdempotent() {
 		QuotationDraftSnapshot ready = service.markPreviewPresented(
-			service.review(draft("正定公司", "廠房工程", "CNS", List.of(standardItem("FRAME", "10")))).draft()
+			service.review(draft("範例公司", "廠房工程", "CNS", List.of(standardItem("FRAME", "10")))).draft()
 		);
 		QuotationConfirmationIntent firstConfirmation = service.confirm(ready, "postback-confirm-1");
 		QuotationConfirmationIntent repeatedConfirmation = service.confirm(

@@ -16,6 +16,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 class QuotationAiParsingServiceTest {
@@ -66,9 +69,42 @@ class QuotationAiParsingServiceTest {
 	}
 
 	@Test
+	void treatsNullStrictHeaderFieldsAsUnchanged() {
+		List<AiImageInput> images = images();
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
+			.thenReturn(validModelJson().replace("\"headerPatch\":{", "\"headerPatch\":{\"phone\":null,"));
+		assertThat(service.parse("外部鷹架 2 平方米", images, "CNS").request().headerPatch().phone()).isNull();
+	}
+
+	@Test
+	void repairsMalformedOutputOnceAndRetainsBusinessValidation() {
+		List<AiImageInput> images = images();
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
+			.thenReturn("{broken", validModelJson());
+		assertThat(service.parse("外部鷹架 2 平方米", images, "CNS").request().items()).hasSize(1);
+		org.mockito.Mockito.verify(client, org.mockito.Mockito.times(2))
+			.completeJson(anyString(), anyString(), eq(images), isNull());
+	}
+
+	@Test
+	void neverRetriesRefusalsAndStopsAfterTwoInvalidResponses() {
+		List<AiImageInput> images = images();
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
+			.thenThrow(new dev.miudog.linebotcommercial.service.ai.AiCompletionException("AI_REFUSED"));
+		assertAiErrorCode(images, "AI_REFUSED");
+		org.mockito.Mockito.verify(client).completeJson(anyString(), anyString(), eq(images), isNull());
+		org.mockito.Mockito.reset(client);
+		when(client.isConfigured()).thenReturn(true);
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn("{broken");
+		assertAiErrorCode(images, "AI_RESPONSE_INVALID");
+		org.mockito.Mockito.verify(client, org.mockito.Mockito.times(2))
+			.completeJson(anyString(), anyString(), eq(images), isNull());
+	}
+
+	@Test
 	void parsesModelJsonAndResolvesTrustedDatabaseFields() {
 		List<AiImageInput> images = images();
-		when(client.completeJson("system", "user", images)).thenReturn(validModelJson());
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn(validModelJson());
 
 		QuotationAiParsingService.ParseResult result = service.parse("外部鷹架 2 平方米", images, "CNS");
 
@@ -84,7 +120,7 @@ class QuotationAiParsingServiceTest {
 	@Test
 	void rejectsProseAroundTheJsonObject() {
 		List<AiImageInput> images = images();
-		when(client.completeJson("system", "user", images)).thenReturn("以下是結果：\n" + validModelJson());
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn("以下是結果：\n" + validModelJson());
 
 		assertThatThrownBy(() -> service.parse("外部鷹架 2 平方米", images, "CNS"))
 			.isInstanceOf(QuotationAiException.class)
@@ -94,7 +130,7 @@ class QuotationAiParsingServiceTest {
 	@Test
 	void rejectsMultipleConcatenatedJsonObjects() {
 		List<AiImageInput> images = images();
-		when(client.completeJson("system", "user", images)).thenReturn(validModelJson() + " {}");
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn(validModelJson() + " {}");
 
 		assertThatThrownBy(() -> service.parse("外部鷹架 2 平方米", images, "CNS"))
 			.isInstanceOf(QuotationAiException.class)
@@ -110,7 +146,7 @@ class QuotationAiParsingServiceTest {
 				"[ {\"messageId\": \"image-1\", \"qualityScore\": 1, \"viewpointScore\": 1, \"distinctivenessScore\": 1, \"reason\": \"最有區別\"} ]",
 				"[]"
 			);
-		when(client.completeJson("system", "user", images)).thenReturn(missingAssessment);
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn(missingAssessment);
 
 		assertThatThrownBy(() -> service.parse("外部鷹架 2 平方米", images, "CNS"))
 			.isInstanceOf(QuotationAiException.class)
@@ -120,7 +156,7 @@ class QuotationAiParsingServiceTest {
 	@Test
 	void classifiesTimeoutAuthenticationRateLimitAndMasterDataFailures() {
 		List<AiImageInput> images = images();
-		when(client.completeJson("system", "user", images))
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
 			.thenThrow(new AiExtractionException("呼叫模型失敗", new HttpTimeoutException("timeout")))
 			.thenThrow(new AiExtractionException("模型回應狀態碼 401", (Throwable) null))
 			.thenThrow(new AiExtractionException("模型回應狀態碼 429", (Throwable) null))
@@ -149,7 +185,7 @@ class QuotationAiParsingServiceTest {
 	private String validModelJson() {
 		return """
 			{"schemaVersion":"2.0","schemeCode":"CNS","schemeConfidence":1,
-			"headerPatch":{"companyName":{"value":"正定工程","sourceText":"正定工程","confidence":1},"workName":{"value":"測試報價","sourceText":"測試報價","confidence":1}},
+			"headerPatch":{"companyName":{"value":"範例工程","sourceText":"範例工程","confidence":1},"workName":{"value":"測試報價","sourceText":"測試報價","confidence":1}},
 			"standardItemIntents":[{"itemCode":"EXTERNAL_SCAFFOLD","quantity":2,"sourceText":"外部鷹架 2 平方米","confidence":1}],
 			"customItems":[],"removedItemCodes":[],
 			"selectedImageMessageId": "image-1",

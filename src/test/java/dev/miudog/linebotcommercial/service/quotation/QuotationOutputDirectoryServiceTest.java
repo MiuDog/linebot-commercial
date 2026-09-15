@@ -70,12 +70,12 @@ class QuotationOutputDirectoryServiceTest {
 
 		Path file = service.resolveFormalFile(
 			"20260811-03",
-			"正定工程-台中港案 20260811-03",
+			"範例工程-台中港案 20260811-03",
 			".xlsx"
 		);
 
 		assertThat(file).isEqualTo(
-			root.resolve("報價單/20260811-03/正定工程-台中港案 20260811-03.xlsx")
+			root.resolve("報價單/20260811-03/範例工程-台中港案 20260811-03.xlsx")
 				.toAbsolutePath()
 				.normalize()
 		);
@@ -88,12 +88,12 @@ class QuotationOutputDirectoryServiceTest {
 
 		Path file = service.resolveFormalFile(
 			"20260811-100",
-			"正定工程-台中港案 20260811-100",
+			"範例工程-台中港案 20260811-100",
 			".xlsx"
 		);
 
 		assertThat(file).isEqualTo(
-			root.resolve("報價單/20260811-100/正定工程-台中港案 20260811-100.xlsx")
+			root.resolve("報價單/20260811-100/範例工程-台中港案 20260811-100.xlsx")
 				.toAbsolutePath()
 				.normalize()
 		);

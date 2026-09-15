@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+.codex-tmp
+secrets
+target
+outputs
+company-assets-local
+dist
+templates
+example
+quotation-output
+assets-store
+system-data
+*.db
+*.log

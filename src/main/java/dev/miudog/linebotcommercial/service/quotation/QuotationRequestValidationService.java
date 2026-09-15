@@ -589,7 +589,7 @@ public class QuotationRequestValidationService {
 	// 方法：解析明確提取的文字欄位，拒絕低信心值進入 patch。
 	private ExtractedString optionalExtractedString(JsonNode object, String field, String label) {
 		JsonNode node = object.get(field);
-		if (node == null) return null;
+		if (node == null || node.isNull()) return null;
 
 		return extractedString(node, label);
 	}

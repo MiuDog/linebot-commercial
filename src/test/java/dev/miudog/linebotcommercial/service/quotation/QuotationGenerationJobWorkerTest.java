@@ -230,7 +230,7 @@ class QuotationGenerationJobWorkerTest {
 			LocalDate.of(2026, 8, 26),
 			1,
 			"20260811-01",
-			"正定-工程 20260811-01"
+			"範例-工程 20260811-01"
 		);
 		QuotationCalculationResult calculation = new QuotationCalculationResult(
 			"GENERAL",

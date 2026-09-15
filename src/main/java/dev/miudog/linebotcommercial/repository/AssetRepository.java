@@ -1,6 +1,9 @@
 package dev.miudog.linebotcommercial.repository;
 
 import dev.miudog.linebotcommercial.domain.Asset;
+import dev.miudog.linebotcommercial.config.runtime.CompanyProperties;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -34,6 +37,8 @@ import java.util.Optional;
 public class AssetRepository {
 
 	private final JdbcClient jdbc;
+	private final String companyId;
+	private final boolean legacyDatabase;
 
 	/**
 	 * @param jdbc Spring 提供的 SQLite 連線用戶端
@@ -43,6 +48,20 @@ public class AssetRepository {
 	// 方法：初始化 AssetRepository。
 	public AssetRepository(JdbcClient jdbc) {
 		this.jdbc = jdbc;
+		this.companyId = "legacy";
+		this.legacyDatabase = true;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	@Autowired
+	public AssetRepository(
+		JdbcClient jdbc,
+		CompanyProperties companyProperties,
+		@Value("${app.database.legacy-sqlite-enabled:false}") boolean legacyDatabase
+	) {
+		this.jdbc = jdbc;
+		this.companyId = companyProperties.id();
+		this.legacyDatabase = legacyDatabase;
 	}
 
 	/**
@@ -54,6 +73,32 @@ public class AssetRepository {
 	// 方法：執行 insert 方法的處理流程。
 	public Long insert(Asset asset) {
 		KeyHolder keys = new GeneratedKeyHolder();
+
+		if (!legacyDatabase) {
+			jdbc.sql("""
+					INSERT INTO asset (
+						message_id, share_token, source_type, source_id, uploader_id,
+						file_path, content_type, file_size, created_at, company_id, object_key
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					""")
+				.params(
+					asset.messageId(),
+					asset.shareToken(),
+					asset.sourceType(),
+					asset.sourceId(),
+					asset.uploaderId(),
+					asset.filePath(),
+					asset.contentType(),
+					asset.fileSize(),
+					asset.createdAt().toString(),
+					companyId,
+					asset.filePath()
+				)
+				.update(keys);
+			Number key = keys.getKey();
+			return key == null ? null : key.longValue();
+		}
 
 		// 外部呼叫：使用 Spring JDBC 寫入資產索引，並取得資料庫產生的主鍵。
 		jdbc.sql("""
@@ -150,6 +195,24 @@ public class AssetRepository {
 			.update();
 	}
 
+	// 方法：執行此方法定義的受控處理流程。
+	public void updateObjectStorageIdentity(
+		long assetId,
+		String objectKey,
+		String objectVersion,
+		String contentHash
+	) {
+		if (legacyDatabase) return;
+
+		jdbc.sql("""
+				UPDATE asset
+				SET company_id = ?, object_key = ?, object_version = ?, content_hash = ?
+				WHERE id = ?
+				""")
+			.params(companyId, objectKey, objectVersion, contentHash, assetId)
+			.update();
+	}
+
 	// 方法：將被本機編輯的圖片改為本地來源，並釋放原本的 LINE 訊息編號。
 	public void markAsLocal(long assetId, String localMessageId) {
 		// 外部 API：透過 Spring JDBC 更新來源與唯一訊息編號。
@@ -240,7 +303,9 @@ public class AssetRepository {
 	// 方法：執行 upsertTag 方法的處理流程。
 	public long upsertTag(String name) {
 		// 步驟 1：使用 Spring JDBC 建立不存在的標籤，並忽略重複名稱。
-		jdbc.sql("INSERT OR IGNORE INTO tag (name) VALUES (?)").param(name).update();
+		jdbc.sql("INSERT INTO tag (name) VALUES (?) ON CONFLICT (name) DO NOTHING")
+			.param(name)
+			.update();
 
 		// 步驟 2：使用 Spring JDBC 讀回標籤主鍵，供資產關聯使用。
 		return jdbc.sql("SELECT id FROM tag WHERE name = ?").param(name).query(Long.class).single();
@@ -255,7 +320,13 @@ public class AssetRepository {
 	// 方法：執行 linkTag 方法的處理流程。
 	public void linkTag(long assetId, long tagId) {
 		// 外部呼叫：使用 Spring JDBC 建立資產與標籤的關聯，並忽略重複關聯。
-		jdbc.sql("INSERT OR IGNORE INTO asset_tag (asset_id, tag_id) VALUES (?, ?)").params(assetId, tagId).update();
+		jdbc.sql("""
+			INSERT INTO asset_tag (asset_id, tag_id)
+			VALUES (?, ?)
+			ON CONFLICT (asset_id, tag_id) DO NOTHING
+			""")
+			.params(assetId, tagId)
+			.update();
 	}
 
 	/**
@@ -272,7 +343,7 @@ public class AssetRepository {
                         SELECT t.name FROM tag t
                         JOIN asset_tag at ON at.tag_id = t.id
                         WHERE at.asset_id = ?
-                        ORDER BY at.rowid
+                        ORDER BY at.tag_id
                         """).param(assetId).query(String.class).list();
 	}
 

@@ -82,7 +82,7 @@ class QuotationRequestValidationServiceTest {
 		JsonNode preview = readJson(objectMapper.writeValueAsString(request));
 
 		assertThat(preview.path("schemaVersion").asString()).isEqualTo("2.0");
-		assertThat(preview.path("headerPatch").path("companyName").path("value").asString()).isEqualTo("正定工程");
+		assertThat(preview.path("headerPatch").path("companyName").path("value").asString()).isEqualTo("範例工程");
 		assertThat(preview.path("headerPatch").path("salesRepresentative").path("value").asString()).isEqualTo("陳業務");
 		assertThat(preview.path("standardItems").get(0).path("itemName").asString()).isEqualTo("外部鷹架");
 		assertThat(preview.path("standardItems").get(0).path("specification").asString()).isEqualTo("(CNS)");
@@ -180,8 +180,8 @@ class QuotationRequestValidationServiceTest {
 	@Test
 	void rejectsLowConfidenceValuesInsteadOfGuessingThem() {
 		String request = validRequest().replace(
-			"\"value\": \"正定工程\", \"sourceText\": \"正定工程\", \"confidence\": 0.99",
-			"\"value\": \"可能是正定\", \"sourceText\": \"模糊文字\", \"confidence\": 0.49"
+			"\"value\": \"範例工程\", \"sourceText\": \"範例工程\", \"confidence\": 0.99",
+			"\"value\": \"可能是範例\", \"sourceText\": \"模糊文字\", \"confidence\": 0.49"
 		);
 
 		assertThatThrownBy(() -> service.validate(readJson(request), "CNS"))
@@ -337,7 +337,7 @@ class QuotationRequestValidationServiceTest {
 
 	private String headerPatchJson() {
 		return """
-			"companyName": {"value": "正定工程", "sourceText": "正定工程", "confidence": 0.99},
+			"companyName": {"value": "範例工程", "sourceText": "範例工程", "confidence": 0.99},
 			"workName": {"value": "台北工地", "sourceText": "工作名稱台北工地", "confidence": 0.98},
 			"contactName": {"value": "王先生", "sourceText": "聯絡人王先生", "confidence": 0.96},
 			"salesRepresentative": {"value": "陳業務", "sourceText": "業務承辦陳業務", "confidence": 0.97}

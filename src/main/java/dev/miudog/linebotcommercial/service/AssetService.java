@@ -253,8 +253,7 @@ public class AssetService {
 	 */
 	// 方法：執行 contentOf 方法的處理流程。
 	public byte[] contentOf(Asset asset) throws IOException {
-		// 外部呼叫：使用 Java NIO 一次讀取圖片內容，供 AI 與 PDF 流程重複使用。
-		Path path = paths == null ? fileStorage.resolve(asset.filePath()) : paths.resolve(asset);
-		return Files.readAllBytes(path);
+		// 外部呼叫：正式環境由 S3 相容儲存讀取；舊資料測試仍走受限本機路徑。
+		return fileStorage.read(asset.filePath());
 	}
 }

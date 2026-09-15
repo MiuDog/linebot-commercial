@@ -488,3 +488,6 @@ Docker / docker compose
 6. `MediaController`、`LineStorageService`：看 LINE 如何取回圖片。
 7. `QuotationLineWorkflowService`、`QuotationGenerationCoordinator`：看報價確認與背景完成邊界。
 8. `schema.sql`：最後看完整資料模型與新版報價資料層。
+# ⚠️ 歷史呼叫鏈
+
+此文件尚含舊 SQLite／磁碟流程；現行資料邊界以 `SPEC-portable-storage.md` 與程式碼為準。

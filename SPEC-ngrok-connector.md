@@ -1,5 +1,7 @@
 # Spec：ngrok-connector
 
+狀態：Superseded。應用程式不再管理 Tunnel；外部 Tunnel 規則改由 `SPEC-local-docker.md` 定義。
+
 ## Objective
 
 提供可選的 ngrok 整合，讓本機 LINE Bot 能取得公開 HTTPS URL，同時不在 Setup.exe 內再散布 ngrok agent。使用者勾選 ngrok 後，App 驗證本機 agent 與 Authtoken、建立 tunnel、取得公開 URL，並在 App 結束時只停止自己啟動的 child process。

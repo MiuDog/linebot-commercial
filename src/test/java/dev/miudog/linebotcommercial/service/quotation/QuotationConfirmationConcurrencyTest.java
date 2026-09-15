@@ -108,13 +108,13 @@ class QuotationConfirmationConcurrencyTest {
 				draft_key, source_type, source_id, requester_id, company_name,
 				work_name, quotation_name, scheme_id, status, revision, confirmation_revision
 			)
-			SELECT ?, 'user', ?, 'U001', '正定工程', ?, ?, id, 'AWAITING_CONFIRMATION', 1, 1
+			SELECT ?, 'user', ?, 'U001', '範例工程', ?, ?, id, 'AWAITING_CONFIRMATION', 1, 1
 			FROM quotation_scheme WHERE code = 'GENERAL'
 			""",
 			draftKey,
 			"U-" + UUID.randomUUID(),
 			workName,
-			"正定工程-" + workName
+			"範例工程-" + workName
 		);
 		// 資料庫 API：讀取新建草稿並補上每張報價必要的業務承辦。
 		Long draftId = jdbc.queryForObject(
@@ -138,7 +138,7 @@ class QuotationConfirmationConcurrencyTest {
 			2,
 			QuotationDraftStatus.CONFIRMED,
 			"GENERAL",
-			Map.of("companyName", "正定工程", "workName", "並行案件"),
+			Map.of("companyName", "範例工程", "workName", "並行案件"),
 			List.of(),
 			List.of(),
 			null,

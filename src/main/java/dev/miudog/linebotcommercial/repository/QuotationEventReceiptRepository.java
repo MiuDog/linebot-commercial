@@ -3,6 +3,9 @@ package dev.miudog.linebotcommercial.repository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 @Repository
 public class QuotationEventReceiptRepository {
 
@@ -17,25 +20,28 @@ public class QuotationEventReceiptRepository {
 	public boolean claim(String eventId, Long draftId, String eventType) {
 		if (eventId == null || eventId.isBlank()) return false;
 
+		String now = Instant.now().toString();
+		String leaseUntil = Instant.now().plus(5, ChronoUnit.MINUTES).toString();
+
 		// 資料庫：新事件建立租約；失敗或租約過期事件可安全重領，完成事件永不重播。
 		return jdbc.update("""
 			INSERT INTO quotation_event_receipt (
 				event_id, draft_id, event_type, result_status, lease_until, attempt_count
 			)
-			VALUES (?, ?, ?, 'RECEIVED', datetime(CURRENT_TIMESTAMP, '+5 minutes'), 1)
+			VALUES (?, ?, ?, 'RECEIVED', ?, 1)
 			ON CONFLICT (event_id) DO UPDATE SET
 				draft_id = COALESCE(excluded.draft_id, quotation_event_receipt.draft_id),
 				event_type = excluded.event_type,
 				result_status = 'RECEIVED',
-				received_at = CURRENT_TIMESTAMP,
+				received_at = ?,
 				processed_at = NULL,
-				lease_until = datetime(CURRENT_TIMESTAMP, '+5 minutes'),
+				lease_until = ?,
 				attempt_count = quotation_event_receipt.attempt_count + 1
 			WHERE quotation_event_receipt.result_status = 'FAILED'
 				OR (quotation_event_receipt.result_status = 'RECEIVED'
 					AND (quotation_event_receipt.lease_until IS NULL
-						OR quotation_event_receipt.lease_until <= CURRENT_TIMESTAMP))
-			""", eventId, draftId, eventType) == 1;
+						OR quotation_event_receipt.lease_until <= ?))
+			""", eventId, draftId, eventType, leaseUntil, now, leaseUntil, now) == 1;
 	}
 
 	// 方法：查詢事件是否已被接收。
@@ -62,9 +68,9 @@ public class QuotationEventReceiptRepository {
 			WHERE event_id = ?
 				AND (
 					result_status IN ('PROCESSED', 'IGNORED')
-					OR (result_status = 'RECEIVED' AND lease_until > CURRENT_TIMESTAMP)
+					OR (result_status = 'RECEIVED' AND lease_until > ?)
 				)
-			""", Integer.class, eventId);
+			""", Integer.class, eventId, Instant.now().toString());
 		return count != null && count > 0;
 	}
 

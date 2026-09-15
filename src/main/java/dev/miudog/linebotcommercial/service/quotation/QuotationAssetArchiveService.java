@@ -1,5 +1,6 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.config.runtime.CompanyProperties;
 import dev.miudog.linebotcommercial.service.FileStorageService;
 import java.io.InputStream;
 import java.io.IOException;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,6 +39,7 @@ public class QuotationAssetArchiveService {
 	private final JdbcTemplate jdbc;
 	private final FileStorageService storage;
 	private final QuotationOutputDirectoryService outputDirectories;
+	private final CompanyProperties company;
 
 	// 方法：建立正式報價圖片歸檔服務。
 	public QuotationAssetArchiveService(
@@ -44,9 +47,21 @@ public class QuotationAssetArchiveService {
 		FileStorageService storage,
 		QuotationOutputDirectoryService outputDirectories
 	) {
+		this(jdbc, storage, outputDirectories, null);
+	}
+
+	// 方法：正式執行時加入公司識別，讓資產列與物件鍵均有明確租戶邊界。
+	@Autowired
+	public QuotationAssetArchiveService(
+		JdbcTemplate jdbc,
+		FileStorageService storage,
+		QuotationOutputDirectoryService outputDirectories,
+		CompanyProperties company
+	) {
 		this.jdbc = jdbc;
 		this.storage = storage;
 		this.outputDirectories = outputDirectories;
+		this.company = company;
 	}
 
 	// 方法：預檢後搬移全部候選原圖，資料庫失敗時將實體檔案搬回暫存區。
@@ -56,6 +71,10 @@ public class QuotationAssetArchiveService {
 		QuotationRecord quotation = requireArchivableQuotation(confirmation);
 		List<Candidate> candidates = loadCandidates(quotation.draftId(), confirmation.quotationId());
 		if (candidates.isEmpty()) return new QuotationArchivedAssets(List.of(), null);
+
+		if (!storage.usesLegacyFilesystem()) {
+			return archiveObjects(confirmation, candidates);
+		}
 
 		Path directory = outputDirectories.resolveFormalDirectory(confirmation.folderName());
 		if (candidates.stream().allMatch(Candidate::alreadyArchived)) {
@@ -103,6 +122,111 @@ public class QuotationAssetArchiveService {
 		}
 	}
 
+	// 方法：正式模式以物件複製完成歸檔，交易失敗時只刪除本次建立的目標物件。
+	private QuotationArchivedAssets archiveObjects(
+		QuotationConfirmationResult confirmation,
+		List<Candidate> candidates
+	) {
+		List<String> created = new ArrayList<>();
+		List<QuotationArchivedAsset> archived = new ArrayList<>();
+		Path selectedPath = null;
+		try {
+			for (Candidate candidate : candidates) {
+				String objectKey;
+				long assetId;
+				if (candidate.alreadyArchived()) {
+					objectKey = candidate.assetPath();
+					assetId = candidate.assetId();
+					if (!storage.exists(objectKey)) throw failure("正式圖片物件遺失");
+				}
+				else {
+					if (candidate.assetId() != null) throw failure("候選圖片已屬於其他資產範圍");
+
+					if (candidate.pendingPath() == null
+						|| !candidate.pendingPath().startsWith("staging/pending/")) {
+						throw failure("候選圖片不在暫存物件區");
+					}
+					var pending = storage.metadata(candidate.pendingPath());
+					if (pending.contentLength() != candidate.fileSize()) {
+						throw failure("候選圖片大小與暫存資料不一致");
+					}
+
+					FileStorageService.StoredFile stored = storage.archivePending(
+						candidate.pendingPath(),
+						"quotation-" + confirmation.quotationId(),
+						candidate.contentType()
+					);
+					objectKey = stored.relativePath();
+					created.add(objectKey);
+					assetId = insertAsset(candidate, objectKey, stored.size());
+					insertQuotationAsset(confirmation.quotationId(), assetId, candidate);
+					jdbc.update("DELETE FROM pending_image WHERE message_id = ?", candidate.messageId());
+					deletePendingAfterCommit(candidate.pendingPath());
+				}
+
+				Path imagePath = null;
+				if (candidate.selected()) {
+					imagePath = Files.createTempFile("quotation-image-", extension(candidate.contentType()));
+					Files.write(imagePath, storage.read(objectKey));
+					selectedPath = imagePath;
+				}
+				archived.add(new QuotationArchivedAsset(assetId, candidate.messageId(), imagePath, candidate.selected()));
+			}
+			return new QuotationArchivedAssets(archived, selectedPath);
+		}
+		catch (Exception exception) {
+			for (String objectKey : created) {
+				try {
+					storage.delete(objectKey);
+				}
+				catch (IOException compensationFailure) {
+					exception.addSuppressed(compensationFailure);
+				}
+			}
+			cleanupTemporary(selectedPath);
+			if (exception instanceof QuotationAssetArchiveException archiveException) throw archiveException;
+
+			throw new QuotationAssetArchiveException(ARCHIVE_FAILED, "圖片物件歸檔失敗", exception);
+		}
+	}
+
+	// 方法：資料庫提交後才移除暫存物件；回滾時來源仍可安全重試。
+	private void deletePendingAfterCommit(String pendingPath) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			// 方法：執行此方法定義的受控處理流程。
+			@Override
+			public void afterCommit() {
+				try {
+					storage.delete(pendingPath);
+				}
+				catch (IOException ignored) {
+					// 暫存物件可由維運清理工作依資料庫狀態再次回收。
+				}
+			}
+		});
+	}
+
+	// 方法：Excel 已讀取選圖後，清理正式模式為 LibreOffice 建立的暫存副本。
+	public void cleanupTemporary(QuotationArchivedAssets assets) {
+		if (storage.usesLegacyFilesystem() || assets == null) return;
+
+		cleanupTemporary(assets.selectedImagePath());
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private void cleanupTemporary(Path path) {
+		if (path == null) return;
+
+		try {
+			Files.deleteIfExists(path);
+		}
+		catch (IOException ignored) {
+			// 暫存目錄會由作業系統或容器 tmpfs 回收。
+		}
+	}
+
 	// 方法：拒絕空白或不一致的正式確認結果。
 	private void validateConfirmation(QuotationConfirmationResult confirmation) {
 		if (confirmation == null) throw failure("正式確認結果不可留空");
@@ -137,19 +261,23 @@ public class QuotationAssetArchiveService {
 	// 方法：同時讀取暫存候選與已歸檔關聯，以支援安全重試。
 	private List<Candidate> loadCandidates(long draftId, long quotationId) {
 		// 外部呼叫：依草稿候選順序讀取暫存路徑或既有正式資產路徑。
+		String assetPath = storage.usesLegacyFilesystem()
+			? "a.file_path"
+			: "COALESCE(a.object_key, a.file_path)";
 		return jdbc.query("""
 			SELECT di.message_id, di.candidate_order, di.distinctiveness_score,
 				di.quality_score, di.selection_reason, di.is_selected,
-				p.staging_path, p.content_type, p.file_size, p.source_type,
+				p.staging_path, COALESCE(p.content_type, a.content_type) AS content_type,
+				COALESCE(p.file_size, a.file_size) AS file_size, p.source_type,
 				p.source_id, p.uploader_id, p.received_at,
-				a.id AS asset_id, a.file_path AS asset_path, qa.id AS quotation_asset_id
+				a.id AS asset_id, %s AS asset_path, qa.id AS quotation_asset_id
 			FROM quotation_draft_image di
 			LEFT JOIN pending_image p ON p.message_id = di.message_id
 			LEFT JOIN asset a ON a.message_id = di.message_id
 			LEFT JOIN quotation_asset qa ON qa.quotation_id = ? AND qa.asset_id = a.id
 			WHERE di.draft_id = ?
 			ORDER BY di.candidate_order, di.id
-			""", (resultSet, rowNumber) -> new Candidate(
+			""".formatted(assetPath), (resultSet, rowNumber) -> new Candidate(
 			resultSet.getString("message_id"),
 			resultSet.getInt("candidate_order"),
 			(Double) resultSet.getObject("distinctiveness_score"),
@@ -416,6 +544,35 @@ public class QuotationAssetArchiveService {
 
 	// 方法：建立正式資產 metadata 並回傳主鍵。
 	private long insertAsset(Candidate candidate, String relativePath, long size) {
+		if (!storage.usesLegacyFilesystem()) {
+			var metadata = objectMetadata(relativePath);
+			Long assetId = jdbc.queryForObject("""
+				INSERT INTO asset (
+					company_id, message_id, share_token, source_type, source_id, uploader_id,
+					file_path, object_key, object_version, content_hash,
+					content_type, file_size, created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				RETURNING id
+				""", Long.class,
+				company.id(),
+				candidate.messageId(),
+				UUID.randomUUID().toString(),
+				candidate.sourceType(),
+				candidate.sourceId(),
+				candidate.uploaderId(),
+				relativePath,
+				relativePath,
+				metadata.versionId(),
+				metadata.sha256(),
+				candidate.contentType(),
+				size,
+				candidate.receivedAt()
+			);
+			if (assetId == null) throw failure("無法建立正式圖片資產");
+
+			return assetId;
+		}
+
 		// 外部呼叫：以 LINE message id 保證同一張原圖只建立一筆資產。
 		Long assetId = jdbc.queryForObject("""
 			INSERT INTO asset (
@@ -437,6 +594,16 @@ public class QuotationAssetArchiveService {
 		if (assetId == null) throw failure("無法建立正式圖片資產");
 
 		return assetId;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private dev.miudog.linebotcommercial.storage.StoredObject objectMetadata(String relativePath) {
+		try {
+			return storage.metadata(relativePath);
+		}
+		catch (IOException exception) {
+			throw new QuotationAssetArchiveException(ARCHIVE_FAILED, "無法讀取圖片物件資訊", exception);
+		}
 	}
 
 	// 方法：保存候選順序、評分及唯一選中狀態。

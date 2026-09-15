@@ -87,23 +87,31 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		Optional<QuotationDraftSnapshot> processedMessage = findCommittedMessage(ownerId, messageId);
 		if (processedMessage.isPresent()) return work(processedMessage.get());
 
+		QuotationAiParsingService.ParseResult csv = text != null && text.startsWith(QuotationInputCsvService.PREFIX)
+			? parser.parseCsv(text.substring(QuotationInputCsvService.PREFIX.length()))
+			: null;
+
 		QuotationDraftSnapshot base = transactions.execute(status -> findOrCreateActiveDraft(ownerId));
 		if (base == null) throw error("DRAFT_LOAD_FAILED", "無法載入報價草稿");
 
 		QuotationDraftSnapshot inputDraft = includeQuotedImage(base, ownerId, quotedImageMessageId);
 		// 應用服務：報價格式只由使用者指定；尚未指定時不呼叫 AI，改由狀態機要求先選格式。
 		String lockedSchemeCode = inputDraft.schemeCode() == null
-			? QuotationSchemeKeywords.parse(text)
+			? (csv == null ? QuotationSchemeKeywords.parse(text) : csv.request().schemeCode())
 			: inputDraft.schemeCode();
 		if (lockedSchemeCode == null) return work(inputDraft(inputDraft, ownerId));
+
+		if (csv != null && !lockedSchemeCode.equals(csv.request().schemeCode())) {
+			throw error("CSV_SCHEME_CONFLICT", "CSV 格式與目前草稿不同，請先取消草稿再匯入。");
+		}
 
 		QuotationDraftSnapshot schemedDraft = inputDraft.schemeCode() == null
 			? transactions.execute(status -> commitScheme(inputDraft, ownerId, lockedSchemeCode))
 			: inputDraft;
 		if (schemedDraft == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
 
-		List<AiImageInput> images = imageInputs(schemedDraft);
-		QuotationAiParsingService.ParseResult parsed = parser.parse(text, images, lockedSchemeCode);
+		List<AiImageInput> images = csv != null || quotedImageMessageId == null ? List.of() : imageInputs(schemedDraft);
+		QuotationAiParsingService.ParseResult parsed = csv == null ? parser.parse(text, images, lockedSchemeCode) : csv;
 		QuotationDraftSnapshot committed = transactions.execute(status -> commitParsedText(
 			schemedDraft,
 			ownerId,
@@ -625,8 +633,11 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 			if (pending == null) continue;
 
 			try {
-				// 檔案系統：候選圖只從 pending repository 記錄的明確路徑讀取。
-				inputs.add(new AiImageInput(messageId, Files.readAllBytes(resolvePendingPath(pending.stagingPath())), pending.contentType()));
+				// 儲存 API：正式環境由物件儲存讀取；舊檔案模式保留實體路徑與連結檢查。
+				byte[] content = storage.usesLegacyFilesystem()
+					? Files.readAllBytes(resolvePendingPath(pending.stagingPath()))
+					: storage.read(pending.stagingPath());
+				inputs.add(new AiImageInput(messageId, content, pending.contentType()));
 			}
 			catch (IllegalArgumentException exception) {
 				throw error("INVALID_IMAGE_PATH", "圖片暫存路徑不合法");

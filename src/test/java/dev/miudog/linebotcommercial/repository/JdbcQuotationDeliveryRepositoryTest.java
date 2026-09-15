@@ -131,7 +131,7 @@ class JdbcQuotationDeliveryRepositoryTest {
 				id, company_name, work_name, quotation_no, currency,
 				subtotal, tax_amount, total_amount, status
 			)
-			VALUES (41, '正定工程', '港區搭架', '2026081101', 'TWD', 100000, 5000, 105000, 'READY')
+			VALUES (41, '範例工程', '港區搭架', '2026081101', 'TWD', 100000, 5000, 105000, 'READY')
 			""");
 		jdbc.update("""
 			INSERT INTO quotation_file (id, quotation_id, file_kind, status)

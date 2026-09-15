@@ -54,3 +54,6 @@ Tag workflow 依 `WINDOWS_SIGNING_CERTIFICATE_BASE64` 是否存在自動選擇�
 ## ngrok 授權邊界
 
 Setup 不包含、不下載也不再散布 ngrok。使用者自行取得 ngrok agent、帳號與符合其使用情境的授權；App 僅啟動使用者選擇的 executable，並只停止自己建立的 child process。
+# ⚠️ 已退役
+
+Windows Setup 發布流程已停止。現行 OCI／Kubernetes 發布請見 [部署 Runbook](deployment-runbook.md)。

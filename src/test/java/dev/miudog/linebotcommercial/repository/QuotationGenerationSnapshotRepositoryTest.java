@@ -50,7 +50,7 @@ class QuotationGenerationSnapshotRepositoryTest {
 		assertThat(command.confirmation().quotationId()).isEqualTo(quotationId);
 		assertThat(command.confirmation().quotationNumber()).isEqualTo("2026081101");
 		assertThat(command.confirmation().folderName()).isEqualTo("20260811-01");
-		assertThat(command.confirmation().fileBaseName()).isEqualTo("正定公司-完整快照 20260811-01");
+		assertThat(command.confirmation().fileBaseName()).isEqualTo("範例公司-完整快照 20260811-01");
 		assertThat(command.header().customerName()).isEqualTo("正式客戶");
 		assertThat(command.header().phoneFax()).isEqualTo("02-1111 / 02-2222");
 		assertThat(command.header().customerEmail()).isEqualTo("formal@example.test");
@@ -99,8 +99,8 @@ class QuotationGenerationSnapshotRepositoryTest {
 				additional_header,
 				subtotal, tax_amount, total_amount, status
 			)
-			SELECT ?, 1, '2026081101', '正定公司-完整快照 20260811-01', '2026-08-11',
-				1, '正定公司', '完整快照', '2026-08-11', '2026-08-26',
+			SELECT ?, 1, '2026081101', '範例公司-完整快照 20260811-01', '2026-08-11',
+				1, '範例公司', '完整快照', '2026-08-11', '2026-08-26',
 				s.id, t.id, '正式客戶', '02-1111', '02-2222',
 				'formal@example.test', '王先生', '中壢案場', '陳業務',
 				'Tax ID 12345678', 200, 10, 210, 'CONFIRMED'

@@ -85,7 +85,12 @@ public class QuotationAiPromptService {
 		List<String> safeImageMessageIds = validateImageMessageIds(imageMessageIds);
 
 		// 外部 API：從資料庫取得目前真正可供 AI 對應的啟用品項。
-		List<QuotationAdminRepository.AiCatalogEntry> catalog = repository.findActiveAiCatalog();
+		List<QuotationAdminRepository.AiCatalogEntry> catalog = lockedSchemeCode == null
+			|| Set.of("MARINE", "BLANK", "SALES").contains(lockedSchemeCode)
+			? List.of()
+			: repository.findActiveAiCatalog().stream()
+				.filter(entry -> lockedSchemeCode.equals(entry.schemeCode()))
+				.toList();
 		if (catalog.size() > MAXIMUM_CATALOG_ITEMS) {
 			throw new QuotationAiException("AI 品項目錄超過 " + MAXIMUM_CATALOG_ITEMS + " 筆，請先縮小啟用範圍");
 		}
@@ -93,13 +98,19 @@ public class QuotationAiPromptService {
 		try {
 			// 外部 API：將目錄序列化為 JSON 資料區塊，避免以字串拼接混淆欄位邊界。
 			String catalogJson = objectMapper.writeValueAsString(catalog);
+			String boundSchema = schemaForCatalog(catalog, lockedSchemeCode);
 			String systemPrompt = SYSTEM_PROMPT_TEMPLATE.formatted(
-				schemaForCatalog(catalog, lockedSchemeCode),
+				boundSchema,
 				catalogJson,
 				lockedScheme(lockedSchemeCode)
 			);
 			String userPrompt = buildUserPrompt(safeInstruction, safeImageMessageIds);
-			return new Prompt(systemPrompt, userPrompt, safeImageMessageIds);
+			return new Prompt(
+				systemPrompt,
+				userPrompt,
+				safeImageMessageIds,
+				QuotationStructuredSchema.create(objectMapper, boundSchema, lockedSchemeCode)
+			);
 		}
 		catch (RuntimeException exception) {
 			throw new QuotationAiException("建立報價 AI 提示詞失敗", exception);
@@ -237,7 +248,19 @@ public class QuotationAiPromptService {
 		return prompt.toString().stripTrailing();
 	}
 
-	public record Prompt(String systemPrompt, String userPrompt, List<String> imageMessageIds) {}
+	public record Prompt(String systemPrompt, String userPrompt, List<String> imageMessageIds, JsonNode responseSchema) {
+
+		// 方法：Schema 由 response_format 傳送一次；null 表示本輪未修改欄位，不可清除草稿。
+		public String apiSystemPrompt() {
+			return systemPrompt.replaceAll("(?s)JSON Schema：\\s*<JSON_SCHEMA>.*?</JSON_SCHEMA>", "")
+				+ "\n使用 API 提供的 JSON Schema；headerPatch 未提及欄位填 null，代表不修改，不得重述或清除既有資料。";
+		}
+
+		// 方法：保留測試與內部呼叫的簡單建構形式。
+		public Prompt(String systemPrompt, String userPrompt, List<String> imageMessageIds) {
+			this(systemPrompt, userPrompt, imageMessageIds, null);
+		}
+	}
 
 	private record CatalogBoundNodes(
 		ObjectNode standardItemIntents,

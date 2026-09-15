@@ -1,202 +1,60 @@
-# 報價資料庫安全讀寫與匯出
+# 報價主檔 CSV 與範本檔案操作
 
-報價主檔存放於 `{ASSETS_ROOT}/assets.db` 的 SQLite 資料庫。日常修改建議優先開啟
-`http://localhost:8088/admin/`（目前 `server.port=8088`），因為管理頁會驗證欄位、使用參數化 SQL，並寫入
-`admin_audit_log`。本文件提供查詢、批次調價或除錯時可使用的 SQL 範例。
+## 現行維護方式
 
-## 執行前保護
+品項／別名／單價以 CSV 維護，報價版面以 XLSX 與 TEMPLATE_DEFINITIONS 維護。網頁逐筆新增、改價及格式品項編輯已撤銷為產品需求。正式執行使用 PostgreSQL／Flyway 與 S3；舊版 SQLite、assets.db、BEGIN IMMEDIATE 操作不適用現行部署。
 
-1. 修改前停止應用程式，避免 SQLite 同時寫入。
-2. 先備份資料庫；SQLite CLI 可使用 `.backup assets-before-price-update.db`。
-3. 所有修改包在 `BEGIN IMMEDIATE` 與 `COMMIT` 之間，檢查錯誤時改用 `ROLLBACK`。
-4. 不直接修改 `quotation`、`quotation_line`。它們是已建立報價的歷史快照，改主檔不應回寫歷史價格。
+資料庫保存執行資料與歷史報價快照；公司保管可編輯母檔及版本。不要直接改 quotation、quotation_line 來套用新價格。
 
-## 讀取五種報價格式
+## 檔案分工
 
-```sql
-SELECT
-    s.code,
-    s.name,
-    s.calculation_visibility,
-    s.is_active,
-    t.sheet_name,
-    t.summary_only
-FROM quotation_scheme s
-LEFT JOIN quotation_template t
-    ON t.scheme_id = s.id
-    AND t.is_active = 1
-ORDER BY s.id;
+| 內容 | 檔案與操作 |
+| --- | --- |
+| 品項代碼、名稱、AI 別名、規格、單位、單價、排序及啟用狀態 | 匯出 UTF-8 CSV → Excel／試算表軟體編輯 → 存回 UTF-8 CSV |
+| 合併儲存格、圖片、列印範圍、紙張方向、公司版面 | 編輯五種 XLSX 範本，保留必要儲存格與列印設定 |
+| 工作表、明細範圍、欄位座標、圖片放置規則 | 維護 TEMPLATE_DEFINITIONS，須與 XLSX 同版本匹配 |
+| Logo、印章與聯絡資料 | 公司資產包中的對應檔案 |
+
+CSV 不保存 Excel 版面、圖片、公式或多工作表。quotation-master-data.xlsx 是主檔匯出檔，不是報價版面範本；目前只有 CSV 主檔匯入端點，不能把 XLSX 改副檔名後上傳。
+
+## 正式發布流程
+
+1. 匯出目前 CSV 並另存備份；從公司母檔取得對應 XLSX／範本定義。
+2. 在檔案內修改，保留完整主檔、欄位名稱與順序。
+3. 建立新的公司資產版本，將 CSV 作為 ITEM_MASTER，連同全部必要範本／資產放入 manifest，填寫正確大小及 SHA-256。
+4. 透過受保護管理 API 依序 stage → validation → approval → activation；操作及 manifest 形式見 [公司資產治理](company-asset-governance.md)。stage 會驗證 CSV，activation 在交易中套用主檔並切換版本。
+5. 檢查五種格式預覽及 XLSX／LibreOffice PDF；保留版本、核准者與驗收紀錄。需回復時使用資產版本 rollback。
+
+確認過的正式報價保存資產版本與品項快照；更新主檔不應改寫歷史報價。
+
+## CSV 欄位與限制
+
+請以實際匯出檔為起點，標題必須逐字且順序一致：
+
+```csv
+報價格式代碼,報價格式,品項代碼,品項,AI別名,規格/說明,單位,單價,備註,顯示順序,計價模式,顯示於客戶,格式品項啟用,品項主檔啟用
 ```
 
-`MARINE` 應保持 `calculation_visibility = 'SUMMARY_ONLY'` 且模板
-`summary_only = 1`；其內部計算規則尚未提供，不應自行改成明細輸出。
+- 編碼為 UTF-8，可包含 BOM；中文別名以「、」分隔。含逗號或換行的儲存格須使用 CSV 引號規則。
+- 最大檔案大小 4 MiB；以小於 5,000 列（含標題）的批次維護，避免觸及解析上限。
+- 無格式的共用品項列不可重複品項代碼；格式品項的「格式代碼＋品項代碼」組合不可重複。
+- CNS／GENERAL 使用固定品項；MARINE／BLANK／SALES 不接受固定格式品項列，報價內容使用 DYNAMIC 品項。
+- 格式品項須有單位、合法單價及排序；計價模式接受 DIRECT、DERIVED、MANUAL，空白預設 DIRECT。接受模式不代表每種推算規則皆已實作。
+- **匯入為整批取代：未出現在檔案中的品項與格式關聯會停用，並非刪除；保留列依檔案的啟用欄位設定。** 不要只上傳改價的幾列。
+- 檔案會完整解析後才寫入，寫入在交易中執行；驗證錯誤先修檔再重送。
+- 匯出有公式注入保護。請保留文字型別，不要將代碼、電話等轉成數值或公式。
 
-## 讀取某一格式的完整品項主檔
+## 既有管理 API 與實作落差
 
-將 `CNS` 改成 `GENERAL`、`MARINE`、`BLANK` 或 `SALES` 即可查其他格式。
+本地 Compose API 位址預設為 http://127.0.0.1:8088/api/admin，需 X-Admin-Token；寫入另需 X-Local-Admin-Request: 1 並通過同源檢查。資產版本 API 還需 X-Admin-Actor。不要經公開 Tunnel 暴露管理 API。
 
-```sql
-SELECT
-    s.code AS scheme_code,
-    i.code AS item_code,
-    i.name AS item_name,
-    i.aliases_json,
-    si.specification,
-    si.unit,
-    si.unit_price,
-    si.remark,
-    si.display_order,
-    si.calculation_mode,
-    si.is_customer_visible,
-    si.is_active
-FROM quotation_scheme_item si
-JOIN quotation_scheme s
-    ON s.id = si.scheme_id
-JOIN quotation_item i
-    ON i.id = si.item_id
-WHERE s.code = 'CNS'
-ORDER BY si.display_order, si.id;
-```
+| 端點 | 目前行為與用途 |
+| --- | --- |
+| GET /quotation-master-data.csv | 匯出 CSV 母檔起點 |
+| GET /quotation-master-data.xlsx | 匯出可閱讀的 XLSX 主檔 |
+| POST /quotation-master-data.csv，Content-Type: text/csv | 既有直接整批匯入；本文為 CSV 位元組，非 multipart。會直接改目前主檔，**不建立資產版本或執行核准**；正式發布請走資產包生命週期 |
+| GET /quotation-schemes、GET /quotation-items、GET /quotation-schemes/{schemeCode}/items | 查閱格式與主檔 |
+| POST /quotation-items、PATCH /quotation-items/{itemId}、PUT /quotation-schemes/{schemeCode}/items/{itemId} | 舊版逐筆編輯 API 仍存在，待退役；不得作為檔案維護需求的替代方案 |
+| POST /quotation-ai-parse、POST /quotation-request-validation?schemeCode= | AI 解析／固定 JSON 驗證，非 CSV 建立報價入口 |
 
-## 安全更新單價或固定欄位
-
-範例將 CNS 的 `EXTERNAL_SCAFFOLD` 單價更新為 `220`。執行 `COMMIT` 前先確認
-`changes()` 是 `1`，否則應執行 `ROLLBACK` 並檢查代碼。
-
-```sql
-BEGIN IMMEDIATE;
-
-UPDATE quotation_scheme_item
-SET
-    unit_price = 220,
-    updated_at = CURRENT_TIMESTAMP
-WHERE scheme_id = (
-    SELECT id
-    FROM quotation_scheme
-    WHERE code = 'CNS'
-)
-AND item_id = (
-    SELECT id
-    FROM quotation_item
-    WHERE code = 'EXTERNAL_SCAFFOLD'
-);
-
-SELECT changes() AS updated_rows;
-
-COMMIT;
-```
-
-若要由程式呼叫，`schemeCode`、`itemCode`、價格與文字一律用 `?` 參數綁定，禁止把
-LINE 或 AI 文字串接進 SQL。AI 固定 JSON 只允許品項代碼、數量、來源文字與信心；
-規格、單位、單價、備註及複價皆由後端解析或計算。
-
-## 新增品項與格式關聯
-
-```sql
-BEGIN IMMEDIATE;
-
-INSERT INTO quotation_item (
-    code,
-    name,
-    aliases_json,
-    is_active
-)
-VALUES (
-    'NEW_ITEM_CODE',
-    '新項目',
-    json_array('新項目別名'),
-    1
-);
-
-INSERT INTO quotation_scheme_item (
-    scheme_id,
-    item_id,
-    specification,
-    unit,
-    unit_price,
-    remark,
-    display_order,
-    calculation_mode,
-    is_customer_visible,
-    is_active
-)
-SELECT
-    s.id,
-    i.id,
-    '規格內容',
-    '式',
-    0,
-    '待確認價格',
-    999,
-    'DIRECT',
-    1,
-    0
-FROM quotation_scheme s
-CROSS JOIN quotation_item i
-WHERE s.code = 'CNS'
-AND i.code = 'NEW_ITEM_CODE';
-
-SELECT changes() AS inserted_scheme_rows;
-
-COMMIT;
-```
-
-新建的格式品項關聯預設 `is_active = 0`，應先在管理頁確認規格與價格，再啟用該關聯。
-
-## 主檔匯出
-
-管理頁的「匯出 Excel 主檔」會輸出正式 XLSX：
-
-```text
-GET /api/admin/quotation-master-data.xlsx
-```
-
-它包含五種格式的主檔欄位、凍結表頭、篩選器與數字格式。若需文字交換格式，可使用：
-
-```text
-GET /api/admin/quotation-master-data.csv
-```
-
-此檔案可用 Excel 開啟，但它是 `.csv`，不是保留格式、圖片、公式或工作表的 `.xlsx`。
-真正報價 Excel 仍須由五種模板產生器輸出。XLSX 會將文字存成文字儲存格；CSV 匯出會保護以 `=`、`+`、`-`、`@`
-開頭的文字，避免 Excel 將主檔內容當成公式執行。
-
-## 主檔匯入
-
-管理頁的「上傳 CSV 覆蓋主檔」以同一份匯出欄位整批取代主檔：
-
-```text
-POST /api/admin/quotation-master-data.csv
-Content-Type: text/csv
-```
-
-日常維護流程是「匯出 CSV → 在 Excel 編輯 → 上傳覆蓋」；資料庫仍是執行時的唯一來源，
-草稿與已確認報價的外鍵、唯一性與交易保護都不受影響。匯入規則：
-
-- 標題必須與匯出完全相同，欄位錯位一律拒絕。
-- 整份檔案在單一交易內套用；任何一列不合法就全部不套用，錯誤訊息指出實際列號。
-- 匯入時先將全部主檔停用，再依檔案內容重新啟用，因此**未出現在檔案中的品項會被停用而不是刪除**，
-  已確認報價的歷史快照與外鍵關聯完全保留。
-- 品項代碼必須符合 `^[A-Z][A-Z0-9_]{0,99}$`；`AI別名`以「、」分隔，供 AI 對應使用者的近似說法。
-- `MARINE`、`BLANK`、`SALES` 不使用固定品項，這三種格式的資料列會被拒絕。
-- 空白「報價格式代碼」代表尚未指派到任何格式的共用品項，只更新品項主檔本身。
-
-## 本機管理 API
-
-| 方法與路徑 | 用途 |
-|---|---|
-| `GET /api/admin/quotation-schemes` | 列出五種格式與模板狀態 |
-| `GET /api/admin/quotation-items` | 列出共用品項主檔 |
-| `POST /api/admin/quotation-items` | 新增品項 |
-| `PATCH /api/admin/quotation-items/{itemId}` | 部分更新品項 |
-| `GET /api/admin/quotation-schemes/{schemeCode}/items` | 列出格式固定欄位 |
-| `PUT /api/admin/quotation-schemes/{schemeCode}/items/{itemId}` | 新增或更新格式品項 |
-| `GET /api/admin/quotation-ai-status` | 檢查 AI 是否已設定，不回傳金鑰或設定值 |
-| `POST /api/admin/quotation-ai-parse` | 將純文字指令轉成固定格式並以主檔補齊欄位（需帶 `schemeCode`） |
-| `POST /api/admin/quotation-request-validation?schemeCode=` | 以指定格式嚴格驗證 AI JSON 並預覽解析結果 |
-| `GET /api/admin/quotation-master-data.xlsx` | 匯出正式 Excel 主檔 |
-| `GET /api/admin/quotation-master-data.csv` | 匯出 UTF-8 主檔 CSV |
-| `POST /api/admin/quotation-master-data.csv` | 以同一份 CSV 格式整批覆蓋主檔 |
-
-上述 `/admin/` 與 `/api/admin/` 僅接受本機 loopback 直接連線，帶有轉送來源標頭或來自
-非本機位址的請求會被拒絕，避免管理功能經公開通道暴露。
+/admin/ 目前仍包含逐筆新增品項及格式品項編輯表單；本次修訂撤銷的是規格，尚未移除程式或封鎖端點。後續退役應保留 CSV 交換、報價查詢／預覽與工作重試能力，並確認所有寫入都符合公司資產版本治理。

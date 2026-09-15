@@ -3,6 +3,7 @@ package dev.miudog.linebotcommercial.service;
 import dev.miudog.linebotcommercial.domain.Asset;
 import dev.miudog.linebotcommercial.repository.AssetRepository;
 import dev.miudog.linebotcommercial.repository.AssetRepository.FileIdentity;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -67,6 +68,17 @@ public class AssetFileReconciliationService {
 
 	// 方法：在 LINE 圖片寫入後保存其檔案身分。
 	public void register(long assetId, String relativePath) throws IOException {
+		if (!fileStorage.usesLegacyFilesystem()) {
+			StoredObject metadata = fileStorage.metadata(relativePath);
+			assetRepository.updateObjectStorageIdentity(
+				assetId,
+				relativePath,
+				metadata.versionId(),
+				metadata.sha256()
+			);
+			return;
+		}
+
 		Path path = fileStorage.resolve(relativePath);
 
 		// 外部 API：讀取檔案大小、修改時間與作業系統檔案識別碼。
@@ -86,6 +98,8 @@ public class AssetFileReconciliationService {
 
 	// 方法：在再次接收相同 LINE 訊息前立即清除實體檔案已刪除的舊索引。
 	public synchronized void deleteIfFileMissing(String messageId) {
+		if (!fileStorage.usesLegacyFilesystem()) return;
+
 		Optional<Asset> existing = assetRepository.findByMessageId(messageId);
 		if (existing.isEmpty()) return;
 
@@ -101,6 +115,8 @@ public class AssetFileReconciliationService {
 
 	// 方法：同步 Explorer 對圖片的刪除、編輯、移動、改名與外部加入。
 	public synchronized SyncResult synchronize() throws IOException {
+		if (!fileStorage.usesLegacyFilesystem()) return new SyncResult(0, 0, 0, 0, 0);
+
 		List<Asset> assets = assetRepository.findAll();
 		Map<Long, FileIdentity> identities = assetRepository.findFileIdentities();
 		List<DiskFile> diskFiles = scanDiskFiles();

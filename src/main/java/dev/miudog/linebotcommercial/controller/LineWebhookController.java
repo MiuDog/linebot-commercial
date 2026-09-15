@@ -9,6 +9,7 @@ import dev.miudog.linebotcommercial.service.quotation.QuotationLineWorkflowExcep
 import dev.miudog.linebotcommercial.service.quotation.QuotationLineWorkflowService;
 import dev.miudog.linebotcommercial.service.quotation.QuotationPostbackException;
 import dev.miudog.linebotcommercial.service.quotation.QuotationReplyOutboxService;
+import dev.miudog.linebotcommercial.service.quotation.QuotationInputCsvService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -224,8 +225,45 @@ public class LineWebhookController {
 				uploaderId,
 				replyToken
 			);
+			case "file" -> handleQuotationCsv(eventId, message, sourceType, uploaderId, replyToken);
 			default -> { /* 語音、貼圖、影片、位置等目前不收錄 */
 			}
+		}
+	}
+
+	// 方法：只允許已驗證的一對一 CSV 檔案進入同一草稿／預覽／確認流程。
+	private void handleQuotationCsv(String eventId, JsonNode message, String sourceType, String ownerId, String replyToken) {
+		String name = getSafeText(message, "fileName");
+		if (!"user".equals(sourceType) || name == null || !name.toLowerCase(java.util.Locale.ROOT).endsWith(".csv")) return;
+
+		try {
+			if (getSafeLong(message, "fileSize", 0) > QuotationInputCsvService.MAXIMUM_BYTES) {
+				throw new QuotationLineWorkflowException("INVALID_QUOTATION_CSV", "報價 CSV 不可超過 1 MiB。");
+			}
+			String messageId = getSafeText(message, "id");
+			// LINE API：下載串流後再檢查實際大小，不信任檔案名稱或宣告的 fileSize。
+			LineStorageService.LineContent content = lineService.downloadContent(messageId);
+			if (content == null) throw new QuotationLineWorkflowException("CSV_DOWNLOAD_FAILED", "暫時無法下載 CSV，請重新上傳。");
+
+			byte[] bytes;
+			try (var input = content.stream()) {
+				bytes = input.readNBytes(QuotationInputCsvService.MAXIMUM_BYTES + 1);
+			}
+			if (bytes.length > QuotationInputCsvService.MAXIMUM_BYTES) {
+				throw new QuotationLineWorkflowException("INVALID_QUOTATION_CSV", "報價 CSV 不可超過 1 MiB。");
+			}
+			// 字元解碼：非法 UTF-8 必須報錯，不以替代字元悄悄改寫客戶資料。
+			String csv = StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+			replyQuotationMessages(eventId, ownerId, replyToken, quotationWorkflow.handleText(
+				eventId, messageId, ownerId, QuotationInputCsvService.PREFIX + csv, null
+			));
+		}
+		catch (java.io.IOException exception) {
+			replyQuotationFailure(replyToken, QuotationLineFailureMessageResolver.Operation.TEXT,
+				new QuotationLineWorkflowException("INVALID_QUOTATION_CSV", "CSV 讀取失敗，請另存為 UTF-8 後重送。"));
+		}
+		catch (RuntimeException exception) {
+			replyQuotationFailure(replyToken, QuotationLineFailureMessageResolver.Operation.TEXT, exception);
 		}
 	}
 

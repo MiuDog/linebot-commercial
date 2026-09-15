@@ -1,5 +1,7 @@
 # Spec：desktop-host
 
+狀態：Superseded。桌面執行模式已由 `SPEC-headless-runtime.md` 與 `SPEC-desktop-retirement.md` 取代。
+
 ## Objective
 
 把既有 Spring Boot LINE Bot 包在 Windows 桌面殼層中。使用者啟動 App 後能看到「已啟動」狀態；關閉視窗後 App 留在系統匣持續執行；再次開啟相同 App 時只顯示既有視窗，不建立第二個後端或 SQLite 寫入程序。

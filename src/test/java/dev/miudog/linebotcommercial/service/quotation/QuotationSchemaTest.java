@@ -7,13 +7,10 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,7 +62,7 @@ class QuotationSchemaTest {
 				draft_key, source_type, source_id, requester_id,
 				company_name, work_name, status
 			)
-			VALUES (?, 'user', ?, 'requester', '正定公司', '測試工程', 'COLLECTING_ITEMS')
+			VALUES (?, 'user', ?, 'requester', '範例公司', '測試工程', 'COLLECTING_ITEMS')
 			""",
 			"draft-" + suffix,
 			"source-" + suffix
@@ -215,11 +212,11 @@ class QuotationSchemaTest {
 		assertThat(schemes).hasSize(5);
 		assertThat(schemes).extracting(row -> row.get("workbook_path"))
 			.containsExactlyInAnyOrder(
-				"outputs/excel-templates/quotation-template-BLANK.xlsx",
-				"outputs/excel-templates/quotation-template-CNS.xlsx",
-				"outputs/excel-templates/quotation-template-GENERAL.xlsx",
-				"outputs/excel-templates/quotation-template-MARINE.xlsx",
-				"outputs/excel-templates/quotation-template-SALES.xlsx"
+				"src/test/resources/quotation/templates/quotation-template-BLANK.xlsx",
+				"src/test/resources/quotation/templates/quotation-template-CNS.xlsx",
+				"src/test/resources/quotation/templates/quotation-template-GENERAL.xlsx",
+				"src/test/resources/quotation/templates/quotation-template-MARINE.xlsx",
+				"src/test/resources/quotation/templates/quotation-template-SALES.xlsx"
 			);
 		assertThat(schemes).anySatisfy(row -> {
 				assertThat(row.get("code")).isEqualTo("CNS");
@@ -278,21 +275,15 @@ class QuotationSchemaTest {
 		assertThat(itemCount).isEqualTo(21);
 		assertThat(cnsCount).isEqualTo(21);
 		assertThat(generalCount).isEqualTo(20);
-		assertThat(externalScaffold.get("specification")).isEqualTo("(一般料)");
-		assertThat(externalScaffold.get("unit")).isEqualTo("m2");
-		assertThat(((Number) externalScaffold.get("unit_price")).intValue()).isEqualTo(180);
-		assertThat(externalScaffold.get("remark")).isEqualTo("(實做實算)");
+		assertThat(externalScaffold.get("specification")).isEqualTo("TEST");
+		assertThat(externalScaffold.get("unit")).isEqualTo("式");
+		assertThat(((Number) externalScaffold.get("unit_price")).intValue()).isEqualTo(10);
+		assertThat(externalScaffold.get("remark")).isEqualTo("TEST ONLY");
 	}
 
-	// 方法：逐欄比對來源 Excel 萃取結果與 SQLite 的 41 筆 CNS／一般架固定主檔。
+	// 方法：測試主檔使用獨立虛構規格與計價，不再讀取公司來源 Excel。
 	@Test
-	void matchesEveryFixedMasterFieldExtractedFromTheSourceWorkbook() throws Exception {
-		// 外部 API：讀取由正式來源活頁簿產生的可稽核萃取清單。
-		JsonNode analysis = new ObjectMapper().readTree(
-			Files.readString(Path.of("outputs/excel-templates/template-analysis.json"))
-		);
-		List<MasterRow> expected = expectedFixedMasterRows(analysis);
-
+	void usesOnlySyntheticFixedMasterFields() {
 		// 資料庫 API：依方案及顯示順序讀取所有固定主檔欄位。
 		List<MasterRow> actual = jdbcTemplate.query(
 			"""
@@ -316,8 +307,12 @@ class QuotationSchemaTest {
 			)
 		);
 
-		assertThat(expected).hasSize(41);
-		assertThat(actual).containsExactlyElementsOf(expected);
+		assertThat(actual).hasSize(41).allSatisfy(row -> {
+			assertThat(row.specification()).isEqualTo("TEST");
+			assertThat(row.unit()).isEqualTo("式");
+			assertThat(row.remark()).isEqualTo("TEST ONLY");
+			assertThat(row.unitPrice()).isEqualByComparingTo(BigDecimal.valueOf(row.displayOrder() * 10L));
+		});
 	}
 
 	@Test
@@ -408,29 +403,6 @@ class QuotationSchemaTest {
                 """, commandMessageId);
 		return jdbcTemplate
 			.queryForObject("SELECT id FROM quotation_request WHERE command_message_id = ?", Long.class, commandMessageId);
-	}
-
-	// 方法：將 Excel 萃取報告中的 CNS／一般架品項轉成可與資料庫逐欄比較的資料列。
-	private List<MasterRow> expectedFixedMasterRows(JsonNode analysis) {
-		List<MasterRow> rows = new ArrayList<>();
-		for (JsonNode scheme : analysis.path("schemes")) {
-			String schemeCode = scheme.path("schemeCode").asString();
-			if (!List.of("CNS", "GENERAL").contains(schemeCode)) continue;
-
-			for (JsonNode item : scheme.path("items")) {
-				rows.add(new MasterRow(
-					schemeCode,
-					item.path("itemCode").asString(),
-					item.path("name").asString(),
-					item.path("specification").asString(),
-					item.path("unit").asString(),
-					item.path("unitPrice").decimalValue(),
-					item.path("remark").asString(),
-					item.path("displayOrder").asInt()
-				));
-			}
-		}
-		return List.copyOf(rows);
 	}
 
 	private record MasterRow(

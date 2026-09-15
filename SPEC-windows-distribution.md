@@ -1,5 +1,7 @@
 # Spec：windows-distribution
 
+狀態：Superseded。Windows 安裝交付已由 `SPEC-local-docker.md` 與 `SPEC-cloud-deployment.md` 取代。
+
 ## Objective
 
 把 Spring Boot App、桌面殼層與 Java Runtime 封裝成單一 Windows Setup.exe。使用者以同一份 Setup 完成首次安裝；再次執行時可編輯設定、修復／升級或移除 App。

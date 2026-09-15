@@ -271,3 +271,6 @@ ngrok 免費版**每次重啟都會換網址**，換了之後要**同時**更新
 - [LINE Bot 規則與各階段處理](02-linebot-rules.md)
 - [版本、Release 與 Push SOP](03-versioning-release-sop.md)
 - [類別索引](reference/index.md)
+# ⚠️ 歷史文件
+
+本文件的舊本機部署段落不再適用；現行建置與部署請使用 [根 README](../README.md) 與 [部署 Runbook](deployment-runbook.md)。

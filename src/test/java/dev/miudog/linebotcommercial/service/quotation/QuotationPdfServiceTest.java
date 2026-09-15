@@ -30,12 +30,12 @@ class QuotationPdfServiceTest {
 
 		assertThat(result.quotationId()).isEqualTo(41);
 		assertThat(result.quotationNumber()).isEqualTo("20260811-01");
-		assertThat(result.pdfPath().getFileName().toString()).isEqualTo("正定公司-中壢案 20260811-01.pdf");
+		assertThat(result.pdfPath().getFileName().toString()).isEqualTo("範例公司-中壢案 20260811-01.pdf");
 		assertThat(exporter.input).isEqualTo(workbookPath());
 		assertThat(exporter.output).isEqualTo(result.pdfPath());
 		assertThat(store.status).isEqualTo("READY");
 		assertThat(store.relativePdfPath).isEqualTo(
-			Path.of("報價單", "20260811-01", "正定公司-中壢案 20260811-01.pdf").toString()
+			Path.of("報價單", "20260811-01", "範例公司-中壢案 20260811-01.pdf").toString()
 		);
 		assertThat(store.contentHash).hasSize(64);
 		assertThat(store.fileSize).isPositive();
@@ -49,13 +49,13 @@ class QuotationPdfServiceTest {
 
 		assertThatThrownBy(() -> service.export(41))
 			.isInstanceOf(QuotationAdminException.class)
-			.hasMessageContaining("Excel 匯出 PDF 失敗");
+			.hasMessageContaining("LibreOffice 匯出 PDF 失敗");
 
 		assertThat(workbookPath()).isRegularFile();
 		assertThat(store.status).isEqualTo("PDF_FAILED");
 		assertThat(store.errorMessage).contains("受控測試失敗");
 		assertThat(store.relativePdfPath).isEqualTo(
-			Path.of("報價單", "20260811-01", "正定公司-中壢案 20260811-01.pdf").toString()
+			Path.of("報價單", "20260811-01", "範例公司-中壢案 20260811-01.pdf").toString()
 		);
 	}
 
@@ -70,7 +70,7 @@ class QuotationPdfServiceTest {
 		assertThat(result.quotationNumber()).isEqualTo("20260811-01");
 		assertThat(exporter.input).isEqualTo(workbookPath());
 		assertThat(exporter.output).isEqualTo(
-			workbookPath().resolveSibling("正定公司-中壢案 20260811-01.pdf")
+			workbookPath().resolveSibling("範例公司-中壢案 20260811-01.pdf")
 		);
 		assertThat(store.markGeneratingCount).isEqualTo(1);
 		assertThat(store.status).isEqualTo("READY");
@@ -127,24 +127,26 @@ class QuotationPdfServiceTest {
 	}
 
 	@Test
-	void fixedPowerShellScriptClosesWorkbookAndExcelInFinally() throws IOException {
-		String script = Files.readString(
-			Path.of("scripts", "export-quotation-pdf.ps1"),
+	void productionExporterUsesHeadlessLibreOfficeWithAnIsolatedProfile() throws IOException {
+		String source = Files.readString(
+			Path.of(
+				"src/main/java/dev/miudog/linebotcommercial/service/quotation/LibreOfficePdfExporter.java"
+			),
 			StandardCharsets.UTF_8
 		);
 
-		assertThat(script)
-			.contains("ExportAsFixedFormat", "finally", "$workbook.Close($false)", "$excel.Quit()")
-			.doesNotContain("Invoke-Expression");
+		assertThat(source)
+			.contains("--headless", "UserInstallation=", "createTempDirectory")
+			.doesNotContain("powershell.exe", "Excel.Application");
 	}
 
 	@Test
-	void productionPdfExporterDoesNotAcceptAConfigurableScriptPath() {
-		List<Constructor<?>> publicConstructors = List.of(PowerShellExcelPdfExporter.class.getConstructors());
+	void productionPdfExporterOnlyAcceptsTheLibreOfficeExecutable() {
+		List<Constructor<?>> publicConstructors = List.of(LibreOfficePdfExporter.class.getConstructors());
 
 		assertThat(publicConstructors).singleElement()
 			.extracting(Constructor::getParameterCount)
-			.isEqualTo(0);
+			.isEqualTo(1);
 	}
 
 	private QuotationPdfService service(QuotationPdfStore store, ExcelPdfExporter exporter) {
@@ -159,7 +161,7 @@ class QuotationPdfServiceTest {
 				41,
 				"20260811-01",
 				status,
-				Path.of("報價單", "20260811-01", "正定公司-中壢案 20260811-01.xlsx").toString()
+				Path.of("報價單", "20260811-01", "範例公司-中壢案 20260811-01.xlsx").toString()
 			)
 		);
 	}
@@ -168,7 +170,7 @@ class QuotationPdfServiceTest {
 		return temporaryDirectory
 			.resolve("報價單")
 			.resolve("20260811-01")
-			.resolve("正定公司-中壢案 20260811-01.xlsx");
+			.resolve("範例公司-中壢案 20260811-01.xlsx");
 	}
 
 	private static final class RecordingExporter implements ExcelPdfExporter {

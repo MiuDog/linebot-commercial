@@ -74,19 +74,43 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	@Test
+	void importsFiveCsvFormatsAsIdempotentDraftsWithoutCallingAi() {
+		var repository = new dev.miudog.linebotcommercial.repository.QuotationAdminRepository(
+			JdbcClient.create(jdbc.getDataSource()), new tools.jackson.databind.ObjectMapper()
+		);
+		var csvService = new QuotationInputCsvService(new QuotationRequestValidationService(repository), new tools.jackson.databind.ObjectMapper());
+		for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
+			String csv = QuotationInputCsvService.HEADER + "\n" + scheme + ",測試公司,工程,承辦,,,,支架,規格,組,10,2,\n";
+			when(parser.parseCsv(csv)).thenReturn(csvService.parse(csv));
+			String owner = "U-csv-" + scheme;
+			String message = "M-csv-" + scheme;
+			QuotationDraftWork first = port.applyText(owner, message, QuotationInputCsvService.PREFIX + csv);
+			QuotationDraftWork replay = port.applyText(owner, message, QuotationInputCsvService.PREFIX + csv);
+			assertThat(replay.draft().draftId()).isEqualTo(first.draft().draftId());
+			assertThat(replay.draft().revision()).isEqualTo(first.draft().revision());
+			assertThat(first.draft().schemeCode()).isEqualTo(scheme);
+			assertThat(first.draft().items()).hasSize(1);
+			assertThat(first.draft().status()).isNotEqualTo(QuotationDraftStatus.CONFIRMED);
+			verify(parser).parseCsv(csv);
+		}
+		verify(parser, org.mockito.Mockito.never()).parse(any(), anyList(), any());
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quotation", Integer.class)).isZero();
+	}
+
+	@Test
 	void createsPrivateDraftPersistsMissingFieldsAndMergesLaterCorrection() {
 		when(parser.parse("#報價 一般架，外部鷹架 2m2", List.of(), "GENERAL"))
 			.thenReturn(new QuotationAiParsingService.ParseResult(request(null, "工程A"), "{}"));
-		when(parser.parse("公司是正定工程", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(headerOnlyRequest("正定工程", null), "{}"));
+		when(parser.parse("公司是範例工程", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(headerOnlyRequest("範例工程", null), "{}"));
 
 		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 一般架，外部鷹架 2m2");
-		QuotationDraftWork corrected = port.applyText("U1", "M2", "公司是正定工程");
+		QuotationDraftWork corrected = port.applyText("U1", "M2", "公司是範例工程");
 
 		assertThat(first.draft().baseFields()).doesNotContainKey("companyName");
 		assertThat(corrected.draft().draftId()).isEqualTo(first.draft().draftId());
 		assertThat(corrected.draft().baseFields())
-			.containsEntry("companyName", "正定工程")
+			.containsEntry("companyName", "範例工程")
 			.containsEntry("workName", "工程A");
 		assertThat(corrected.draft().items()).singleElement()
 			.satisfies(item -> assertThat(item.fields()).containsEntry("quantity", "2"));
@@ -101,7 +125,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void returnsCommittedTextMessageWithoutReplayingAiOrMerge() {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		QuotationDraftWork first = port.applyText("U1", "REPLAY-TEXT", "#報價 一般架");
 		clearInvocations(parser);
 
@@ -128,7 +152,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 		QuotationDraftWork created = port.applyText("U1", "M1", "#報價 外牆鷹架 2");
 		QuotationDraftWork schemed = port.applyScheme(created.draft().draftId(), "U1", "GENERAL");
 		when(parser.parse("外部鷹架 2m2", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 
 		QuotationDraftWork parsed = port.applyText("U1", "M2", "外部鷹架 2m2");
 
@@ -141,7 +165,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void keepsTheFirstSchemeWhenAnotherSchemeIsRequestedLater() {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		QuotationDraftWork created = port.applyText("U1", "M1", "#報價 一般架");
 		port.applyScheme(created.draft().draftId(), "U1", "SALES");
 
@@ -151,7 +175,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void removesOnlyExplicitlyNamedStandardItems() {
 		when(parser.parse("#報價 一般架，外部鷹架 2m2", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		when(parser.parse("刪除外部鷹架", List.of(), "GENERAL"))
 			.thenReturn(new QuotationAiParsingService.ParseResult(removalRequest("EXTERNAL_SCAFFOLD"), "{}"));
 
@@ -171,7 +195,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void bindsRevisionLookupToTheOwningLineUser() {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		QuotationDraftWork work = port.applyText("U1", "M1", "#報價 一般架");
 
 		assertThat(port.currentRevision(work.draft().draftId(), "U1")).isEqualTo(work.draft().revision());
@@ -183,7 +207,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void keepsEveryPendingOriginalSelectsHighestDistinctivenessAndAllowsReplacementOrRemoval() throws Exception {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		QuotationDraftWork created = port.applyText("U1", "TEXT1", "#報價 一般架");
 		insertPending("IMG1", "one.jpg");
 		insertPending("IMG2", "two.jpg");
@@ -223,7 +247,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void evaluatesACompletedLineImageSetOnceWithEveryCandidate() throws Exception {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		port.applyText("U1", "TEXT1", "#報價 一般架");
 		insertPending("IMG1", "SET1", 1, 2, "one.jpg");
 		insertPending("IMG2", "SET1", 2, 2, "two.jpg");
@@ -255,14 +279,35 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	@Test
+	void readsQuotedImagesFromObjectStorageAndDoesNotResendImagesForTextCorrections() throws Exception {
+		insertPending("CARD1", "business-card.jpg");
+		var objects = org.mockito.Mockito.mock(dev.miudog.linebotcommercial.storage.ObjectStorage.class);
+		when(objects.get("staging/pending/card.jpg")).thenReturn(new byte[]{1, 2, 3});
+		jdbc.update("UPDATE pending_image SET staging_path = 'staging/pending/card.jpg' WHERE message_id = 'CARD1'");
+		org.springframework.test.util.ReflectionTestUtils.setField(port, "storage", new FileStorageService(
+			temporaryDirectory.toString(), false, objects
+		));
+		when(parser.parse(eq("#報價 一般架"), anyList(), eq("GENERAL")))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("公司", "工程"), "{}"));
+		when(parser.parse("公司是新公司", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(headerOnlyRequest("新公司", null), "{}"));
+
+		port.applyText("U1", "TEXT1", "#報價 一般架", "CARD1");
+		QuotationDraftWork corrected = port.applyText("U1", "TEXT2", "公司是新公司");
+		assertThat(corrected.draft().baseFields()).containsEntry("companyName", "新公司");
+		assertThat(corrected.draft().imageMessageIds()).contains("CARD1");
+		verify(objects).get("staging/pending/card.jpg");
+	}
+
+	@Test
 	void sendsQuotedBusinessCardImageToAiAndPersistsOcrHeaderFields() throws Exception {
 		insertPending("CARD1", "business-card.jpg");
 		when(parser.parse(eq("#報價 一般架"), anyList(), eq("GENERAL")))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 
 		QuotationDraftWork work = port.applyText("U1", "TEXT1", "#報價 一般架", "CARD1");
 
-		assertThat(work.draft().baseFields()).containsEntry("companyName", "正定工程");
+		assertThat(work.draft().baseFields()).containsEntry("companyName", "範例工程");
 		assertThat(work.draft().baseFields()).containsEntry("salesRepresentative", "陳業務");
 		assertThat(work.draft().imageMessageIds()).containsExactly("CARD1");
 		assertThat(jdbc.queryForMap("""
@@ -270,9 +315,9 @@ class SqliteQuotationDraftWorkflowPortTest {
 			FROM quotation_draft_field
 			WHERE draft_id = ? AND field_key = 'companyName'
 			""", work.draft().draftId()))
-			.containsEntry("field_value", "正定工程")
+			.containsEntry("field_value", "範例工程")
 			.containsEntry("source_message_id", "TEXT1")
-			.containsEntry("source_text", "正定工程")
+			.containsEntry("source_text", "範例工程")
 			.satisfies(row -> assertThat((Number) row.get("confidence")).isNotNull());
 		assertThat(jdbc.queryForMap("""
 			SELECT field_value, source_message_id, source_text, confidence
@@ -332,7 +377,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void rejectsAbsoluteAndEscapingPendingImagePathsBeforeCallingAi() throws Exception {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
-			.thenReturn(new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}"));
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		port.applyText("U1", "TEXT1", "#報價 一般架");
 		insertPending("ABS", "absolute.jpg");
 		jdbc.update("UPDATE pending_image SET staging_path = ? WHERE message_id = 'ABS'", temporaryDirectory.resolve(".pending/absolute.jpg").toString());
@@ -355,7 +400,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 			parsingStarted.countDown();
 			assertThat(allowResponse.await(5, TimeUnit.SECONDS)).isTrue();
 
-			return new QuotationAiParsingService.ParseResult(request("正定工程", "工程A"), "{}");
+			return new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}");
 
 		});
 
@@ -456,7 +501,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	private QuotationRequestValidationService.ValidatedQuotationRequest requestWithImageDecline() {
-		QuotationRequestValidationService.ValidatedQuotationRequest base = request("正定工程", "工程A");
+		QuotationRequestValidationService.ValidatedQuotationRequest base = request("範例工程", "工程A");
 		return new QuotationRequestValidationService.ValidatedQuotationRequest(
 			base.schemaVersion(),
 			"BLANK",
@@ -485,7 +530,7 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	private QuotationRequestValidationService.ValidatedQuotationRequest customItemRequest(boolean completion) {
-		QuotationRequestValidationService.ValidatedQuotationRequest base = request("正定工程", "工程A");
+		QuotationRequestValidationService.ValidatedQuotationRequest base = request("範例工程", "工程A");
 		return new QuotationRequestValidationService.ValidatedQuotationRequest(
 			base.schemaVersion(),
 			"SALES",

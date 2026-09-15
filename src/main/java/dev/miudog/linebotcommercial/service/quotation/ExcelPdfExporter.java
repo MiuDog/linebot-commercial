@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 /**
- * 將可信的本機 XLSX 交給受控 Microsoft Excel 程序匯出為 PDF。
+ * 將可信的暫存 XLSX 交給受控 headless office 程序匯出為 PDF。
  */
 public interface ExcelPdfExporter {
 
