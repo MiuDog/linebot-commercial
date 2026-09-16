@@ -1,5 +1,16 @@
 # 本地部署驗證（2026-09-15）
 
+## 2026-09-16：多模型 workflow 增補
+
+- 最新 `mvnw.cmd clean verify`：386 tests，0 failures／errors／skipped，包含原有報價回歸及 11 項新 workflow 測試。
+- Docker 映像重建成功；`AI_WORKFLOW_ENABLED=true` 及預設 false 皆可啟動，App healthy，`/readyz` 回應 UP。
+- PostgreSQL `flyway_schema_history` 的 V3 success=true；檢查點 upsert 與讀回驗證成功，測試交易已 ROLLBACK。
+- 本地最終恢復 `.env` 相容設定，workflow 預設關閉；角色模型由部署者設定後啟用。
+- 使用本機 HTTP stub 驗證三角色、五格式業務驗證、快取隔離／恢復、升級與配額。未使用真實供應商推論，未宣稱模型品質、延遲或費用改善幅度。
+- 新功能只修改 Commercial；Document 不執行報價模型流程。
+
+設定與回復方式見 [多模型 workflow](quotation-model-workflow.md)。下列為前次部署紀錄。
+
 ## 已完成
 
 - Commercial：`mvnw.cmd clean verify`，373 tests，0 failures／errors／skipped。

@@ -47,6 +47,10 @@ public final class QuotationLineFailureMessageResolver {
 	private static Failure aiFailure(QuotationAiException exception) {
 		String code = exception.code();
 		String message = switch (code) {
+			case "AI_WORKFLOW_CONFIG" -> "報價 workflow 設定不完整，請管理員檢查角色模型、端點、金鑰與配額。";
+			case "AI_WORKFLOW_BUDGET" -> "本輪 AI 解析已達預算或供應商缺少用量資料，請拆分輸入或使用 CSV。";
+			case "AI_REFUSED" -> "AI 無法處理本次資料，請修改輸入或使用 CSV。";
+			case "AI_OUTPUT_TRUNCATED" -> "AI 輸出被截斷，請拆分輸入或請管理員調整輸出預算。";
 			case "AI_NOT_CONFIGURED" -> "報價 AI 尚未設定，請管理員檢查 AI_API_URL、AI_API_KEY 與 AI_MODEL。";
 			case "AI_TIMEOUT" -> "AI 解析超過等待時間，請稍後重送同一段報價指令。";
 			case "AI_AUTH_FAILED" -> "AI API 驗證失敗，請管理員檢查 API 金鑰。";

@@ -16,3 +16,6 @@ Windows 客戶不需要手動建立下列檔案。請雙擊根目錄的 `linebot
 - `cloudflared-token`（只有啟用 `tunnel` profile 才需要）
 
 正式雲端環境請改用雲端 Secret Manager 或 Kubernetes Secret 掛載，不要複製本機檔案。
+# 選用的角色模型金鑰
+
+啟用 `AI_WORKFLOW_ENABLED=true` 時，可新增 `ai-text-api-key`、`ai-vision-api-key`、`ai-escalation-api-key`。角色端點不同於 `AI_API_URL` 時必須填入該角色獨立金鑰；相同端點且未提供角色金鑰時沿用 `ai-api-key`。這些檔案不需預先建立空檔，切勿建立成資料夾。詳見 [多模型 workflow](../docs/quotation-model-workflow.md)。
