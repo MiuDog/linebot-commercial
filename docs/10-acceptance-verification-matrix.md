@@ -1,5 +1,7 @@
 # LINE AI 自動化報價驗收證據矩陣
 
+新版可執行輸入與操作步驟見 [報價測試套件](examples/quotation-test-pack/README.md) 及 [60 項功能案例](examples/quotation-test-pack/coverage-matrix.md)。案例清單與歷史驗收證據分開維護；實機結果請填入套件的執行紀錄。
+
 依據：[08 LINE AI 自動化報價 SRS](08-quotation-automation-srs.md)。本表區分「自動驗證」、
 「實機／檔案驗證」及「待補人工證據」；功能已實作不等於沙盒或特定主機已實測。
 

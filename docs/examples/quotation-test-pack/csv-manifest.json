@@ -1,0 +1,249 @@
+{
+  "taxRate": "0.05",
+  "catalogSource": "src/test/resources/schema.sql",
+  "fixtures": [
+    {
+      "file": "csv/cns-complete.csv",
+      "accept": true,
+      "scheme": "CNS",
+      "items": 2,
+      "subtotal": "340.99",
+      "tax": "17.05",
+      "total": "358.04",
+      "imageDecision": false,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/general-complete.csv",
+      "accept": true,
+      "scheme": "GENERAL",
+      "items": 2,
+      "subtotal": "340.99",
+      "tax": "17.05",
+      "total": "358.04",
+      "imageDecision": false,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/marine-complete.csv",
+      "accept": true,
+      "scheme": "MARINE",
+      "items": 2,
+      "subtotal": "340.99",
+      "tax": "17.05",
+      "total": "358.04",
+      "imageDecision": true,
+      "presentation": "SUMMARY_ONLY"
+    },
+    {
+      "file": "csv/blank-complete.csv",
+      "accept": true,
+      "scheme": "BLANK",
+      "items": 2,
+      "subtotal": "340.99",
+      "tax": "17.05",
+      "total": "358.04",
+      "imageDecision": true,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/sales-complete.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 2,
+      "subtotal": "340.99",
+      "tax": "17.05",
+      "total": "358.04",
+      "imageDecision": false,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/cns-standard.csv",
+      "accept": true,
+      "scheme": "CNS",
+      "items": 2,
+      "subtotal": "170.00",
+      "tax": "8.50",
+      "total": "178.50",
+      "catalogFixture": true,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/general-standard.csv",
+      "accept": true,
+      "scheme": "GENERAL",
+      "items": 2,
+      "subtotal": "170.00",
+      "tax": "8.50",
+      "total": "178.50",
+      "catalogFixture": true,
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/sales-zero-price.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 1,
+      "subtotal": "0.00",
+      "tax": "0.00",
+      "total": "0.00"
+    },
+    {
+      "file": "csv/sales-rounding.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 1,
+      "subtotal": "10.01",
+      "tax": "0.50",
+      "total": "10.51"
+    },
+    {
+      "file": "csv/sales-quoted.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 1,
+      "subtotal": "241.00",
+      "tax": "12.05",
+      "total": "253.05"
+    },
+    {
+      "file": "csv/sales-missing-header.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 1,
+      "subtotal": "241.00",
+      "tax": "12.05",
+      "total": "253.05",
+      "needsBaseFields": true
+    },
+    {
+      "file": "csv/sales-200-items.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 200,
+      "subtotal": "200.00",
+      "tax": "10.00",
+      "total": "210.00"
+    },
+    {
+      "file": "csv/sales-bom.csv",
+      "accept": true,
+      "scheme": "SALES",
+      "items": 1,
+      "subtotal": "241.00",
+      "tax": "12.05",
+      "total": "253.05"
+    },
+    {
+      "file": "csv/invalid-quantity-zero.csv",
+      "accept": false,
+      "error": "quantity"
+    },
+    {
+      "file": "csv/invalid-quantity-negative.csv",
+      "accept": false,
+      "error": "quantity"
+    },
+    {
+      "file": "csv/invalid-quantity-exponent.csv",
+      "accept": false,
+      "error": "quantity"
+    },
+    {
+      "file": "csv/invalid-quantity-precision.csv",
+      "accept": false,
+      "error": "quantity"
+    },
+    {
+      "file": "csv/invalid-quantity-too-large.csv",
+      "accept": false,
+      "error": "quantity"
+    },
+    {
+      "file": "csv/invalid-price-negative.csv",
+      "accept": false,
+      "error": "unitPrice"
+    },
+    {
+      "file": "csv/invalid-price-missing.csv",
+      "accept": false,
+      "error": "unitPrice"
+    },
+    {
+      "file": "csv/invalid-name-missing.csv",
+      "accept": false,
+      "error": "itemName"
+    },
+    {
+      "file": "csv/invalid-spec-missing.csv",
+      "accept": false,
+      "error": "specification"
+    },
+    {
+      "file": "csv/invalid-unit-missing.csv",
+      "accept": false,
+      "error": "unit"
+    },
+    {
+      "file": "csv/invalid-dynamic-fixed-code.csv",
+      "accept": false,
+      "error": "itemCode"
+    },
+    {
+      "file": "csv/invalid-unknown-scheme.csv",
+      "accept": false,
+      "error": "schemeCode"
+    },
+    {
+      "file": "csv/invalid-mixed-schemes.csv",
+      "accept": false,
+      "error": "混用"
+    },
+    {
+      "file": "csv/invalid-header-conflict.csv",
+      "accept": false,
+      "error": "companyName"
+    },
+    {
+      "file": "csv/invalid-three-temporary.csv",
+      "accept": false,
+      "error": "2"
+    },
+    {
+      "file": "csv/invalid-201-items.csv",
+      "accept": false,
+      "error": "200"
+    },
+    {
+      "file": "csv/invalid-standard-override.csv",
+      "accept": false,
+      "error": "itemName"
+    },
+    {
+      "file": "csv/invalid-standard-unknown.csv",
+      "accept": false,
+      "error": "UNKNOWN_ITEM"
+    },
+    {
+      "file": "csv/invalid-header.csv",
+      "accept": false,
+      "error": "標題"
+    },
+    {
+      "file": "csv/invalid-unclosed-quote.csv",
+      "accept": false,
+      "error": "引號"
+    },
+    {
+      "file": "csv/invalid-column-count.csv",
+      "accept": false,
+      "error": "欄位數量"
+    },
+    {
+      "file": "csv/invalid-utf8.csv",
+      "accept": false,
+      "decodeError": true,
+      "error": "UTF-8"
+    }
+  ]
+}
