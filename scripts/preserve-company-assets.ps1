@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 $ErrorActionPreference = 'Stop'
 
 # 僅保全明確列出的公司資產；雜湊一致後才允許後續移除原檔。

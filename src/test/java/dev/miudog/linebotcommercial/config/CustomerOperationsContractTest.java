@@ -15,6 +15,43 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CustomerOperationsContractTest {
 
+	// 方法：含中文的腳本必須附 UTF-8 BOM，避免 Windows PowerShell 5.1 以 ANSI 解碼。
+	@Test
+	void marksUnicodePowerShellScriptsWithUtf8Bom() throws IOException {
+		try (var scripts = Files.list(Path.of("scripts"))) {
+			for (Path script : scripts.filter(path -> path.toString().endsWith(".ps1")).toList()) {
+				byte[] bytes = Files.readAllBytes(script);
+				if (new String(bytes, StandardCharsets.UTF_8).chars().anyMatch(character -> character > 127)) {
+					assertThat(bytes).as(script.toString()).startsWith((byte) 0xEF, (byte) 0xBB, (byte) 0xBF);
+				}
+			}
+		}
+	}
+
+	// 方法：用實際 Windows PowerShell 執行首次設定兩次，確認可啟動且不覆寫密碼。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void preparesSettingsWithWindowsPowerShellAndPreservesExistingSecrets(@TempDir Path projectRoot) throws Exception {
+		Path scripts = Files.createDirectories(projectRoot.resolve("scripts"));
+		Path setup = scripts.resolve("prepare-local-settings.ps1");
+		Files.copy(Path.of("scripts/prepare-local-settings.ps1"), setup);
+		Files.copy(Path.of(".env.example"), projectRoot.resolve(".env.example"));
+		Path secret = projectRoot.resolve("secrets/database-password");
+		String password = null;
+		for (int attempt = 0; attempt < 2; attempt++) {
+			Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", setup.toString())
+				.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+			boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+			if (!finished) process.destroyForcibly();
+			assertThat(finished).isTrue();
+			assertThat(process.exitValue()).isZero();
+			String actual = Files.readString(secret);
+			assertThat(actual).matches("[0-9a-f]{64}");
+			if (password != null) assertThat(actual).isEqualTo(password);
+			password = actual;
+		}
+	}
+
 	// 方法：客戶可從單一入口完成設定與日常操作，不必直接輸入 Docker 指令。
 	@Test
 	void providesOneCustomerFacingControlEntryPoint() throws IOException {
