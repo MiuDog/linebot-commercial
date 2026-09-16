@@ -7,55 +7,100 @@
       "accept": true,
       "scheme": "CNS",
       "items": 2,
-      "subtotal": "340.99",
-      "tax": "17.05",
-      "total": "358.04",
+      "subtotal": "1210.00",
+      "tax": "60.50",
+      "total": "1270.50",
       "imageDecision": false,
-      "presentation": "DETAIL"
+      "presentation": "DETAIL",
+      "internalLines": 21,
+      "customerLines": 21,
+      "blankLines": 19,
+      "origin": "STANDARD",
+      "includeCodes": [
+        "ELEVATOR_GATE"
+      ],
+      "excludeCodes": [],
+      "catalogPrices": {}
     },
     {
       "file": "csv/general-complete.csv",
       "accept": true,
       "scheme": "GENERAL",
       "items": 2,
-      "subtotal": "340.99",
-      "tax": "17.05",
-      "total": "358.04",
+      "subtotal": "3760.00",
+      "tax": "188.00",
+      "total": "3948.00",
       "imageDecision": false,
-      "presentation": "DETAIL"
+      "presentation": "DETAIL",
+      "internalLines": 20,
+      "customerLines": 20,
+      "blankLines": 18,
+      "origin": "STANDARD",
+      "includeCodes": [
+        "EXTERNAL_SCAFFOLD",
+        "DUST_NET"
+      ],
+      "excludeCodes": [
+        "ELEVATOR_GATE"
+      ],
+      "catalogPrices": {
+        "EXTERNAL_SCAFFOLD": "12",
+        "DUST_NET": "35"
+      }
     },
     {
       "file": "csv/marine-complete.csv",
       "accept": true,
       "scheme": "MARINE",
-      "items": 2,
-      "subtotal": "340.99",
-      "tax": "17.05",
-      "total": "358.04",
+      "items": 3,
+      "subtotal": "16400.00",
+      "tax": "820.00",
+      "total": "17220.00",
       "imageDecision": true,
-      "presentation": "SUMMARY_ONLY"
+      "presentation": "SUMMARY_ONLY",
+      "internalLines": 3,
+      "customerLines": 0,
+      "blankLines": 0,
+      "origin": "DYNAMIC",
+      "includeCodes": [],
+      "excludeCodes": [],
+      "catalogPrices": {}
     },
     {
       "file": "csv/blank-complete.csv",
       "accept": true,
       "scheme": "BLANK",
-      "items": 2,
-      "subtotal": "340.99",
-      "tax": "17.05",
-      "total": "358.04",
+      "items": 1,
+      "subtotal": "12000.00",
+      "tax": "600.00",
+      "total": "12600.00",
       "imageDecision": true,
-      "presentation": "DETAIL"
+      "presentation": "DETAIL",
+      "internalLines": 1,
+      "customerLines": 1,
+      "blankLines": 0,
+      "origin": "DYNAMIC",
+      "includeCodes": [],
+      "excludeCodes": [],
+      "catalogPrices": {}
     },
     {
       "file": "csv/sales-complete.csv",
       "accept": true,
       "scheme": "SALES",
-      "items": 2,
-      "subtotal": "340.99",
-      "tax": "17.05",
-      "total": "358.04",
+      "items": 3,
+      "subtotal": "1604.96",
+      "tax": "80.25",
+      "total": "1685.21",
       "imageDecision": false,
-      "presentation": "DETAIL"
+      "presentation": "DETAIL",
+      "internalLines": 3,
+      "customerLines": 3,
+      "blankLines": 0,
+      "origin": "DYNAMIC",
+      "includeCodes": [],
+      "excludeCodes": [],
+      "catalogPrices": {}
     },
     {
       "file": "csv/cns-standard.csv",
@@ -205,11 +250,6 @@
       "error": "companyName"
     },
     {
-      "file": "csv/invalid-three-temporary.csv",
-      "accept": false,
-      "error": "2"
-    },
-    {
       "file": "csv/invalid-201-items.csv",
       "accept": false,
       "error": "200"
@@ -244,6 +284,46 @@
       "accept": false,
       "decodeError": true,
       "error": "UTF-8"
+    },
+    {
+      "file": "csv/cns-3-temporary.csv",
+      "accept": true,
+      "scheme": "CNS",
+      "items": 3,
+      "subtotal": "30.00",
+      "tax": "1.50",
+      "total": "31.50",
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/cns-250-temporary.csv",
+      "accept": true,
+      "scheme": "CNS",
+      "items": 250,
+      "subtotal": "2500.00",
+      "tax": "125.00",
+      "total": "2625.00",
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/general-3-temporary.csv",
+      "accept": true,
+      "scheme": "GENERAL",
+      "items": 3,
+      "subtotal": "30.00",
+      "tax": "1.50",
+      "total": "31.50",
+      "presentation": "DETAIL"
+    },
+    {
+      "file": "csv/general-250-temporary.csv",
+      "accept": true,
+      "scheme": "GENERAL",
+      "items": 250,
+      "subtotal": "2500.00",
+      "tax": "125.00",
+      "total": "2625.00",
+      "presentation": "DETAIL"
     }
   ]
 }

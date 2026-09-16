@@ -118,7 +118,7 @@ docker compose --profile tunnel down
 
 真實 LINE 對話與生成結果的截圖範例正在準備，進度與驗收步驟見 [實機範例](docs/examples/README.md)；尚未完成前不以模擬圖片代替。
 
-測試輸入已備妥：[五種報價格式測試套件](docs/examples/quotation-test-pack/README.md)，包含文字腳本、35 份 CSV、6 張合成圖片與 60 項功能案例。可執行 `./mvnw.cmd -q -Dtest=QuotationExamplePackTest test` 驗證範例檔案與預期計價。
+測試輸入已備妥：[五種報價格式測試套件](docs/examples/quotation-test-pack/README.md)，包含文字腳本、38 份 CSV、6 張合成圖片與 60 項功能案例。可執行 `./mvnw.cmd -q -Dtest=QuotationExamplePackTest test` 驗證範例檔案與預期計價。
 
 ```text
 mvnw.cmd clean verify

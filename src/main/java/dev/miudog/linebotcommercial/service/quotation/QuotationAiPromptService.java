@@ -39,7 +39,7 @@ public class QuotationAiPromptService {
 		5-3. 信心低於 0.75 或可能對應到兩個以上目錄品項時，不可輸出該筆標準品項，改列入 missingItemFields：itemRef 填使用者原本的說法、fields 填 ["itemCode"]、reason 填 LOW_CONFIDENCE 或 CONFLICT，並保留 sourceText 與 confidence。
 		6. quantity 必須直接來自使用者輸入且大於零；未明示時填 null 並列入 missingItemFields，現階段不可自行推算成品數量。
 		6-1. 目前只做「品項對應數量」的填表：唯一的計算是應用程式自行執行的「數量 × 單價」與「未稅總額 × 1.05」。不要輸出面積、坪數、支數換算或任何其他公式結果，也不要因為使用者提供尺寸就自行推導數量。
-		7. 臨時或動態品項只可提取使用者明確提供的 itemName、specification、unit、unitPrice、quantity、remark；每個值都保留來源與信心，缺漏填 null，不得補造。CNS／GENERAL 最多兩筆 TEMPORARY；MARINE／BLANK／SALES 使用 DYNAMIC。
+		7. 臨時或動態品項只可提取使用者明確提供的 itemName、specification、unit、unitPrice、quantity、remark；每個值都保留來源與信心，缺漏填 null，不得補造。CNS／GENERAL 使用 TEMPORARY，不限筆數；MARINE／BLANK／SALES 使用 DYNAMIC，最多200筆。不得因筆數多而省略使用者提供的品項。
 		7-1. MARINE、BLANK、SALES 不使用固定品項目錄：這三種格式的 standardItemIntents 與 removedItemCodes 必須是空陣列，全部品項改以 DYNAMIC 記錄使用者明確說明的名稱、規格、單位、單價與數量。
 		8. AI 不計價，不可輸出複價、小計、稅額、含稅總額、流水號、檔案路徑或傳送狀態。
 		9. missingBaseFields 與 missingItemFields 必須一次列出全部缺漏，讓應用程式以單一訊息回問；低信心、缺少與衝突分別使用 LOW_CONFIDENCE、MISSING、CONFLICT。

@@ -49,6 +49,33 @@ class QuotationFixedSchemeFormalFlowTest {
 	@TempDir
 	Path outputRoot;
 
+	// 方法：固定格式的大量臨時品項須完整保存快照並跨頁輸出，不得被舊上限或範本截斷。
+	@ParameterizedTest
+	@ValueSource(strings = {"CNS", "GENERAL"})
+	@Transactional
+	void persistsAndRendersTwoHundredFiftyTemporaryRows(String schemeCode) throws Exception {
+		var items = java.util.stream.IntStream.range(0, 250)
+			.mapToObj(index -> temporaryItem("臨時測試" + index, "測試", "組", "10", "1", "TEST ONLY")).toList();
+		var calculation = calculationService.calculate(new QuotationCalculationRequest(schemeCode, List.of(), items, Set.of()));
+		var confirmation = confirmationService.confirm(confirmationCommand(
+			insertAwaitingConfirmationDraft(schemeCode), schemeCode, "large-" + UUID.randomUUID(), calculation
+		));
+		Integer savedCount = jdbcTemplate.queryForObject(
+			"SELECT COUNT(*) FROM quotation_line WHERE quotation_id = ? AND line_kind = 'CUSTOM'", Integer.class, confirmation.quotationId()
+		);
+		assertThat(savedCount).isEqualTo(250);
+		var service = new QuotationWorkbookService(
+			new ObjectMapper(), new QuotationOutputDirectoryService(outputRoot.toString()), new DefaultResourceLoader()
+		);
+		var workbook = service.generateConfirmed(header(confirmation), confirmation, calculation);
+		try (WorkbookView view = new WorkbookView(workbook.path())) {
+			assertThat(view.sheetCount()).isGreaterThan(2);
+			assertThat(view.itemNames(schemeCode)).containsAll(items.stream().map(QuotationCalculationRequest.CustomItem::itemName).toList());
+			assertThat(view.itemNames(schemeCode)).hasSize(250 + ("CNS".equals(schemeCode) ? 21 : 20));
+		}
+		assertThat(workbook.total()).isEqualByComparingTo("2625.00");
+	}
+
 	// 方法：以真實 SQLite 主檔完成 CNS／一般架的計價、確認快照與正式跨頁 Excel 產出。
 	@ParameterizedTest
 	@ValueSource(strings = {"CNS", "GENERAL"})

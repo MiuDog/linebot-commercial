@@ -5,7 +5,7 @@
     "title": "CNS架文字完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 conversations/cns.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計1210.00、稅額60.50、總額1270.50（5%）；使用 CNS 主檔全 21 列；EXTERNAL_SCAFFOLD 單價 10、ELEVATOR_GATE 單價 210。其餘 19 列數量與複價必須空白，不是 0；CSV 不可提供固定品項單價。 文字抽取需實際模型驗收。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -23,7 +23,7 @@
     "title": "CNS架CSV完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 csv/cns-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計1210.00、稅額60.50、總額1270.50（5%）；使用 CNS 主檔全 21 列；EXTERNAL_SCAFFOLD 單價 10、ELEVATOR_GATE 單價 210。其餘 19 列數量與複價必須空白，不是 0；CSV 不可提供固定品項單價。 CSV抽取零模型呼叫。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -41,7 +41,7 @@
     "title": "一般架文字完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 conversations/general.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計3760.00、稅額188.00、總額3948.00（5%）；使用一般架自己的20列主檔及價格版本；本案例在隔離測試主檔將 EXTERNAL_SCAFFOLD 設為12、DUST_NET 設為35，與 CNS 不同。不得讀到 CNS 價格；不含 ELEVATOR_GATE。其餘18列保留空白數量與複價。 文字抽取需實際模型驗收。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -59,7 +59,7 @@
     "title": "一般架CSV完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 csv/general-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計3760.00、稅額188.00、總額3948.00（5%）；使用一般架自己的20列主檔及價格版本；本案例在隔離測試主檔將 EXTERNAL_SCAFFOLD 設為12、DUST_NET 設為35，與 CNS 不同。不得讀到 CNS 價格；不含 ELEVATOR_GATE。其餘18列保留空白數量與複價。 CSV抽取零模型呼叫。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -77,7 +77,7 @@
     "title": "船用文字完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 conversations/marine.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計16400.00、稅額820.00、總額17220.00（5%）；內部3筆計價明細，客戶可見明細為0筆，只交付彙總。三筆動態列合法，不受臨時品項筆數限制。必須明確選圖或不提供圖片。 文字抽取需實際模型驗收。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -95,7 +95,7 @@
     "title": "船用CSV完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 csv/marine-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計16400.00、稅額820.00、總額17220.00（5%）；內部3筆計價明細，客戶可見明細為0筆，只交付彙總。三筆動態列合法，不受臨時品項筆數限制。必須明確選圖或不提供圖片。 CSV抽取零模型呼叫。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -113,7 +113,7 @@
     "title": "空白文字完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 conversations/blank.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計12000.00、稅額600.00、總額12600.00（5%）；直接使用使用者報的一式價格12000，只有1筆客戶可见工程明細；不得展開 CNS／一般架主檔。必須明確選圖或不提供圖片。 文字抽取需實際模型驗收。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -131,7 +131,7 @@
     "title": "空白CSV完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 csv/blank-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計12000.00、稅額600.00、總額12600.00（5%）；直接使用使用者報的一式價格12000，只有1筆客戶可见工程明細；不得展開 CNS／一般架主檔。必須明確選圖或不提供圖片。 CSV抽取零模型呼叫。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -149,7 +149,7 @@
     "title": "銷售文字完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 conversations/sales.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計1604.96、稅額80.25、總額1685.21（5%）；3筆動態商品明細完整呈現，包含0單價贈品；單號依銷售範本顯示 S 前綴。價格只取自使用者輸入，不回寫主檔；無圖時不強制圖片決策。 文字抽取需實際模型驗收。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -167,7 +167,7 @@
     "title": "銷售CSV完整報價",
     "mode": "LINE人工",
     "steps": "新草稿；依 csv/sales-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
-    "expected": "小計340.99、稅額17.05、總額358.04（5%）；公司/工程/承辦正確；CSV抽取零模型呼叫。船用只對客顯示彙總；船用/空白必須處理圖片決策。",
+    "expected": "小計1604.96、稅額80.25、總額1685.21（5%）；3筆動態商品明細完整呈現，包含0單價贈品；單號依銷售範本顯示 S 前綴。價格只取自使用者輸入，不回寫主檔；無圖時不強制圖片決策。 CSV抽取零模型呼叫。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
@@ -200,8 +200,8 @@
     "category": "按鈕",
     "title": "修改預覽",
     "mode": "LINE人工",
-    "steps": "完成SALES範例預覽，按修改；只將數量2改成4及工程名稱改為第二版。",
-    "expected": "其他欄位不清空；小計581.99、稅29.10、總額611.09；舊預覽失效。",
+    "steps": "完成SALES專屬範例預覽，按修改；將銷售支架數量10改成4。",
+    "expected": "小計881.96、稅44.10、總額926.06；另外兩筆保留，贈品金額仍為0。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
@@ -394,15 +394,20 @@
   {
     "id": "FLOW-07",
     "category": "FLOW",
-    "title": "兩筆臨時品項與第三筆",
+    "title": "臨時品項不限筆數",
     "mode": "LINE人工",
-    "steps": "CNS完整範例有兩筆臨時品項；另開草稿上傳 invalid-three-temporary.csv。",
-    "expected": "兩筆通過，第三筆被拒絕；臨時資料不回寫主檔。",
+    "steps": "新草稿分別上傳CNS及一般架的3筆、250筆臨時品項CSV，確認後檢查全部分頁。",
+    "expected": "全部接受；250筆小計2500、稅125、合計2625；固定空白列保留，臨時資料不回寫主檔。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationRequestValidationServiceTest.java"
     ],
-    "files": [],
+    "files": [
+      "csv/cns-3-temporary.csv",
+      "csv/cns-250-temporary.csv",
+      "csv/general-3-temporary.csv",
+      "csv/general-250-temporary.csv"
+    ],
     "status": "待執行"
   },
   {
@@ -437,8 +442,8 @@
     "category": "CSV",
     "title": "合併而非整份取代",
     "mode": "LINE人工",
-    "steps": "SALES完整CSV後再上傳只含第一筆且數量4的CSV。",
-    "expected": "第二筆仍保留；列序號識別自訂品項；更新不是覆蓋整份。",
+    "steps": "SALES完整CSV後，上傳只含第一筆銷售支架且數量4的CSV。",
+    "expected": "小計881.96、稅44.10、總額926.06；另外兩筆保留，贈品金額仍為0。 CSV省略的兩列不得刪除。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
     ],
@@ -450,7 +455,7 @@
     "category": "CSV",
     "title": "格式/引號/UTF8",
     "mode": "LINE人工",
-    "steps": "逐一使用csv-manifest.json列出的35份檔案，先用自動測試核對，再選代表檔上傳。",
+    "steps": "逐一使用csv-manifest.json列出的38份檔案，先用自動測試核對，再選代表檔上傳。",
     "expected": "合法檔成功，錯誤檔回覆可定位欄位或編碼錯誤；不得留下半套修改。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",

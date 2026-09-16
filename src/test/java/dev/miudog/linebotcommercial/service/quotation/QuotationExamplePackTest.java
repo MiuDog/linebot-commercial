@@ -51,7 +51,12 @@ class QuotationExamplePackTest {
 		String csv = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
 		try (var connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
 			ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
-			var repository = new QuotationAdminRepository(JdbcClient.create(new SingleConnectionDataSource(connection, true)), mapper);
+			var jdbc = JdbcClient.create(new SingleConnectionDataSource(connection, true));
+			for (var price : fixture.path("catalogPrices").properties()) {
+				jdbc.sql("UPDATE quotation_scheme_item SET unit_price = ? WHERE scheme_id = (SELECT id FROM quotation_scheme WHERE code = ?) AND item_id = (SELECT id FROM quotation_item WHERE code = ?)")
+					.params(new BigDecimal(price.getValue().asString()), fixture.path("scheme").asString(), price.getKey()).update();
+			}
+			var repository = new QuotationAdminRepository(jdbc, mapper);
 			var parser = new QuotationInputCsvService(new QuotationRequestValidationService(repository), mapper);
 			if (!fixture.path("accept").asBoolean()) {
 				assertThatThrownBy(() -> parser.parse(csv)).isInstanceOf(RuntimeException.class)
@@ -74,6 +79,21 @@ class QuotationExamplePackTest {
 			assertThat(result.tax()).isEqualByComparingTo(fixture.path("tax").asString());
 			assertThat(result.total()).isEqualByComparingTo(fixture.path("total").asString());
 			if (fixture.has("presentation")) assertThat(result.customerPresentation().name()).isEqualTo(fixture.path("presentation").asString());
+
+			if (fixture.has("internalLines")) {
+				assertThat(result.internalLines()).hasSize(fixture.path("internalLines").asInt());
+				assertThat(result.customerLines()).hasSize(fixture.path("customerLines").asInt());
+				assertThat(result.internalLines().stream().filter(line -> line.quantity() == null).toList())
+					.hasSize(fixture.path("blankLines").asInt())
+					.allSatisfy(line -> assertThat(line.lineAmount()).isNull());
+				assertThat(result.internalLines()).allSatisfy(line -> assertThat(line.origin().name()).isEqualTo(fixture.path("origin").asString()));
+				for (JsonNode code : fixture.path("includeCodes")) {
+					assertThat(result.internalLines()).extracting(QuotationCalculationResult.QuotationLine::itemCode).contains(code.asString());
+				}
+				for (JsonNode code : fixture.path("excludeCodes")) {
+					assertThat(result.internalLines()).extracting(QuotationCalculationResult.QuotationLine::itemCode).doesNotContain(code.asString());
+				}
+			}
 		}
 	}
 

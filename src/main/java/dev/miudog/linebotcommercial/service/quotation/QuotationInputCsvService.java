@@ -35,6 +35,8 @@ public final class QuotationInputCsvService {
 			throw invalid(2, "schemeCode 不正確");
 		}
 		boolean dynamic = Set.of("MARINE", "BLANK", "SALES").contains(scheme);
+		if (dynamic && rows.size() > 201) throw invalid(rows.size(), "最多 200 筆品項");
+
 		ObjectNode root = mapper.createObjectNode();
 		root.put("schemaVersion", "2.0").put("schemeCode", scheme).put("schemeConfidence", 1);
 		ObjectNode header = root.putObject("headerPatch");
@@ -117,7 +119,7 @@ public final class QuotationInputCsvService {
 		}
 	}
 
-	// 方法：解析 CSV 引號、逗號與儲存格換行，同時限制大小與最多 200 筆品項。
+	// 方法：解析 CSV 引號、逗號與儲存格換行；檔案大小有上限，筆數規則由格式判斷。
 	private List<List<String>> rows(String text) {
 		if (text == null || text.length() > MAXIMUM_BYTES) throw invalid(1, "檔案超過上限或沒有內容");
 
@@ -156,7 +158,6 @@ public final class QuotationInputCsvService {
 
 				rows.add(List.copyOf(cells));
 				cells.clear();
-				if (rows.size() > 201) throw invalid(rows.size(), "最多 200 筆品項");
 			}
 			else {
 				if (closed || character == '"') throw invalid(rows.size() + 1, "引號位置不正確");
@@ -170,7 +171,6 @@ public final class QuotationInputCsvService {
 			cells.add(value.toString());
 			rows.add(List.copyOf(cells));
 		}
-		if (rows.size() > 201) throw invalid(rows.size(), "最多 200 筆品項");
 
 		return rows;
 	}

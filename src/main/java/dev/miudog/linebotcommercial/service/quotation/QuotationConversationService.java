@@ -27,7 +27,6 @@ public class QuotationConversationService {
 		"remark"
 	);
 	private static final Set<String> IMAGE_REQUIRED_SCHEMES = Set.of("MARINE", "BLANK");
-	private static final Set<String> TEMPORARY_ITEM_LIMIT_SCHEMES = Set.of("CNS", "GENERAL");
 
 	// 方法：重新檢查完整草稿並決定唯一的下一個對話動作。
 	public QuotationConversationDecision review(QuotationDraftSnapshot draft) {
@@ -277,16 +276,11 @@ public class QuotationConversationService {
 		return List.copyOf(missingItems);
 	}
 
-	// 方法：限制 CNS 與一般架最多兩筆臨時品項，並限制合理動態品項數量。
+	// 方法：只有船用、空白、銷售保留動態品項上限；CNS／一般架臨時品項不限筆數。
 	private void validateItemLimits(QuotationDraftSnapshot draft) {
-		if (draft.items().size() > 200) throw error("ITEM_LIMIT_EXCEEDED", "每張報價最多 200 筆品項");
-
 		String schemeCode = normalizeSchemeCode(draft.schemeCode());
-		long customItemCount = draft.items().stream()
-			.filter(item -> item.kind() == QuotationDraftItemKind.CUSTOM)
-			.count();
-		if (TEMPORARY_ITEM_LIMIT_SCHEMES.contains(schemeCode) && customItemCount > 2) {
-			throw error("TEMPORARY_ITEM_LIMIT_EXCEEDED", "CNS／一般架最多 2 筆臨時品項");
+		if (Set.of("MARINE", "BLANK", "SALES").contains(schemeCode) && draft.items().size() > 200) {
+			throw error("ITEM_LIMIT_EXCEEDED", "船用／空白／銷售每張報價最多 200 筆品項");
 		}
 	}
 

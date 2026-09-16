@@ -99,18 +99,14 @@ class QuotationCalculationServiceTest {
 	}
 
 	@Test
-	void rejectsTheThirdTemporaryItemForFixedSchemes() {
-		when(repository.findActiveSchemeItems("CNS")).thenReturn(List.of());
-		QuotationCalculationRequest request = request(
-			"CNS",
-			List.of(),
-			List.of(custom("臨時一", "10"), custom("臨時二", "20"), custom("臨時三", "30")),
-			Set.of()
-		);
-
-		assertThatThrownBy(() -> service.calculate(request))
-			.isInstanceOf(QuotationCalculationException.class)
-			.hasMessageContaining("最多 2 筆臨時品項");
+	void acceptsMoreThanTwoHundredTemporaryItemsForBothFixedSchemes() {
+		for (String scheme : List.of("CNS", "GENERAL")) {
+			when(repository.findActiveSchemeItems(scheme)).thenReturn(List.of());
+			var items = java.util.stream.IntStream.range(0, 250).mapToObj(index -> temporary("臨時" + index, "10")).toList();
+			var result = service.calculate(request(scheme, List.of(), items, Set.of()));
+			assertThat(result.internalLines()).hasSize(250);
+			assertThat(result.subtotal()).isEqualByComparingTo("2500.00");
+		}
 	}
 
 	@Test
