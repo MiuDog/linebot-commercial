@@ -145,8 +145,9 @@ public class QuotationGenerationCoordinator {
 	// 方法：只在圖片歸檔或 Excel 產生失敗時標記 XLSX 與報價產生失敗。
 	private WorkbookStage generateWorkbook(QuotationConfirmedGenerationCommand command) {
 		QuotationConfirmationResult confirmation = command.confirmation();
+		QuotationArchivedAssets archived = null;
 		try {
-			QuotationArchivedAssets archived = assets.archive(confirmation);
+			archived = assets.archive(confirmation);
 			generations.markGenerating(confirmation.quotationId());
 			QuotationWorkbookService.GenerationResult workbook = workbooks.generateConfirmed(
 				formalHeader(command.header(), confirmation),
@@ -170,6 +171,9 @@ public class QuotationGenerationCoordinator {
 				exception.addSuppressed(statusFailure);
 			}
 			throw new QuotationGenerationException(code, "正式報價檔案產生失敗，可由管理頁重試", exception);
+		}
+		finally {
+			assets.cleanupTemporary(archived);
 		}
 	}
 

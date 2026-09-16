@@ -63,7 +63,7 @@ class QuotationDownloadControllerTest {
 	@Test
 	@Transactional
 	void issuesHashedTokenAndDownloadsReadyPdf() throws Exception {
-		long quotationId = insertReadyPdf("20260811-01", "正定公司-中壢案 20260811-01.pdf", "%PDF-test");
+		long quotationId = insertReadyPdf("20260811-01", "範例公司-中壢案 20260811-01.pdf", "%PDF-test");
 		QuotationDownloadLink link = service.issuePdfLink(quotationId, Duration.ofDays(7));
 
 		assertThat(link.url()).startsWith("https://quotation.example.test/quotation-downloads/");

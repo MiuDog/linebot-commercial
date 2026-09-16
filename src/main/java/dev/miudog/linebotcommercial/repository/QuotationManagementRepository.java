@@ -1,6 +1,7 @@
 package dev.miudog.linebotcommercial.repository;
 
 import dev.miudog.linebotcommercial.service.quotation.QuotationAdminException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,15 @@ import java.util.Optional;
 public class QuotationManagementRepository {
 
 	private final JdbcTemplate jdbc;
+	private final boolean legacyFilesystemEnabled;
 
 	// 方法：建立正式報價管理資料存取層。
-	public QuotationManagementRepository(JdbcTemplate jdbc) {
+	public QuotationManagementRepository(
+		JdbcTemplate jdbc,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystemEnabled
+	) {
 		this.jdbc = jdbc;
+		this.legacyFilesystemEnabled = legacyFilesystemEnabled;
 	}
 
 	// 方法：以固定條件片段和參數化值查詢正式報價分頁。
@@ -159,13 +165,16 @@ public class QuotationManagementRepository {
 
 	// 方法：只解析與正式報價關聯且被選定的資產圖片。
 	public Optional<AdminImageRecord> findSelectedQuotationImage(long quotationId) {
+		String locator = legacyFilesystemEnabled
+			? "a.file_path"
+			: "COALESCE(a.object_key, a.file_path)";
 		// 資料庫 API：透過 quotation_asset 關聯讀取唯一選圖，不暴露分享權杖。
 		List<AdminImageRecord> rows = jdbc.query("""
-			SELECT a.file_path AS locator, a.content_type, a.file_size
+			SELECT %s AS locator, a.content_type, a.file_size
 			FROM quotation_asset qa
 			JOIN asset a ON a.id = qa.asset_id
 			WHERE qa.quotation_id = ? AND qa.is_selected = 1
-			""", this::adminImageRecord, quotationId);
+			""".formatted(locator), this::adminImageRecord, quotationId);
 		return rows.stream().findFirst();
 	}
 
@@ -276,12 +285,15 @@ public class QuotationManagementRepository {
 
 	// 方法：解析唯一已完成且由資料庫綁定的管理下載檔案。
 	public Optional<AdminFileRecord> findReadyFile(long quotationId, String fileKind) {
+		String locator = legacyFilesystemEnabled
+			? "relative_path"
+			: "COALESCE(object_key, relative_path)";
 		// 資料庫 API：只有 READY 檔案可被管理下載流程解析。
 		List<AdminFileRecord> rows = jdbc.query("""
-			SELECT relative_path, content_type, file_size
+			SELECT %s AS relative_path, content_type, file_size
 			FROM quotation_file
 			WHERE quotation_id = ? AND file_kind = ? AND status = 'READY'
-			""", (result, row) -> new AdminFileRecord(
+			""".formatted(locator), (result, row) -> new AdminFileRecord(
 			result.getString("relative_path"),
 			result.getString("content_type"),
 			result.getLong("file_size")

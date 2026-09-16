@@ -100,12 +100,14 @@ public class QuotationPendingImagePreviewService {
 
 		ImageRecord record = records.getFirst();
 		try {
-			Path path = resolvePendingPath(record.path());
-			long size = Files.size(path);
+			Path path = storage.usesLegacyFilesystem() ? resolvePendingPath(record.path()) : null;
+			long size = path == null ? storage.metadata(record.path()).contentLength() : Files.size(path);
 			if (size <= 0 || size > MAXIMUM_IMAGE_BYTES) throw error("IMAGE_SIZE_INVALID", "圖片連結已失效。");
 
-			// 檔案系統：只讀取資料庫已綁定候選圖的明確檔案路徑。
-			byte[] original = Files.readAllBytes(path);
+			// 儲存 API：token 與資料庫關聯驗證完成後，正式容器從物件儲存讀取。
+			byte[] original = path == null ? storage.read(record.path()) : Files.readAllBytes(path);
+			if (original.length <= 0 || original.length > MAXIMUM_IMAGE_BYTES) throw error("IMAGE_SIZE_INVALID", "圖片連結已失效。");
+
 			if (!payload.thumbnail()) return new ImageResource(original, record.contentType());
 
 			return thumbnail(original);

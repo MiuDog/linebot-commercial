@@ -1,5 +1,7 @@
 # Excel 報價資料契約與資料庫規格
 
+現行維護契約：品項／價格以 UTF-8 CSV 編輯，版面以 XLSX 與 TEMPLATE_DEFINITIONS 檔案維護，再經公司資產版本驗證及啟用；不要求網頁逐筆編輯報價格式。詳見 [檔案操作](07-quotation-database-operations.md)。以下舊 SQLite／Windows 提取紀錄僅作歷史參考，正式部署以根目錄 SPEC 與 [部署 Runbook](deployment-runbook.md) 為準。
+
 ## Objective
 
 將 LINE 私訊中的自然語言報價需求轉成可驗證的固定 JSON，依 `CNS`、`GENERAL`
@@ -25,12 +27,12 @@
 
 ## Project Structure
 
-- `src/main/resources/schema.sql`：SQLite schema、五種格式、21 個共用品項與方案固定資料。
+- `src/main/resources/db/migration/`：PostgreSQL schema 與通用格式代碼；不內建公司價目。
 - `src/main/resources/ai/quotation-request.schema.json`：AI 固定輸出格式。
-- `src/main/resources/quotation/template-definitions.json`：五種 Excel 工作表的儲存格定位。
+- `TEMPLATE_DEFINITIONS` 資產：由公司上傳五種 Excel 工作表的儲存格定位。
 - `src/main/resources/line/rich-menu.json`：LINE 下方六宮格選單定義。
-- `src/main/resources/static/admin/`：只允許本機存取的品項管理頁面。
-- `outputs/excel-templates/`：變數化活頁簿、五張預覽與提取報告。
+- `src/main/resources/static/admin/`：本機報價查詢、預覽與重試介面；現存逐筆主檔／格式編輯表單屬待退役實作，不列入產品需求。
+- `company-assets-local/initial/`：Git／Docker 忽略的歷史母檔保全包，不隨程式交付。
 - `docs/05-quotation-excel-spec.md`：此規格與後續欄位說明。
 - `src/test/java/.../QuotationSchemaTest.java`：schema 初始化驗證。
 
@@ -70,8 +72,8 @@ AI 不得決定單價、複價、稅額或總價。
   "schemeConfidence": 0.98,
   "headerPatch": {
     "companyName": {
-      "value": "正定工程",
-      "sourceText": "公司：正定工程",
+      "value": "範例公司",
+      "sourceText": "公司：範例公司",
       "confidence": 0.99
     },
     "workName": {
@@ -149,8 +151,8 @@ AI 不得決定單價、複價、稅額或總價。
 ### 模板
 
 - `quotation_template`：工作表、明細列範圍、欄位位置、稅率及圖片放置規則。
-- 五種格式各自使用 `outputs/excel-templates/quotation-template-{SCHEME}.xlsx` 單工作表範本。
-- 原始 `templates/公司名稱-工作名稱 20260710-01.xlsm` 與 `template-analysis.json` 作為維護比對來源；正式輸出只選用拆分後的五份單工作表範本。
+- 五種格式各自使用公司資產包的 `TEMPLATE_{SCHEME}` 單工作表範本。
+- 原始 XLSM 與提取報告已移入私有保全包；正式輸出讀取報價鎖定版本的物件儲存資產。
 
 ### 本機管理與主檔匯出
 
@@ -180,7 +182,7 @@ LINE 所需的 2500×1686 點擊區域。多輪草稿與按鈕 postback 已完�
 
 五份維護範本保留可讀的變數字串，方便日後用 Excel 查看欄位用途；執行期不以字串搜尋替換，
 而是依 `template-definitions.json` 的固定儲存格位置寫入。這樣即使品項名稱、規格或價格在資料庫
-變動，也不必改程式或重新製作範本；固定 Logo、圖片、蓋章、正定信箱與電話不在可寫入座標內。
+變動，也不必改程式或重新製作範本；固定 Logo、圖片、蓋章、公司信箱與電話不在可寫入座標內。
 
 ### 執行與歷史
 
@@ -240,10 +242,10 @@ Excel／PDF 基本檔名為 `公司名稱-工作名稱 YYYYMMDD-XX`；建立時�
 ### Excel 提取結果與限制
 
 - CNS 匯入 21 筆方案品項，一般架匯入 20 筆；共用品項去重後為 21 筆。
-- 初始化採 `INSERT OR IGNORE`，因此日後從管理頁改價，不會在重啟時被原始 Excel 覆蓋。
+- 上述提取筆數屬舊版資產紀錄；目前以公司資產包的 ITEM_MASTER CSV 與 XLSX 範本版本為準，改價由檔案維護後驗證、核准及啟用，不以網頁逐筆修改或舊版初始化 SQL 作為操作方式。
 - 上傳的 XLSM 含 VBA；輸出的 XLSX 不保留 VBA，而目前 Java 報價流程也不依賴巨集。
 - 已經使用本機 Microsoft Excel 將五張表拆成五個單工作表 XLSX；每份均保留原始圖片、
-  蓋章、合併儲存格、列印範圍、紙張方向、縮放與固定正定聯絡資料。
+  蓋章、合併儲存格、列印範圍、紙張方向、縮放與固定公司聯絡資料。
 - Excel 產生器只改寫表頭、明細與合計儲存格，其餘 ZIP 內容原樣保留；五種實際輸出均已由
   artifact-tool 與 Microsoft Excel 開啟驗證，內嵌媒體雜湊與原範本一致。船用輸出不含公式，
   其餘格式以公式顯示 DIRECT 明細與合計。
@@ -286,3 +288,6 @@ unit_price NUMERIC NOT NULL CHECK (unit_price >= 0)
 - 複雜品項數量推算規則，例如長寬高、周長或體積推算。
 - 個別案件免稅、含稅價反推或非 5% 稅率。
 - 船用內部推算規則；客戶版已固定只輸出程式提供的最終彙總。
+# ⚠️ 歷史設計基線
+
+其中 SQLite、本機範本與 Microsoft Excel COM 已由 PostgreSQL、版本化公司資產及 LibreOffice 取代；現行契約以根目錄核准 SPEC 為準。

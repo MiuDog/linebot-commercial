@@ -1,5 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.companyasset.CompanyAssetService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -29,18 +31,24 @@ public class QuotationConfirmationService {
 	private final TransactionTemplate transactions;
 	private final QuotationGenerationJobRepository generationJobs;
 	private final QuotationBusinessRules businessRules;
+	private final CompanyAssetService companyAssets;
+	private final boolean legacyFilesystem;
 
 	// 方法：建立正式確認交易服務。
 	public QuotationConfirmationService(
 		JdbcTemplate jdbc,
 		PlatformTransactionManager transactionManager,
 		QuotationGenerationJobRepository generationJobs,
-		QuotationBusinessRules businessRules
+		QuotationBusinessRules businessRules,
+		CompanyAssetService companyAssets,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystem
 	) {
 		this.jdbc = jdbc;
 		this.transactions = new TransactionTemplate(transactionManager);
 		this.generationJobs = generationJobs;
 		this.businessRules = businessRules;
+		this.companyAssets = companyAssets;
+		this.legacyFilesystem = legacyFilesystem;
 	}
 
 	// 方法：驗證確認意圖，並以冪等交易配置流水號與建立快照。
@@ -222,7 +230,7 @@ public class QuotationConfirmationService {
 		KeyHolder keys = new GeneratedKeyHolder();
 		// 外部呼叫：新增不依賴後續主檔變更的正式報價快照。
 		jdbc.update(connection -> {
-			PreparedStatement statement = connection.prepareStatement("""
+			String sql = legacyFilesystem ? """
 				INSERT INTO quotation (
 					draft_id, revision, quotation_no, quotation_name,
 					sequence_date, sequence_number, company_name, work_name,
@@ -232,7 +240,21 @@ public class QuotationConfirmationService {
 					subtotal, tax_rate, tax_amount, total_amount, status
 				)
 				VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED')
-				""", Statement.RETURN_GENERATED_KEYS);
+				""" : """
+				INSERT INTO quotation (
+					draft_id, revision, quotation_no, quotation_name,
+					sequence_date, sequence_number, company_name, work_name,
+					quotation_date, valid_until, scheme_id, template_id,
+					customer_name, customer_phone, customer_fax, customer_email,
+					contact_name, project_location, sales_representative, additional_header,
+					subtotal, tax_rate, tax_amount, total_amount, asset_set_id, status
+				)
+				VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED')
+				""";
+			PreparedStatement statement = connection.prepareStatement(
+				sql,
+				Statement.RETURN_GENERATED_KEYS
+			);
 			statement.setLong(1, draft.draftId());
 			statement.setString(2, quotationNumber);
 			statement.setString(3, quotationName);
@@ -256,6 +278,7 @@ public class QuotationConfirmationService {
 			statement.setBigDecimal(21, businessRules.taxRate());
 			statement.setBigDecimal(22, calculation.tax());
 			statement.setBigDecimal(23, calculation.total());
+			if (!legacyFilesystem) statement.setLong(24, companyAssets.activeSetId());
 			return statement;
 
 		}, keys);

@@ -34,10 +34,10 @@ class QuotationGenerationCoordinatorTest {
 		QuotationConfirmationResult confirmation = confirmation();
 		QuotationArchivedAssets archived = new QuotationArchivedAssets(List.of(), output.resolve("selected.jpg"));
 		QuotationWorkbookService.Header header = new QuotationWorkbookService.Header(
-			"", "", "正定", "02-1234", "a@example.com", "王先生", "台北", "業務", ""
+			"", "", "範例", "02-1234", "a@example.com", "王先生", "台北", "業務", ""
 		);
 		QuotationWorkbookService.Header formalHeader = new QuotationWorkbookService.Header(
-			"2026081101", "2026-08-11", "正定", "02-1234", "a@example.com",
+			"2026081101", "2026-08-11", "範例", "02-1234", "a@example.com",
 			"王先生", "台北", "業務", "2026-08-26"
 		);
 		QuotationWorkbookService.GenerationResult generated = new QuotationWorkbookService.GenerationResult(
@@ -199,7 +199,7 @@ class QuotationGenerationCoordinatorTest {
 			LocalDate.of(2026, 8, 26),
 			1,
 			"20260811-01",
-			"正定-工程 20260811-01"
+			"範例-工程 20260811-01"
 		);
 	}
 

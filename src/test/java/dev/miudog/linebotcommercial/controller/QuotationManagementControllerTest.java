@@ -75,8 +75,8 @@ class QuotationManagementControllerTest {
 				company_name, work_name, quotation_date, valid_until, scheme_id, template_id,
 				currency, subtotal, tax_rate, tax_amount, total_amount, status, output_path
 			)
-			SELECT ?, 1, '20260811-01', '正定公司-中壢案', '2026-08-11', 1,
-				'正定公司', '中壢案', '2026-08-11', '2026-09-10', s.id, t.id,
+			SELECT ?, 1, '20260811-01', '範例公司-中壢案', '2026-08-11', 1,
+				'範例公司', '中壢案', '2026-08-11', '2026-09-10', s.id, t.id,
 				'TWD', 100000, 0.05, 5000, 105000, 'PDF_FAILED', ?
 			FROM quotation_scheme s
 			JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
@@ -360,7 +360,7 @@ class QuotationManagementControllerTest {
 		mockMvc.perform(
 			get("/api/admin/quotations")
 				.param("quotationNumber", "20260811")
-				.param("company", "正定")
+				.param("company", "範例")
 				.param("work", "中壢")
 				.param("dateFrom", "2026-08-01")
 				.param("dateTo", "2026-08-31")

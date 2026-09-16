@@ -174,8 +174,8 @@ class QuotationGenerationJobRepositoryTest {
 				draft_key, source_type, source_id, requester_id, company_name,
 				work_name, quotation_name, scheme_id, status, revision
 			)
-			SELECT ?, 'user', 'U-job-owner', 'U-job-owner', '正定公司',
-				'測試工程', '正定公司-測試工程', id, 'CONFIRMED', 1
+			SELECT ?, 'user', 'U-job-owner', 'U-job-owner', '範例公司',
+				'測試工程', '範例公司-測試工程', id, 'CONFIRMED', 1
 			FROM quotation_scheme
 			WHERE code = 'GENERAL'
 			""", "draft-job-" + suffix);
@@ -190,8 +190,8 @@ class QuotationGenerationJobRepositoryTest {
 				sequence_number, company_name, work_name, quotation_date, valid_until,
 				scheme_id, template_id, subtotal, tax_amount, total_amount, status
 			)
-			SELECT ?, 1, '2026081101', '正定公司-測試工程 20260811-01', '2026-08-11',
-				1, '正定公司', '測試工程', '2026-08-11', '2026-08-26',
+			SELECT ?, 1, '2026081101', '範例公司-測試工程 20260811-01', '2026-08-11',
+				1, '範例公司', '測試工程', '2026-08-11', '2026-08-26',
 				s.id, t.id, 100, 5, 105, ?
 			FROM quotation_scheme s
 			JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1

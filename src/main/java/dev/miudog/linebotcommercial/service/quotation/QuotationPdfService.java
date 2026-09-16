@@ -1,6 +1,8 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import dev.miudog.linebotcommercial.service.ai.ExtractedSpec;
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,10 +16,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * 將既有正式 XLSX 交給本機 Microsoft Excel 匯出 PDF，並保存可重試狀態。
+ * 將既有正式 XLSX 交給 LibreOffice 匯出 PDF，並保存可重試狀態。
  */
 @Service
 public class QuotationPdfService {
@@ -30,21 +33,27 @@ public class QuotationPdfService {
 	private final ExcelPdfExporter exporter;
 	private final Path outputRoot;
 	private final Duration timeout;
+	private final ObjectStorage objectStorage;
+	private final boolean legacyFilesystemEnabled;
 
 	// 方法：由應用程式設定建立 Excel PDF 匯出服務。
 	@Autowired
 	public QuotationPdfService(
 		QuotationPdfStore store,
 		ExcelPdfExporter exporter,
+		ObjectStorage objectStorage,
 		@Value("${app.quotation.root-path:}") String outputRoot,
-		@Value("${app.quotation.pdf-timeout-seconds:90}") long timeoutSeconds
+		@Value("${app.quotation.pdf-timeout-seconds:90}") long timeoutSeconds,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystemEnabled
 	) {
-		this(
-			store,
-			exporter,
-			outputRoot == null || outputRoot.isBlank() ? null : Paths.get(outputRoot),
-			validTimeout(timeoutSeconds)
-		);
+		this.store = store;
+		this.exporter = exporter;
+		this.objectStorage = objectStorage;
+		this.outputRoot = outputRoot == null || outputRoot.isBlank()
+			? null
+			: Paths.get(outputRoot).toAbsolutePath().normalize();
+		this.timeout = validTimeout(timeoutSeconds);
+		this.legacyFilesystemEnabled = legacyFilesystemEnabled;
 	}
 
 	// 方法：建立可由單元測試注入假匯出器與暫存路徑的服務。
@@ -58,11 +67,13 @@ public class QuotationPdfService {
 		this.exporter = exporter;
 		this.outputRoot = outputRoot == null ? null : outputRoot.toAbsolutePath().normalize();
 		this.timeout = timeout;
+		this.objectStorage = null;
+		this.legacyFilesystemEnabled = true;
 	}
 
 	// 方法：回報是否已設定可限制輸出的報價根目錄。
 	public boolean isConfigured() {
-		return outputRoot != null;
+		return !legacyFilesystemEnabled || outputRoot != null;
 	}
 
 	// 方法：以既有報價、XLSX 路徑及流水號匯出 PDF。
@@ -81,7 +92,69 @@ public class QuotationPdfService {
 		QuotationPdfStore.PdfJob job = store.find(quotationId)
 			.orElseThrow(() -> failure("PDF_JOB_NOT_FOUND", "找不到已完成 Excel 的報價"));
 		validateStatus(job, retry);
+		return legacyFilesystemEnabled
+			? exportLegacy(job)
+			: exportObject(job);
+	}
 
+	// 方法：正式模式只以暫存目錄執行轉檔，完成後將 PDF 寫入物件儲存。
+	private PdfExportResult exportObject(QuotationPdfStore.PdfJob job) {
+		long quotationId = job.quotationId();
+		String relativePdfPath = "quotations/" + quotationId + "/pdf/pending.pdf";
+		Path temporaryDirectory = null;
+		Path workbookPath = null;
+		Path pdfPath = null;
+		try {
+			temporaryDirectory = Files.createTempDirectory("quotation-pdf-");
+			workbookPath = temporaryDirectory.resolve("quotation.xlsx");
+			pdfPath = temporaryDirectory.resolve("quotation.pdf");
+			Files.write(workbookPath, objectStorage.get(job.xlsxRelativePath()));
+
+			store.markGenerating(quotationId, relativePdfPath);
+			exporter.export(workbookPath, pdfPath, timeout);
+			validatePdf(pdfPath);
+
+			byte[] pdf = Files.readAllBytes(pdfPath);
+			String contentHash = sha256(pdf);
+			relativePdfPath = "quotations/" + quotationId + "/pdf/" + contentHash + ".pdf";
+			StoredObject stored = objectStorage.put(
+				relativePdfPath,
+				pdf,
+				"application/pdf",
+				Map.of("quotation-id", Long.toString(quotationId), "file-kind", "PDF")
+			);
+			store.markReady(
+				quotationId,
+				relativePdfPath,
+				stored.sha256(),
+				stored.contentLength()
+			);
+			return new PdfExportResult(
+				quotationId,
+				job.quotationNumber(),
+				workbookPath,
+				pdfPath,
+				stored.sha256(),
+				stored.contentLength()
+			);
+		}
+		catch (Exception exception) {
+			String message = safeErrorMessage(exception);
+			store.markFailed(quotationId, relativePdfPath, message);
+			if (exception instanceof QuotationAdminException adminException) throw adminException;
+
+			throw failure("PDF_EXPORT_FAILED", "LibreOffice 匯出 PDF 失敗：" + message, exception);
+		}
+		finally {
+			deleteTemporary(workbookPath);
+			deleteTemporary(pdfPath);
+			deleteTemporary(temporaryDirectory);
+		}
+	}
+
+	// 方法：遷移與測試模式沿用受根目錄限制的本機檔案流程。
+	private PdfExportResult exportLegacy(QuotationPdfStore.PdfJob job) {
+		long quotationId = job.quotationId();
 		String relativePdfPath = null;
 		Path pdfPath = null;
 		try {
@@ -95,7 +168,7 @@ public class QuotationPdfService {
 			store.markGenerating(quotationId, relativePdfPath);
 			// 檔案系統：只移除同一報價、同基本檔名的舊失敗 PDF，絕不修改 XLSX。
 			Files.deleteIfExists(pdfPath);
-			// 外部 API：交由固定 Microsoft Excel COM 腳本沿用活頁簿原列印設定匯出。
+			// 外部 API：交由 LibreOffice 沿用活頁簿列印設定匯出。
 			exporter.export(workbookPath, pdfPath, timeout);
 			validatePdf(pdfPath);
 
@@ -110,7 +183,7 @@ public class QuotationPdfService {
 			store.markFailed(quotationId, relativePdfPath, message);
 			if (exception instanceof QuotationAdminException adminException) throw adminException;
 
-			throw failure("PDF_EXPORT_FAILED", "Excel 匯出 PDF 失敗：" + message, exception);
+			throw failure("PDF_EXPORT_FAILED", "LibreOffice 匯出 PDF 失敗：" + message, exception);
 		}
 	}
 
@@ -167,7 +240,7 @@ public class QuotationPdfService {
 	// 方法：確認 Excel 確實產生一般檔案且具有 PDF 魔術標頭。
 	private void validatePdf(Path pdfPath) throws IOException {
 		if (!Files.isRegularFile(pdfPath) || Files.size(pdfPath) < 5) {
-			throw new ExcelPdfExportException("Microsoft Excel 未建立有效 PDF");
+			throw new ExcelPdfExportException("LibreOffice 未建立有效 PDF");
 		}
 
 		byte[] header = new byte[5];
@@ -175,7 +248,7 @@ public class QuotationPdfService {
 			if (input.read(header) != header.length) throw new ExcelPdfExportException("PDF 檔案標頭不完整");
 		}
 		if (!"%PDF-".equals(new String(header, java.nio.charset.StandardCharsets.US_ASCII))) {
-			throw new ExcelPdfExportException("Microsoft Excel 產出內容不是 PDF");
+			throw new ExcelPdfExportException("LibreOffice 產出內容不是 PDF");
 		}
 	}
 
@@ -197,6 +270,16 @@ public class QuotationPdfService {
 		}
 	}
 
+	// 方法：計算記憶體內 PDF 的 SHA-256，作為正式物件鍵與完整性資料。
+	private String sha256(byte[] content) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+		}
+		catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("執行環境缺少 SHA-256", exception);
+		}
+	}
+
 	// 方法：清理由本次匯出留下的同名不完整 PDF，保留原 XLSX 供同序號重試。
 	private void deleteIncompletePdf(Path pdfPath) {
 		if (pdfPath == null) return;
@@ -206,6 +289,18 @@ public class QuotationPdfService {
 		}
 		catch (IOException ignored) {
 			// 清理失敗不得覆蓋原始 Excel 匯出錯誤與資料庫 PDF_FAILED 狀態。
+		}
+	}
+
+	// 方法：只清理本次建立的明確暫存檔或空目錄。
+	private void deleteTemporary(Path path) {
+		if (path == null) return;
+
+		try {
+			Files.deleteIfExists(path);
+		}
+		catch (IOException ignored) {
+			// 暫存清理失敗不覆蓋轉檔結果；容器重啟時 tmpfs 會自動回收。
 		}
 	}
 
@@ -227,10 +322,12 @@ public class QuotationPdfService {
 
 	// 方法：要求管理員先設定報價輸出根目錄。
 	private void requireConfigured() {
-		if (outputRoot == null) throw failure("PDF_NOT_CONFIGURED", "尚未設定報價輸出根目錄");
+		if (legacyFilesystemEnabled && outputRoot == null) {
+			throw failure("PDF_NOT_CONFIGURED", "尚未設定報價輸出根目錄");
+		}
 	}
 
-	// 方法：將正整數秒數轉成受控 Excel 程序逾時。
+	// 方法：將正整數秒數轉成受控 LibreOffice 程序逾時。
 	private static Duration validTimeout(long timeoutSeconds) {
 		if (timeoutSeconds <= 0 || timeoutSeconds > 3600) {
 			throw new IllegalArgumentException("PDF 匯出逾時必須介於 1 至 3600 秒");

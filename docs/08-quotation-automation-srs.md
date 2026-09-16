@@ -1,9 +1,11 @@
 # LINE AI 自動化報價系統軟體需求規格
 
 狀態：使用者已核准  
-版本：1.0  
+版本：1.1（檔案維護需求修訂；既有網頁編輯實作尚待退役）
 時區：Asia/Taipei  
 適用專案：linebot-commercial
+
+文件優先順序：部署與儲存以現行根目錄 SPEC、[部署 Runbook](deployment-runbook.md) 為準；品項／格式維護以 [CSV 與範本操作](07-quotation-database-operations.md) 為準。本文尚存的 SQLite、本機資料夾及 Windows 測試敘述屬歷史設計，不可據此恢復舊執行模式或網頁格式編輯器。
 
 ## 1. 目標
 
@@ -17,12 +19,12 @@
 - 任何 AI／OCR 結果在建立正式報價前都可由使用者預覽、補充、修正或取消。
 - AI 不得自行決定固定品項資料、計算金額、稅額或最後價格。
 - Excel、PDF、圖片資產及資料庫紀錄可互相追溯。
-- 原始 Excel 的圖片、蓋章、正定信箱、正定電話與底部重要資訊不得被覆蓋或改寫。
+- 原始 Excel 的圖片、蓋章、公司信箱、公司電話與底部重要資訊不得被覆蓋或改寫。
 
 ## 2. 已確認假設
 
-1. 系統沿用 Java 25、Spring Boot 4.1、SQLite 與現有 LINE webhook 架構。
-2. 正式執行環境為 Windows，且已安裝可由背景程序操作的 Microsoft Excel。
+1. 系統沿用 Java 25、Spring Boot 4.1 與 LINE webhook，正式資料庫為 PostgreSQL／Flyway；舊 SQLite 說明僅供歷史與遷移參考。
+2. 正式執行環境為 Linux 容器（Docker Compose／Kubernetes），PDF 使用 LibreOffice headless；部署契約以根目錄 SPEC 與部署 Runbook 為準。
 3. 日期、每日流水號及有效期限皆以 Asia/Taipei 日曆日計算。
 4. 五種報價現階段固定外加 5% 稅額，不支援免稅或含稅價反推。
 5. LINE Messaging API 無法由機器人直接傳送 PDF，因此改傳報價摘要與 PDF 安全下載連結。
@@ -36,11 +38,11 @@
 | 項目 | 技術 |
 | --- | --- |
 | 後端 | Java 25、Spring Boot 4.1 |
-| 資料庫 | SQLite 3，相對路徑保存 |
+| 資料庫 | PostgreSQL／Flyway；S3 相容物件儲存 |
 | AI | OpenAI 相容 JSON API，固定 Schema 輸出 |
 | LINE | Messaging API webhook、reply／push、Quick Reply、Flex Message |
-| Excel | OOXML 範本寫入；Microsoft Excel 背景轉 PDF |
-| 管理介面 | 本機限定的 HTML、CSS、JavaScript |
+| Excel | 版本化 XLSX／範本定義檔；OOXML 寫入與 LibreOffice headless 轉 PDF |
+| 資料維護 | CSV 檔案編輯、驗證、版本化匯入；網頁只承擔查詢／預覽／維運，不要求逐筆編輯格式 |
 | 測試 | JUnit 5、Spring MockMvc、真實 SQLite 測試資料庫、瀏覽器驗證 |
 
 ### 3.2 執行命令
@@ -71,7 +73,7 @@ Start-Process "http://127.0.0.1:8088/admin/"
 | `src/main/resources/ai` | AI JSON Schema 與提示詞資源 |
 | `src/main/resources/quotation` | 五種 Excel 欄位與版面定義 |
 | `src/main/resources/static/admin` | 本機報價管理頁 |
-| `outputs/excel-templates` | 五份唯讀報價範本來源 |
+| `TEMPLATE_*` 公司資產 | 版本化唯讀報價範本來源 |
 | `src/test/java` | 單元、整合與契約測試 |
 
 ## 5. 使用者與互動範圍
@@ -287,12 +289,11 @@ QUOTATION_ROOT_PATH=<使用者指定的上層根目錄>
 
 ### FILE-02 PDF
 
-- Excel 建立成功後，由背景 Microsoft Excel 依原始列印設定匯出 PDF。
-- 應用程式只能呼叫專案內固定的 `scripts/export-quotation-pdf.ps1`，並以獨立參數傳入 XLSX 與 PDF 絕對路徑；禁止串接或執行來自指令的 PowerShell 內容。
-- PDF 必須與原 XLSX 位於同一資料夾且使用同一基本檔名；路徑不得離開 `<QUOTATION_ROOT_PATH>/報價單/`。
-- 匯出預設逾時為 90 秒，可以 `QUOTATION_PDF_TIMEOUT_SECONDS` 調整；逾時時必須終止 PowerShell 及其 Excel 子行程。
+- Excel 建立成功後，以 Linux 容器內 LibreOffice headless 依範本列印設定匯出 PDF。
+- 使用固定參數陣列、獨立暫存目錄與 LibreOffice 設定目錄；不執行 PowerShell／Excel COM，也不得將使用者內容拼成 shell 指令。
+- PDF 與 XLSX 關聯至同一報價，轉檔成功後上傳 S3 相容物件儲存；暫存與逾時清理依 [Portable PDF 規格](../SPEC-portable-pdf-rendering.md)。
 - PDF 成功後才可進入 LINE 可交付狀態。
-- 未安裝 Excel、系統無可用印表機、COM 啟動失敗、逾時或匯出錯誤時，清除同名不完整 PDF、保留原 Excel 並標記 `PDF_FAILED`。
+- LibreOffice 啟動失敗、輸入損壞、字型缺失、逾時或匯出錯誤時，清除不完整 PDF、保留原 XLSX 並標記 `PDF_FAILED`。
 - 管理頁顯示不含本機絕對路徑的失敗原因並提供重試；重試必須沿用原報價識別碼、流水號、XLSX 與 PDF 路徑，不得重新分配或覆寫不同報價。
 
 ### FILE-03 圖片資產整合
@@ -312,7 +313,7 @@ QUOTATION_ROOT_PATH=<使用者指定的上層根目錄>
 - 後端驗證選中的圖片確實存在於草稿候選集合，且分數不得低於其他候選圖。
 - 最終確認畫面顯示選圖，允許更換、移除；船用／空白移除後需再次選圖或明確拒絕。
 - 圖片放在全部品項之下，以保持比例的 `CONTAIN` 方式縮放。
-- 圖片不得覆蓋小計、稅額、總價、付款說明、正定信箱、正定電話或蓋章。
+- 圖片不得覆蓋小計、稅額、總價、付款說明、公司信箱、公司電話或蓋章。
 - 當頁空間不足時，圖片移至新頁；不得為塞入圖片而壓縮到無法辨識。
 
 ## 13. 分頁與 Excel 保護
@@ -331,7 +332,7 @@ QUOTATION_ROOT_PATH=<使用者指定的上層根目錄>
 - 超過單頁容量時複製可重複的頁面區塊，延續表頭、頁碼及必要識別資訊。
 - 明細列不得與合計區塊分離成無法理解的版面。
 - 只有最後一頁顯示合計與完整底部資訊，或依範本驗收後採等價且不重複計價的配置。
-- 程式可改寫的儲存格必須白名單化；原始圖片、蓋章、正定信箱及正定電話位於禁止改寫區。
+- 程式可改寫的儲存格必須白名單化；原始圖片、蓋章、公司信箱及公司電話位於禁止改寫區。
 
 ## 14. LINE 對話狀態機
 
@@ -371,7 +372,9 @@ LINE 官方不支援機器人直接傳送 PDF，因此交付方式為：
 
 ## 16. 本機管理頁
 
-管理頁除現有主檔功能外，需提供：
+品項與報價格式的維護改以檔案為準：ITEM_MASTER 使用 UTF-8 CSV，版面使用 XLSX 與 TEMPLATE_DEFINITIONS，經公司資產版本驗證、核准及啟用。CSV 不保存版面、圖片或公式。撤銷網頁逐筆新增／改價／編輯格式的需求；目前程式內仍有舊表單與寫入 API，退役前不得宣稱已移除。操作契約見 [CSV／範本操作](07-quotation-database-operations.md)。
+
+管理頁的維運需求為：
 
 - 報價草稿與正式報價列表、搜尋及狀態篩選。
 - 完整預覽、品項快照、選圖、未稅、稅額及含稅總額。
@@ -445,7 +448,7 @@ public QuotationNumber confirm(long draftId, LocalDate quotationDate) {
 ### 需先詢問
 
 - 更改 5% 稅率、單號格式或銷售 S 前綴。
-- 更改五份 Excel 的固定圖片、蓋章、正定信箱、正定電話或列印區。
+- 更改五份 Excel 的固定圖片、蓋章、公司信箱、公司電話或列印區。
 - 引入新的外部 OCR、檔案代管或雲端資料庫服務。
 - 實作第二階段工程公式。
 
@@ -476,10 +479,10 @@ public QuotationNumber confirm(long draftId, LocalDate quotationDate) {
 | AC-13 | 五種格式均由程式算出未稅、5% 稅額與含稅總額，AI 輸出金額會被拒絕。 |
 | AC-14 | 超過單頁容量時自動分頁，重要底部資訊保持完整且不重複計價。 |
 | AC-15 | Excel、PDF 與全部候選原圖位於 `<QUOTATION_ROOT_PATH>/報價單/YYYYMMDD-XX/`，資料庫保存正確相對路徑且每張原圖只有一份。 |
-| AC-16 | Microsoft Excel 匯出失敗時保留 Excel、狀態為 `PDF_FAILED`，管理頁可原號重試。 |
+| AC-16 | LibreOffice 匯出失敗時保留 XLSX、狀態為 `PDF_FAILED`，管理頁可原號重試。 |
 | AC-17 | LINE Flex Message 顯示正確摘要，下載按鈕可在有效期內取得同一份 PDF。 |
 | AC-18 | 取消操作冪等，取消後的舊確認按鈕不能產出報價。 |
-| AC-19 | 五份輸出保留原始圖片、蓋章、正定信箱及正定電話。 |
+| AC-19 | 五份輸出保留原始圖片、蓋章、公司信箱及公司電話。 |
 | AC-20 | 全部自動測試、Excel／PDF 實際驗證、瀏覽器測試及 LINE 沙盒流程通過。 |
 | AC-21 | `log/` 產生可輪替的 JSON 結構化日誌，單次互動可用 correlation ID 串起完整流程，且不洩漏密鑰、下載權杖、完整個資、訊息全文或圖片內容。 |
 | AC-22 | 每次 AI 呼叫記錄模型與輸入／輸出／快取 token，依可設定的每百萬 token 費率在本機計算成本；未知費率明確標記未設定，不自行猜價。 |
@@ -504,3 +507,6 @@ public QuotationNumber confirm(long draftId, LocalDate quotationDate) {
 - 圖片改選、移除及候選翻頁 postback 必須以 HMAC 綁定 owner、draft、revision、expiry 及候選圖片／頁碼。
 - LINE 同次回覆僅最後一則訊息的 Quick Reply 會顯示，因此完整預覽只允許最後一則 confirmation Flex 攜帶第一頁圖片操作；超過一頁時以簽章 `IMAGE_OPTIONS_PAGE` postback 取得單一、可前後翻頁的選項訊息，每頁不得超過 13 個 Quick Reply。
 - 「移除目前圖片」只取消 Excel 嵌入選取，不刪除候選圖片關聯或原圖。船用／空白格式需重新詢問上傳或明確拒絕；拒絕後 selected 為空，但全部候選仍於正式確認時歸檔。
+# ⚠️ 已被新規格取代
+
+此 SRS 的 Windows、SQLite 與 Excel COM 前提已失效；現行契約以根目錄 `SPEC-*.md` 為準。

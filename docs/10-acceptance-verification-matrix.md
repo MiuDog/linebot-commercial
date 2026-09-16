@@ -5,6 +5,8 @@
 
 ## 狀態定義
 
+2026-09-15 修訂：以下既有數字與 Windows／Excel／瀏覽器紀錄是歷史證據，不能視為目前 Docker／LibreOffice 部署通過。網頁逐筆編輯主檔與報價格式已撤銷為需求；新版應驗收 CSV 匯出／檔案編輯／驗證、資產版本啟用與回復、XLSX 範本及 PDF 產出。舊表單仍存在，待實作退役；本次文件修訂未新增端到端驗收證據。
+
 | 狀態 | 意義 |
 | --- | --- |
 | 通過 | 已有可重跑測試或可定位的實機／檔案證據 |
@@ -34,7 +36,7 @@
 | AC-16 | 部分通過 | `QuotationPdfServiceTest`、`QuotationGenerationJobWorkerTest`、`QuotationXlsxRetryControllerTest`、`QuotationManagementControllerTest` | SQLite job 可跨重啟恢復、失敗退避且 XLSX 沿用原單號重排；本機無印表機，因此真實 Excel PDF 只能驗證保留 XLSX 的受控 `PDF_FAILED`，尚無成功實機 PDF。 |
 | AC-17 | 部分通過 | `QuotationDeliveryServiceTest`、`JdbcQuotationDeliveryRepositoryTest`、`QuotationDownloadControllerTest` | Flex 摘要取自正式快照，HTTPS 權杖只保存雜湊並有期限／撤銷；目前未提供真實 LINE／AI 憑證，尚無 LINE 沙盒交付畫面。 |
 | AC-18 | 通過 | `QuotationConversationServiceTest`、`QuotationPostbackSignerTest`、`QuotationConfirmationServiceTest`、`QuotationReplyOutboxServiceTest`、`QuotationDurableReplyIntegrationTest`、`LineWebhookControllerTest` | HMAC、取消／確認冪等、確認失敗交易回滾，以及真 SQLite 的文字／postback 當機重送、不重跑 AI、同 payload 與慢 AI 期間可讀均已測試。 |
-| AC-19 | 通過 | `QuotationWorkbookServiceTest`、`QuotationContractTest` | `outputs/excel-templates/previews/final-single/` 有五格式預覽；五份範本曾由 Microsoft Excel 開啟核對，原圖、蓋章、正定信箱與電話保留。 |
+| AC-19 | 部分通過 | `QuotationWorkbookServiceTest`、`QuotationContractTest` | 新版自動化使用五份獨立合成範本驗證圖片與固定資訊保留；實際公司範本與 LINE／PDF 截圖仍待驗收。 |
 | AC-20 | 部分通過 | 完整 Maven `309/309` 測試、package、各 Controller MockMvc、`LocalAdminAccessFilterTest`、packaged app 瀏覽器檢查 | 完整測試、打包、管理頁 reload／console、桌面與窄螢幕版面均通過；尚缺使用真實 LINE／AI 憑證的沙盒流程及有印表機的 PDF 成功路徑。 |
 | AC-21 | 通過 | `LogbackConfigurationTest`、`RequestCorrelationFilterTest`、`MethodTraceLoggerIntegrationTest`、`SensitiveDataSanitizerTest`、`OperationalStatusLoggerTest` | `docs/09-observability-runbook.md` 記錄輪替、correlation ID 與敏感資料處理。 |
 | AC-22 | 通過 | `AiUsageCostCalculatorTest`、`AiUsageAuditServiceTest`、`AiExtractionServiceTest`、`ObservabilitySecurityConfigurationTest` | 報價與圖片提取的成功、HTTP 錯誤、逾時／網路錯誤、未設定皆留下同 correlation ID 的安全稽核；未知 token 為 `null`，缺費率為 `UNCONFIGURED`，不猜價。 |
@@ -103,3 +105,6 @@ Task 17 的實作、文件同步、自動驗證與打包已完成。上述外部
 - 桌面測試 fixture 寫死 `Path.of("C:/local")`，在 Linux 屬相對路徑而未通過資料根目錄驗證。
 
 因此在此之前標記為完成的桌面與封裝項目，其證據僅涵蓋本機 Windows 環境。
+# ⚠️ 歷史驗收證據
+
+本文件保留桌面版歷史驗收，不能證明目前容器版本；現行發布證據須依 [部署 Runbook](deployment-runbook.md) 重建。

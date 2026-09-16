@@ -1,5 +1,8 @@
 package dev.miudog.linebotcommercial.service;
 
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +16,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,6 +76,8 @@ public class FileStorageService {
 	private static final Pattern ARCHIVE_FILE = Pattern.compile("^\\d{8}-(\\d+)\\.[^.]+$");
 
 	private final Path root;
+	private final ObjectStorage objectStorage;
+	private final boolean legacyFilesystemEnabled;
 
 	/**
 	 * @param assetsRoot 自共同系統根目錄推導的資產庫根目錄，
@@ -80,9 +86,23 @@ public class FileStorageService {
 	//#region 初始化與儲存
 
 	// 方法：初始化 FileStorageService。
-	public FileStorageService(@Value("${app.storage.root}") String assetsRoot) {
+	public FileStorageService(String assetsRoot) {
 		// 外部呼叫：使用 Java NIO 將設定路徑轉成安全且一致的絕對路徑。
 		this.root = Paths.get(assetsRoot).toAbsolutePath().normalize();
+		this.objectStorage = null;
+		this.legacyFilesystemEnabled = true;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	@Autowired
+	public FileStorageService(
+		@Value("${app.storage.root}") String assetsRoot,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystemEnabled,
+		ObjectStorage objectStorage
+	) {
+		this.root = Paths.get(assetsRoot).toAbsolutePath().normalize();
+		this.objectStorage = objectStorage;
+		this.legacyFilesystemEnabled = legacyFilesystemEnabled;
 	}
 
 	/**
@@ -107,6 +127,15 @@ public class FileStorageService {
 	 */
 	// 方法：執行 save 方法的處理流程。
 	public StoredFile save(InputStream inputStream, String contentType) throws IOException {
+		if (!legacyFilesystemEnabled) {
+			String key = "assets/ingest/"
+				+ DAY.format(ZonedDateTime.now(ZONE))
+				+ "/"
+				+ UUID.randomUUID()
+				+ extensionFor(contentType);
+			return saveObject(inputStream, contentType, key);
+		}
+
 		// 步驟 1：使用 Java 時間 API 取得台北日期，決定正式資產資料夾與檔名。
 		ZonedDateTime now = ZonedDateTime.now(ZONE);
 		String relativeDir = DAY.format(now);
@@ -131,6 +160,13 @@ public class FileStorageService {
 	 */
 	// 方法：執行 savePending 方法的處理流程。
 	public StoredFile savePending(InputStream inputStream, String contentType) throws IOException {
+		if (!legacyFilesystemEnabled) {
+			String key = "staging/pending/"
+				+ UUID.randomUUID()
+				+ extensionFor(contentType);
+			return saveObject(inputStream, contentType, key);
+		}
+
 		// 步驟 1：使用 Java NIO 建立待確認目錄。
 		Path directory = resolve(".pending");
 
@@ -155,6 +191,16 @@ public class FileStorageService {
 		String folderName,
 		String contentType
 	) throws IOException {
+		if (!legacyFilesystemEnabled) {
+			if (pendingPath == null || !pendingPath.startsWith("staging/pending/")) {
+				throw new IOException("待確認物件 key 不合法");
+			}
+			String target = archiveObjectKey(folderName, contentType);
+			objectStorage.copy(pendingPath, target);
+			StoredObject stored = objectStorage.metadata(target);
+			return new StoredFile(target, stored.contentLength(), stored.contentType());
+		}
+
 		// 步驟 1：使用 Java NIO 驗證待確認圖片確實存在於允許的路徑。
 		Path source = resolve(pendingPath);
 		if (!pendingPath.startsWith(".pending/") || !Files.isRegularFile(source)) {
@@ -169,6 +215,13 @@ public class FileStorageService {
 		String folderName,
 		String contentType
 	) throws IOException {
+		if (!legacyFilesystemEnabled) {
+			String target = archiveObjectKey(folderName, contentType);
+			objectStorage.copy(sourcePath, target);
+			StoredObject stored = objectStorage.metadata(target);
+			return new StoredFile(target, stored.contentLength(), stored.contentType());
+		}
+
 		Path source = resolve(sourcePath);
 		if (!Files.isRegularFile(source)) {
 			throw new IOException("找不到已歸檔圖片: " + sourcePath);
@@ -207,6 +260,11 @@ public class FileStorageService {
 
 	// 方法：執行 delete 方法的處理流程。
 	public void delete(String relativePath) throws IOException {
+		if (!legacyFilesystemEnabled) {
+			objectStorage.delete(relativePath);
+			return;
+		}
+
 		// 外部呼叫：使用 Java NIO 刪除檔案；檔案不存在時視為已完成。
 		Files.deleteIfExists(resolve(relativePath));
 	}
@@ -229,6 +287,10 @@ public class FileStorageService {
 	 */
 	// 方法：執行 resolve 方法的處理流程。
 	public Path resolve(String relativePath) {
+		if (!legacyFilesystemEnabled) {
+			throw new IllegalStateException("正式模式的物件不得解析為主機檔案路徑");
+		}
+
 		Path resolved = root.resolve(relativePath).normalize();
 		if (!resolved.startsWith(root)) {
 			throw new IllegalArgumentException("路徑逃逸資產庫根目錄: " + relativePath);
@@ -244,6 +306,92 @@ public class FileStorageService {
 	// 方法：執行 root 方法的處理流程。
 	public Path root() {
 		return root;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	public boolean usesLegacyFilesystem() {
+		return legacyFilesystemEnabled;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	public byte[] read(String relativePath) throws IOException {
+		if (!legacyFilesystemEnabled) return objectStorage.get(relativePath);
+
+		return Files.readAllBytes(resolve(relativePath));
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	public StoredObject metadata(String relativePath) throws IOException {
+		if (!legacyFilesystemEnabled) return objectStorage.metadata(relativePath);
+
+		Path file = resolve(relativePath);
+		if (!Files.isRegularFile(file)) throw new IOException("找不到資產檔案：" + relativePath);
+
+		byte[] content = Files.readAllBytes(file);
+		String sha256;
+		try {
+			sha256 = java.util.HexFormat.of().formatHex(
+				java.security.MessageDigest.getInstance("SHA-256").digest(content)
+			);
+		}
+		catch (java.security.NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("執行環境不支援 SHA-256", exception);
+		}
+		return new StoredObject(
+			relativePath,
+			null,
+			null,
+			sha256,
+			content.length,
+			Files.probeContentType(file)
+		);
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	public boolean exists(String relativePath) {
+		if (!legacyFilesystemEnabled) {
+			try {
+				objectStorage.metadata(relativePath);
+				return true;
+			}
+			catch (RuntimeException exception) {
+				return false;
+			}
+		}
+		return Files.isRegularFile(resolve(relativePath));
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private StoredFile saveObject(
+		InputStream inputStream,
+		String contentType,
+		String relativeKey
+	) throws IOException {
+		try (inputStream) {
+			byte[] content = inputStream.readAllBytes();
+			StoredObject stored = objectStorage.put(
+				relativeKey,
+				content,
+				contentType,
+				Map.of("source", "linebot")
+			);
+			return new StoredFile(relativeKey, stored.contentLength(), contentType);
+		}
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private String archiveObjectKey(String folderName, String contentType) {
+		String safeFolder = folderName == null ? "" : folderName.strip();
+		if (!safeFolder.matches("[A-Za-z0-9_-]{1,64}")) {
+			throw new IllegalArgumentException("資產資料夾代碼格式不合法");
+		}
+		return "assets/archive/"
+			+ safeFolder
+			+ "/"
+			+ DAY.format(ZonedDateTime.now(ZONE))
+			+ "/"
+			+ UUID.randomUUID()
+			+ extensionFor(contentType);
 	}
 
 	/**

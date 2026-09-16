@@ -86,6 +86,44 @@ class LineWebhookControllerTest {
 	}
 
 	@Test
+	void importsCsvFilesOnlyFromSignedPrivateMessages() throws Exception {
+		String csv = "schemeCode,companyName\nSALES,測試公司";
+		String payload = """
+			{"events":[{"type":"message","webhookEventId":"csv-event","replyToken":"reply-token",
+			"source":{"type":"user","userId":"U1"},
+			"message":{"id":"F1","type":"file","fileName":"quote.csv","fileSize":100}}]}
+			""";
+		when(lineService.downloadContent("F1")).thenReturn(new LineStorageService.LineContent(
+			new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)), "text/csv"
+		));
+		controller.handleWebhook(signature(payload), payload);
+		verify(quotationWorkflow).handleText("csv-event", "F1", "U1", "#報價 CSV\n" + csv, null);
+
+		String groupPayload = payload.replace("\"type\":\"user\"", "\"type\":\"group\",\"groupId\":\"G1\"");
+		controller.handleWebhook(signature(groupPayload), groupPayload);
+		verify(lineService, times(1)).downloadContent("F1");
+	}
+
+	@Test
+	void rejectsOversizedAndInvalidUtf8FilesBeforeDraftMutation() throws Exception {
+		String payload = """
+			{"events":[{"type":"message","replyToken":"reply-token",
+			"source":{"type":"user","userId":"U1"},
+			"message":{"id":"F2","type":"file","fileName":"quote.csv","fileSize":100}}]}
+			""";
+		String oversized = payload.replace("\"fileSize\":100", "\"fileSize\":1048577");
+		controller.handleWebhook(signature(oversized), oversized);
+		verify(lineService, never()).downloadContent("F2");
+		for (byte[] content : List.of(new byte[1048577], new byte[] {(byte) 0xC3, 0x28})) {
+			when(lineService.downloadContent("F2")).thenReturn(new LineStorageService.LineContent(
+				new ByteArrayInputStream(content), "text/csv"
+			));
+			controller.handleWebhook(signature(payload), payload);
+		}
+		verifyNoInteractions(quotationWorkflow);
+	}
+
+	@Test
 	void rejectsEveryWebhookWhenChannelSecretIsBlank() {
 		ReflectionTestUtils.setField(controller, "channelSecret", "");
 

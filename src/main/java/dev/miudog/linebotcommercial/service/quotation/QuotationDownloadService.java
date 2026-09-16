@@ -1,5 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -35,15 +37,21 @@ public class QuotationDownloadService {
 	private final JdbcTemplate jdbc;
 	private final Path outputRoot;
 	private final String publicBaseUrl;
+	private final ObjectStorage objectStorage;
+	private final boolean legacyFilesystemEnabled;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	// 方法：建立 PDF 安全下載服務並正規化可信設定路徑。
 	public QuotationDownloadService(
 		JdbcTemplate jdbc,
+		ObjectStorage objectStorage,
 		@Value("${app.quotation.root-path:}") String outputRoot,
-		@Value("${app.public-base-url:}") String publicBaseUrl
+		@Value("${app.public-base-url:}") String publicBaseUrl,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystemEnabled
 	) {
 		this.jdbc = jdbc;
+		this.objectStorage = objectStorage;
+		this.legacyFilesystemEnabled = legacyFilesystemEnabled;
 		// 外部呼叫：使用 Java NIO 正規化管理員設定的報價輸出根目錄。
 		this.outputRoot = outputRoot == null || outputRoot.isBlank()
 			? null
@@ -79,8 +87,11 @@ public class QuotationDownloadService {
 		if (rawToken == null || !TOKEN_PATTERN.matcher(rawToken).matches()) return null;
 
 		// 外部呼叫：以權杖雜湊查詢尚未撤銷的 PDF 與正式檔案狀態。
+		String locator = legacyFilesystemEnabled
+			? "qf.relative_path"
+			: "COALESCE(qf.object_key, qf.relative_path)";
 		List<Map<String, Object>> rows = jdbc.queryForList("""
-			SELECT dt.expires_at, qf.relative_path, qf.content_type, qf.file_size
+			SELECT dt.expires_at, %s AS relative_path, qf.content_type, qf.file_size
 			FROM quotation_download_token dt
 			JOIN quotation_file qf ON qf.id = dt.file_id AND qf.quotation_id = dt.quotation_id
 			WHERE dt.token_hash = ?
@@ -88,24 +99,47 @@ public class QuotationDownloadService {
 			  AND dt.revoked_at IS NULL
 			  AND qf.file_kind = 'PDF'
 			  AND qf.status = 'READY'
-			""", hash(rawToken));
+			""".formatted(locator), hash(rawToken));
 		if (rows.size() != 1) return null;
 
 		Map<String, Object> row = rows.getFirst();
 		Instant expiresAt = Instant.parse((String) row.get("expires_at"));
 		if (!expiresAt.isAfter(Instant.now())) return null;
 
-		Path path = safeOutputPath((String) row.get("relative_path"));
-		// 外部呼叫：確認資料庫所指的 PDF 仍是報價根目錄內可讀取的一般檔案。
+		String relativePath = (String) row.get("relative_path");
+		if (!legacyFilesystemEnabled) {
+			try {
+				StoredObject metadata = objectStorage.metadata(relativePath);
+				byte[] content = objectStorage.get(relativePath);
+				if (content.length != metadata.contentLength()) return null;
+
+				return new QuotationDownloadResource(
+					content,
+					"quotation.pdf",
+					(String) row.get("content_type"),
+					metadata.contentLength()
+				);
+			}
+			catch (RuntimeException exception) {
+				return null;
+			}
+		}
+
+		Path path = safeOutputPath(relativePath);
 		if (path == null || !Files.isRegularFile(path) || !Files.isReadable(path)) return null;
 
-		long fileSize = ((Number) row.get("file_size")).longValue();
-		return new QuotationDownloadResource(
-			path,
-			path.getFileName().toString(),
-			(String) row.get("content_type"),
-			fileSize
-		);
+		try {
+			byte[] content = Files.readAllBytes(path);
+			return new QuotationDownloadResource(
+				content,
+				path.getFileName().toString(),
+				(String) row.get("content_type"),
+				content.length
+			);
+		}
+		catch (IOException exception) {
+			return null;
+		}
 	}
 
 	// 方法：撤銷指定報價目前所有仍有效的 PDF 下載連結。
@@ -122,18 +156,31 @@ public class QuotationDownloadService {
 	// 方法：取得指定報價唯一且已完成的 PDF 檔案紀錄。
 	private FileRecord requireReadyPdf(long quotationId) {
 		// 外部呼叫：查詢可以發行下載權杖的已完成 PDF。
+		String locator = legacyFilesystemEnabled
+			? "relative_path"
+			: "COALESCE(object_key, relative_path)";
 		List<Map<String, Object>> rows = jdbc.queryForList("""
-			SELECT id, relative_path
+			SELECT id, %s AS relative_path
 			FROM quotation_file
 			WHERE quotation_id = ? AND file_kind = 'PDF' AND status = 'READY'
-			""", quotationId);
+			""".formatted(locator), quotationId);
 		if (rows.size() != 1) throw new IllegalStateException("報價 PDF 尚未完成");
 
 		Map<String, Object> row = rows.getFirst();
-		Path path = safeOutputPath((String) row.get("relative_path"));
-		// 外部呼叫：確認發行權杖前 PDF 實體檔案仍存在且可讀取。
-		if (path == null || !Files.isRegularFile(path) || !Files.isReadable(path)) {
-			throw new IllegalStateException("報價 PDF 檔案不存在");
+		String relativePath = (String) row.get("relative_path");
+		if (legacyFilesystemEnabled) {
+			Path path = safeOutputPath(relativePath);
+			if (path == null || !Files.isRegularFile(path) || !Files.isReadable(path)) {
+				throw new IllegalStateException("報價 PDF 檔案不存在");
+			}
+		}
+		else {
+			try {
+				objectStorage.metadata(relativePath);
+			}
+			catch (RuntimeException exception) {
+				throw new IllegalStateException("報價 PDF 物件不存在", exception);
+			}
 		}
 
 		return new FileRecord(((Number) row.get("id")).longValue());
@@ -188,7 +235,9 @@ public class QuotationDownloadService {
 
 	// 方法：確認下載服務具備報價輸出根目錄與公開 HTTPS 網址。
 	private void requireConfigured() {
-		if (outputRoot == null) throw new IllegalStateException("尚未設定報價輸出根目錄");
+		if (legacyFilesystemEnabled && outputRoot == null) {
+			throw new IllegalStateException("尚未設定報價輸出根目錄");
+		}
 
 		if (publicBaseUrl == null) throw new IllegalStateException("尚未設定公開 HTTPS 網址");
 	}

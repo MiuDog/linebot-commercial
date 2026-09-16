@@ -12,15 +12,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class UnifiedEnvironmentConfigurationTest {
 
+	// 方法：正式入口只能啟動 Spring Boot，不保留任何桌面或服務監督模式。
 	@Test
-	void derivesEveryFilesystemLocationFromOneSystemRoot() throws IOException {
+	void usesHeadlessSpringBootAsTheOnlyRuntime() throws IOException {
+		String application = read("src/main/java/dev/miudog/linebotcommercial/LinebotCommercialApplication.java");
+		String properties = read("src/main/resources/application.properties");
+
+		assertThat(application)
+			.contains("SpringApplication.run(LinebotCommercialApplication.class, args)")
+			.doesNotContain("DesktopApplication")
+			.doesNotContain("ServiceApplication")
+			.doesNotContain("ApplicationRuntimeMode");
+		assertThat(Path.of("src/main/java/dev/miudog/linebotcommercial/desktop")).doesNotExist();
+		assertThat(Path.of("packaging/windows")).doesNotExist();
+		assertThat(Path.of(".github/workflows/release-windows.yml")).doesNotExist();
+		assertThat(properties)
+			.contains("management.endpoint.health.probes.enabled=true")
+			.contains("management.endpoint.health.probes.add-additional-paths=true")
+			.contains("server.shutdown=graceful")
+			.contains("spring.lifecycle.timeout-per-shutdown-phase=${SHUTDOWN_TIMEOUT:30s}");
+	}
+
+	// 方法：部署只將 PostgreSQL 與物件儲存視為持久狀態，不再掛載桌面資料目錄或內嵌公司資產。
+	@Test
+	void keepsPersistentStateOutsideTheApplicationImage() throws IOException {
 		String environment = read(".env.example");
 		String properties = read("src/main/resources/application.properties");
 		String compose = read("docker-compose.yml");
 		String dockerfile = read("Dockerfile");
 
 		assertThat(environment)
-			.contains("SYSTEM_ROOT_PATH=")
+			.contains("COMPANY_ID=")
+			.contains("OBJECT_STORAGE_BUCKET=")
+			.contains("SECRETS_DIR=")
+			.doesNotContain("AI_API_KEY=")
+			.doesNotContain("DATABASE_PASSWORD=")
 			.doesNotContain("ASSETS_ROOT=")
 			.doesNotContain("QUOTATION_ROOT_PATH=")
 			.doesNotContain("QUOTATION_OUTPUT_PATH=")
@@ -33,16 +59,17 @@ class UnifiedEnvironmentConfigurationTest {
 			.contains("app.quotation.template-path=classpath:quotation/templates")
 			.contains("app.observability.log-path=${app.system.root}/log");
 		assertThat(compose)
-			.contains("${SYSTEM_ROOT_PATH:-./system-data}:/data/system-root")
-			.contains("SYSTEM_ROOT_PATH=/data/system-root")
-			.contains("LOCAL_ADMIN_CONTAINER_HOST_ACCESS=true")
-			.contains("127.0.0.1:8088:8088")
+			.contains("SYSTEM_ROOT_PATH: /tmp/linebot")
+			.contains("database-data:/var/lib/postgresql/data")
+			.contains("object-storage-data:/data")
+			.contains("LOCAL_ADMIN_CONTAINER_HOST_ACCESS: \"true\"")
+			.contains("127.0.0.1:${APP_PORT:-8088}:8088")
+			.doesNotContain("./system-data")
 			.doesNotContain("ASSETS_ROOT=")
 			.doesNotContain("QUOTATION_ROOT_PATH=");
 		assertThat(dockerfile)
-			.contains("COPY outputs/excel-templates ./outputs/excel-templates")
-			.contains("VOLUME /data/system-root")
-			.doesNotContain("VOLUME /data/assets");
+			.doesNotContain("COPY outputs")
+			.doesNotContain("VOLUME ");
 	}
 
 	// 方法：報價 AI 只使用共同的三個設定；語音任務屬於文書機器人，此產品不得殘留其設定。
@@ -53,8 +80,8 @@ class UnifiedEnvironmentConfigurationTest {
 
 		assertThat(environment)
 			.contains("AI_API_URL=")
-			.contains("AI_API_KEY=")
 			.contains("AI_MODEL=")
+			.doesNotContain("AI_API_KEY=")
 			.doesNotContain("AI_TIMEOUT_SECONDS=")
 			.doesNotContain("AI_PRICE_CURRENCY=")
 			.doesNotContain("AI_INPUT_RATE_PER_MILLION=")

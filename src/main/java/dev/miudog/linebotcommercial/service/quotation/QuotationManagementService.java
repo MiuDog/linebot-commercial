@@ -227,6 +227,13 @@ public class QuotationManagementService {
 	public AdminImageResource resolveDraftImage(long draftId) {
 		QuotationManagementRepository.AdminImageRecord record = repository.findSelectedDraftImage(draftId)
 			.orElseThrow(() -> notFound("找不到草稿選圖"));
+		if (!storage.usesLegacyFilesystem()) {
+			if (record.locator() == null || !record.locator().startsWith("staging/pending/")) {
+				throw invalidImagePath();
+			}
+			return imageResource(record.locator(), record.contentType());
+		}
+
 		Path path = safeImagePath(record.locator(), storage.root(), true);
 		return imageResource(path, record.contentType());
 	}
@@ -235,6 +242,13 @@ public class QuotationManagementService {
 	public AdminImageResource resolveQuotationImage(long quotationId) {
 		QuotationManagementRepository.AdminImageRecord record = repository.findSelectedQuotationImage(quotationId)
 			.orElseThrow(() -> notFound("找不到正式報價選圖"));
+		if (!storage.usesLegacyFilesystem()) {
+			String prefix = "assets/archive/quotation-" + quotationId + "/";
+			if (record.locator() == null || !record.locator().startsWith(prefix)) throw invalidImagePath();
+
+			return imageResource(record.locator(), record.contentType());
+		}
+
 		if (outputRoot == null) {
 			throw new QuotationAdminException("OUTPUT_NOT_CONFIGURED", "尚未設定報價輸出根目錄");
 		}
@@ -264,10 +278,33 @@ public class QuotationManagementService {
 		String fileKind = normalizeFileKind(requestedFileKind);
 		QuotationManagementRepository.AdminFileRecord record = repository.findReadyFile(quotationId, fileKind)
 			.orElseThrow(() -> new QuotationAdminException("FILE_NOT_READY", "報價檔案尚未完成"));
+		if (!storage.usesLegacyFilesystem()) {
+			String expectedExtension = "XLSX".equals(fileKind) ? ".xlsx" : ".pdf";
+			String prefix = "quotations/" + quotationId + "/";
+			if (record.relativePath() == null
+				|| !record.relativePath().startsWith(prefix)
+				|| !record.relativePath().toLowerCase(Locale.ROOT).endsWith(expectedExtension)) {
+				throw invalidFilePath();
+			}
+			try {
+				byte[] content = storage.read(record.relativePath());
+				repository.audit(quotationId, "QUOTATION_FILE_DOWNLOAD_" + fileKind, "ALLOWED");
+				return new AdminFileResource(
+					content,
+					"quotation-" + quotationId + expectedExtension,
+					record.contentType(),
+					content.length
+				);
+			}
+			catch (IOException exception) {
+				throw new QuotationAdminException("FILE_NOT_FOUND", "報價檔案不存在");
+			}
+		}
+
 		Path path = safeFilePath(record.relativePath(), fileKind);
 		repository.audit(quotationId, "QUOTATION_FILE_DOWNLOAD_" + fileKind, "ALLOWED");
 		return new AdminFileResource(
-			path,
+			readFile(path),
 			path.getFileName().toString(),
 			record.contentType(),
 			fileSize(path)
@@ -461,7 +498,41 @@ public class QuotationManagementService {
 		if (!IMAGE_CONTENT_TYPES.contains(normalizedType)) {
 			throw new QuotationAdminException("INVALID_IMAGE_TYPE", "選取圖片格式不支援");
 		}
-		return new AdminImageResource(path, normalizedType, fileSize(path));
+		byte[] content = readFile(path);
+		return new AdminImageResource(content, normalizedType, content.length);
+	}
+
+	// 方法：正式模式以受前綴限制的物件鍵讀取管理圖片，不揭露儲存端點或憑證。
+	private AdminImageResource imageResource(String locator, String contentType) {
+		String normalizedType = normalizedImageType(contentType);
+		try {
+			byte[] content = storage.read(locator);
+			return new AdminImageResource(content, normalizedType, content.length);
+		}
+		catch (IOException exception) {
+			throw new QuotationAdminException("IMAGE_NOT_FOUND", "選取圖片不存在");
+		}
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private String normalizedImageType(String contentType) {
+		String normalizedType = contentType == null
+			? ""
+			: contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+		if (!IMAGE_CONTENT_TYPES.contains(normalizedType)) {
+			throw new QuotationAdminException("INVALID_IMAGE_TYPE", "選取圖片格式不支援");
+		}
+		return normalizedType;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private byte[] readFile(Path path) {
+		try {
+			return Files.readAllBytes(path);
+		}
+		catch (IOException exception) {
+			throw new QuotationAdminException("FILE_NOT_FOUND", "檔案無法讀取");
+		}
 	}
 
 	// 方法：建立不揭露本機圖片路徑的邊界錯誤。
@@ -718,9 +789,9 @@ public class QuotationManagementService {
 
 	public record DeliveryView(String status, int attemptCount, String errorMessage, boolean canRetry) {}
 
-	public record AdminFileResource(Path path, String fileName, String contentType, long fileSize) {}
+	public record AdminFileResource(byte[] content, String fileName, String contentType, long fileSize) {}
 
-	public record AdminImageResource(Path path, String contentType, long fileSize) {}
+	public record AdminImageResource(byte[] content, String contentType, long fileSize) {}
 
 	public record PdfRetryResponse(long quotationId, String quotationNumber, String status) {}
 

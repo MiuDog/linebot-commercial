@@ -123,7 +123,7 @@ class QuotationLineMessageBuilderTest {
 
 		assertThat(messages).hasSizeLessThanOrEqualTo(5);
 		assertThat(combined).contains(
-			"正定公司",
+			"範例公司",
 			"碼頭工程",
 			"1. 外部鷹架 | 數量：—",
 			"2. 特殊材料 | 數量：1",
@@ -198,7 +198,7 @@ class QuotationLineMessageBuilderTest {
 			java.time.LocalDate.of(2026, 8, 26),
 			1,
 			"20260811-01",
-			"正定-工程 20260811-01"
+			"範例-工程 20260811-01"
 		);
 
 		QuotationLineMessage message = builder.generationAccepted(confirmation);
@@ -325,7 +325,7 @@ class QuotationLineMessageBuilderTest {
 		QuotationNextAction nextAction
 	) {
 		Map<String, String> baseFields = new LinkedHashMap<>();
-		baseFields.put("companyName", "正定公司");
+		baseFields.put("companyName", "範例公司");
 		baseFields.put("workName", "碼頭工程");
 		baseFields.put("contactName", "王先生");
 		QuotationDraftSnapshot draft = new QuotationDraftSnapshot(

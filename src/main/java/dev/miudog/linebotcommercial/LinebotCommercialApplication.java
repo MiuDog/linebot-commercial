@@ -1,9 +1,8 @@
 package dev.miudog.linebotcommercial;
 
-import dev.miudog.linebotcommercial.desktop.DesktopApplication;
-import dev.miudog.linebotcommercial.desktop.ServiceApplication;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -25,6 +24,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <p>完整的類別導覽請見 {@code docs/reference/index.md}。
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 @EnableScheduling
 public class LinebotCommercialApplication {
 
@@ -35,18 +35,7 @@ public class LinebotCommercialApplication {
 	 */
 	// 方法：執行 main 方法的處理流程。
 	public static void main(String[] args) {
-		ApplicationRuntimeMode runtimeMode = ApplicationRuntimeMode.resolve(args);
-		if (runtimeMode == ApplicationRuntimeMode.DESKTOP) {
-			DesktopApplication.createDefault().start(args);
-			return;
-		}
-
-		if (runtimeMode == ApplicationRuntimeMode.SERVICE) {
-			ServiceApplication.createDefault().start(args);
-			return;
-		}
-
-		// 外部函式：一般 server 與 Docker 保持直接由環境設定啟動 Spring。
+		// 外部函式：雲端與本地 Docker 共用唯一的 Spring Boot 啟動路徑。
 		SpringApplication.run(LinebotCommercialApplication.class, args);
 	}
 }

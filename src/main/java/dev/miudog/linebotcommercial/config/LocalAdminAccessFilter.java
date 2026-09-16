@@ -25,18 +25,26 @@ import java.nio.charset.StandardCharsets;
 public class LocalAdminAccessFilter extends OncePerRequestFilter {
 
 	private final boolean containerHostAccessEnabled;
+	private final boolean localOnly;
 
 	// 方法：由部署設定決定是否接受經 Docker 本機埠轉接的私有橋接來源。
 	@Autowired
 	public LocalAdminAccessFilter(
-		@Value("${app.admin.container-host-access-enabled:false}") boolean containerHostAccessEnabled
+		@Value("${app.admin.container-host-access-enabled:false}") boolean containerHostAccessEnabled,
+		@Value("${app.admin.local-only:true}") boolean localOnly
 	) {
 		this.containerHostAccessEnabled = containerHostAccessEnabled;
+		this.localOnly = localOnly;
 	}
 
 	// 方法：提供單元測試與非 Spring 建構使用，預設維持最嚴格的 loopback 限制。
 	LocalAdminAccessFilter() {
-		this(false);
+		this(false, true);
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	LocalAdminAccessFilter(boolean containerHostAccessEnabled) {
+		this(containerHostAccessEnabled, true);
 	}
 
 	// 方法：只攔截本機管理頁及其 API。
@@ -56,15 +64,15 @@ public class LocalAdminAccessFilter extends OncePerRequestFilter {
 		FilterChain filterChain
 	) throws ServletException, IOException {
 		applySecurityHeaders(response);
-		if (
+		if (localOnly && (
 			hasForwardedClient(request)
 			|| !isAllowedDirectSource(request.getRemoteAddr())
 			|| !isAllowedLocalHost(request.getServerName())
-		) {
+		)) {
 			writeForbidden(response, "LOCAL_ACCESS_ONLY", "管理頁僅允許本機直接存取");
 			return;
 		}
-		if (isUnsafeAdminApi(request) && !isTrustedBrowserRequest(request)) {
+		if (localOnly && isUnsafeAdminApi(request) && !isTrustedBrowserRequest(request)) {
 			writeForbidden(response, "CSRF_REJECTED", "管理操作缺少可信任的同源驗證");
 			return;
 		}

@@ -170,11 +170,11 @@ class QuotationAdminControllerTest {
 			.andExpect(jsonPath("$.schemeCode").value("CNS"))
 			.andExpect(jsonPath("$.standardItems[0].itemCode").value("EXTERNAL_SCAFFOLD"))
 			.andExpect(jsonPath("$.standardItems[0].itemName").value("外部鷹架"))
-			.andExpect(jsonPath("$.standardItems[0].specification").value("(CNS)"))
-			.andExpect(jsonPath("$.standardItems[0].unit").value("m2"))
-			.andExpect(jsonPath("$.standardItems[0].unitPrice").value(220))
+			.andExpect(jsonPath("$.standardItems[0].specification").value("TEST"))
+			.andExpect(jsonPath("$.standardItems[0].unit").value("式"))
+			.andExpect(jsonPath("$.standardItems[0].unitPrice").value(10))
 			.andExpect(jsonPath("$.standardItems[0].lineAmount").value(org.hamcrest.Matchers.nullValue()))
-			.andExpect(jsonPath("$.standardItems[0].remark").value("(實做實算)"))
+			.andExpect(jsonPath("$.standardItems[0].remark").value("TEST ONLY"))
 			.andExpect(jsonPath("$.standardItems[0].sourceText").value("外部鷹架 2.5 平方米"));
 	}
 

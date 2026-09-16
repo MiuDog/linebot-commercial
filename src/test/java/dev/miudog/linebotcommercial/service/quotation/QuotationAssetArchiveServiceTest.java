@@ -185,7 +185,7 @@ class QuotationAssetArchiveServiceTest {
 			INSERT INTO quotation_draft (
 				draft_key, source_type, source_id, requester_id, company_name, work_name, scheme_id, status
 			)
-			SELECT lower(hex(randomblob(16))), 'user', 'U1', 'U1', '正定', '工程', id, 'CONFIRMED'
+			SELECT lower(hex(randomblob(16))), 'user', 'U1', 'U1', '範例', '工程', id, 'CONFIRMED'
 			FROM quotation_scheme WHERE code = 'GENERAL'
 			RETURNING id
 			""", Long.class);
@@ -194,7 +194,7 @@ class QuotationAssetArchiveServiceTest {
 				draft_id, quotation_no, quotation_name, sequence_date, sequence_number,
 				company_name, work_name, quotation_date, valid_until, scheme_id, template_id, status
 			)
-			SELECT ?, ?, '正定-工程', '2026-08-11', ?, '正定', '工程', '2026-08-11', '2026-08-26',
+			SELECT ?, ?, '範例-工程', '2026-08-11', ?, '範例', '工程', '2026-08-11', '2026-08-26',
 				s.id, t.id, ?
 			FROM quotation_scheme s JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
 			WHERE s.code = 'GENERAL'
@@ -207,7 +207,7 @@ class QuotationAssetArchiveServiceTest {
 			java.time.LocalDate.of(2026, 8, 26),
 			(int) draftId,
 			"20260811-" + String.format("%02d", draftId),
-			"正定-工程 20260811-" + String.format("%02d", draftId)
+			"範例-工程 20260811-" + String.format("%02d", draftId)
 		);
 	}
 

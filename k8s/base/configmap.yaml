@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: linebot-commercial-config
+data:
+  COMPANY_ID: company-id
+  PUBLIC_BASE_URL: https://commercial.example.com
+  DATABASE_URL: jdbc:postgresql://postgres.example.internal:5432/linebot_commercial
+  DATABASE_USERNAME: linebot
+  OBJECT_STORAGE_ENDPOINT: ""
+  OBJECT_STORAGE_REGION: us-east-1
+  OBJECT_STORAGE_BUCKET: linebot-commercial
+  OBJECT_STORAGE_FORCE_PATH_STYLE: "false"
+  AI_API_URL: ""
+  AI_MODEL: ""
+  SYSTEM_ROOT_PATH: /tmp/linebot
+  LEGACY_SQLITE_ENABLED: "false"
+  LEGACY_FILESYSTEM_ENABLED: "false"
+  ADMIN_TOKEN_REQUIRED: "true"
+  ADMIN_LOCAL_ONLY: "false"

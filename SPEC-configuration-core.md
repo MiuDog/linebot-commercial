@@ -1,5 +1,7 @@
 # Spec：configuration-core
 
+狀態：Superseded。DPAPI／桌面設定已由外部設定、Compose Secret 與雲端 Secret 契約取代。
+
 ## Objective
 
 建立 Windows App 共用的設定核心，讓非技術使用者可在首次安裝完成後或日後編輯設定，不必手動建立 `.env`，並避免 API Key、Token 等機密資料以明文保存或出現在 Log。

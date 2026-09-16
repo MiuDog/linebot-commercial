@@ -170,3 +170,6 @@ docker compose down
 - [LINE Bot 規則與各階段處理](02-linebot-rules.md)
 - [版本、Release 與 Push SOP](03-versioning-release-sop.md)
 - [類別索引](reference/index.md)
+# ⚠️ 歷史文件
+
+本文件描述已退役的 Windows／SQLite／ngrok 部署。現行操作請使用 [部署 Runbook](deployment-runbook.md)。

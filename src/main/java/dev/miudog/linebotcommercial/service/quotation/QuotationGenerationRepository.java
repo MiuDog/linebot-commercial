@@ -1,5 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -9,6 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,14 +26,20 @@ public class QuotationGenerationRepository {
 
 	private final JdbcTemplate jdbc;
 	private final QuotationOutputDirectoryService outputDirectories;
+	private final ObjectStorage objectStorage;
+	private final boolean legacyFilesystemEnabled;
 
 	// 方法：建立正式報價檔案狀態儲存庫。
 	public QuotationGenerationRepository(
 		JdbcTemplate jdbc,
-		QuotationOutputDirectoryService outputDirectories
+		QuotationOutputDirectoryService outputDirectories,
+		ObjectStorage objectStorage,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystemEnabled
 	) {
 		this.jdbc = jdbc;
 		this.outputDirectories = outputDirectories;
+		this.objectStorage = objectStorage;
+		this.legacyFilesystemEnabled = legacyFilesystemEnabled;
 	}
 
 	// 方法：將報價與 XLSX 檔案標記為產生中。
@@ -44,12 +53,24 @@ public class QuotationGenerationRepository {
 		if (changed != 1) throw new QuotationGenerationException("INVALID_GENERATION_STATE", "報價目前無法產生 Excel", null);
 
 		// 外部呼叫：建立或重設同一報價唯一的 XLSX 狀態列。
+		if (legacyFilesystemEnabled) {
+			jdbc.update("""
+				INSERT INTO quotation_file (quotation_id, file_kind, content_type, status)
+				VALUES (?, 'XLSX', ?, 'GENERATING')
+				ON CONFLICT (quotation_id, file_kind) DO UPDATE SET
+					status = 'GENERATING', relative_path = NULL, content_hash = NULL,
+					file_size = NULL, error_message = NULL, updated_at = CURRENT_TIMESTAMP
+				""", quotationId, XLSX_CONTENT_TYPE);
+			return;
+		}
+
 		jdbc.update("""
 			INSERT INTO quotation_file (quotation_id, file_kind, content_type, status)
 			VALUES (?, 'XLSX', ?, 'GENERATING')
 			ON CONFLICT (quotation_id, file_kind) DO UPDATE SET
-				status = 'GENERATING', relative_path = NULL, content_hash = NULL,
-				file_size = NULL, error_message = NULL, updated_at = CURRENT_TIMESTAMP
+				status = 'GENERATING', relative_path = NULL, object_key = NULL,
+				object_version = NULL, content_hash = NULL, file_size = NULL,
+				error_message = NULL, updated_at = CURRENT_TIMESTAMP
 			""", quotationId, XLSX_CONTENT_TYPE);
 	}
 
@@ -60,6 +81,11 @@ public class QuotationGenerationRepository {
 			throw new QuotationGenerationException("XLSX_NOT_FOUND", "Excel 產出檔不存在", null);
 		}
 		Path normalized = path.toAbsolutePath().normalize();
+		if (!legacyFilesystemEnabled) {
+			markObjectReady(quotationId, normalized);
+			return;
+		}
+
 		String relativePath;
 		try {
 			relativePath = outputDirectories.relativeLocator(normalized);
@@ -87,6 +113,49 @@ public class QuotationGenerationRepository {
 		}
 		catch (IOException exception) {
 			throw new QuotationGenerationException("XLSX_METADATA_FAILED", "無法讀取 Excel 產出資訊", exception);
+		}
+	}
+
+	// 方法：正式模式將 XLSX 寫入公司物件儲存，資料庫只保存可攜式物件識別。
+	private void markObjectReady(long quotationId, Path path) {
+		try {
+			byte[] content = Files.readAllBytes(path);
+			String hash = sha256(content);
+			String objectKey = "quotations/" + quotationId + "/xlsx/" + hash + ".xlsx";
+			StoredObject stored = objectStorage.put(
+				objectKey,
+				content,
+				XLSX_CONTENT_TYPE,
+				Map.of("quotation-id", Long.toString(quotationId), "file-kind", "XLSX")
+			);
+
+			int changed = jdbc.update("""
+				UPDATE quotation_file
+				SET relative_path = ?, object_key = ?, object_version = ?, content_hash = ?,
+					file_size = ?, status = 'READY', error_message = NULL,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE quotation_id = ? AND file_kind = 'XLSX'
+				""",
+				objectKey,
+				objectKey,
+				stored.versionId(),
+				stored.sha256(),
+				stored.contentLength(),
+				quotationId
+			);
+			if (changed != 1) {
+				throw new QuotationGenerationException("MISSING_XLSX_RECORD", "找不到 Excel 產生狀態", null);
+			}
+
+			jdbc.update("""
+				UPDATE quotation SET status = 'GENERATING_PDF', output_path = ?, exported_at = CURRENT_TIMESTAMP
+				WHERE id = ?
+				""", objectKey, quotationId);
+			// 暫存 XLSX 已由物件儲存接管；容器可維持唯讀根檔案系統。
+			Files.deleteIfExists(path);
+		}
+		catch (IOException exception) {
+			throw new QuotationGenerationException("XLSX_STORAGE_FAILED", "無法保存 Excel 產出", exception);
 		}
 	}
 
@@ -153,6 +222,16 @@ public class QuotationGenerationRepository {
 				}
 			}
 			return HexFormat.of().formatHex(digest.digest());
+		}
+		catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("執行環境不支援 SHA-256", exception);
+		}
+	}
+
+	// 方法：計算已載入暫存檔的 SHA-256，建立內容定址物件鍵。
+	private String sha256(byte[] content) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
 		}
 		catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("執行環境不支援 SHA-256", exception);

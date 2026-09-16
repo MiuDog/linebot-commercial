@@ -1,5 +1,9 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.companyasset.CompanyAssetPurpose;
+import dev.miudog.linebotcommercial.companyasset.CompanyAssetService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -75,6 +79,7 @@ public class QuotationWorkbookService {
 	private final QuotationOutputDirectoryService outputDirectoryService;
 	private final ResourceLoader resourceLoader;
 	private final Map<String, TemplateDefinition> templates;
+	private final CompanyAssetService companyAssets;
 
 	// 方法：載入五種範本定義並建立報價 Excel 產出服務。
 	public QuotationWorkbookService(
@@ -86,6 +91,23 @@ public class QuotationWorkbookService {
 		this.outputDirectoryService = outputDirectoryService;
 		this.resourceLoader = resourceLoader;
 		this.templates = loadTemplateDefinitions();
+		this.companyAssets = null;
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	@Autowired
+	public QuotationWorkbookService(
+		ObjectMapper objectMapper,
+		QuotationOutputDirectoryService outputDirectoryService,
+		ResourceLoader resourceLoader,
+		CompanyAssetService companyAssets,
+		@Value("${app.storage.legacy-filesystem-enabled:false}") boolean legacyFilesystem
+	) {
+		this.objectMapper = objectMapper;
+		this.outputDirectoryService = outputDirectoryService;
+		this.resourceLoader = resourceLoader;
+		this.companyAssets = legacyFilesystem ? null : companyAssets;
+		this.templates = legacyFilesystem ? loadTemplateDefinitions() : Map.of();
 	}
 
 	//#region 產出流程
@@ -102,7 +124,8 @@ public class QuotationWorkbookService {
 	) {
 		if (quotation == null) throw validation("報價資料不可留空");
 
-		TemplateDefinition template = templates.get(normalizeSchemeCode(quotation.schemeCode()));
+		TemplateDefinition template = templateDefinitions(null)
+			.get(normalizeSchemeCode(quotation.schemeCode()));
 		if (template == null) throw validation("找不到報價格式範本：" + quotation.schemeCode());
 
 		Header safeHeader = normalizeHeader(header);
@@ -125,7 +148,7 @@ public class QuotationWorkbookService {
 
 			// 檔案系統：先在目標資料夾建立暫存檔，成功完成後才以不可覆寫方式改名。
 			temporaryFile = Files.createTempFile(directory, ".quotation-", ".xlsx");
-			try (InputStream templateInput = openTemplate(template)) {
+			try (InputStream templateInput = openTemplate(template, null)) {
 				writeWorkbook(
 					templateInput,
 					temporaryFile,
@@ -180,7 +203,8 @@ public class QuotationWorkbookService {
 
 		if (calculation == null) throw validation("程式計價結果不可留空");
 
-		TemplateDefinition template = templates.get(normalizeSchemeCode(calculation.schemeCode()));
+		TemplateDefinition template = templateDefinitions(confirmation.quotationId())
+			.get(normalizeSchemeCode(calculation.schemeCode()));
 		if (template == null) throw validation("找不到報價格式範本：" + calculation.schemeCode());
 
 		Header safeHeader = normalizeHeader(header);
@@ -196,7 +220,7 @@ public class QuotationWorkbookService {
 				".xlsx"
 			);
 			temporaryFile = Files.createTempFile(output.getParent(), ".quotation-", ".xlsx");
-			try (InputStream templateInput = openTemplate(template)) {
+			try (InputStream templateInput = openTemplate(template, confirmation.quotationId())) {
 				writePaginatedWorkbook(
 					templateInput,
 					temporaryFile,
@@ -1210,6 +1234,41 @@ public class QuotationWorkbookService {
 		}
 	}
 
+	// 方法：執行此方法定義的受控處理流程。
+	private Map<String, TemplateDefinition> templateDefinitions(Long quotationId) {
+		if (companyAssets == null) return templates;
+
+		if (quotationId == null) {
+			throw validation("正式模式必須由已鎖定公司資產版本的報價產生 XLSX");
+		}
+
+		try {
+			byte[] content = companyAssets.forQuotation(
+				quotationId,
+				CompanyAssetPurpose.TEMPLATE_DEFINITIONS
+			);
+			JsonNode root = objectMapper.readTree(content);
+			Map<String, TemplateDefinition> definitions = new LinkedHashMap<>();
+			for (JsonNode node : root.path("templates")) {
+				TemplateDefinition definition = templateDefinition(node);
+				if (definitions.put(definition.schemeCode(), definition) != null) {
+					throw validation("範本定義包含重複報價格式：" + definition.schemeCode());
+				}
+			}
+			return Map.copyOf(definitions);
+		}
+		catch (QuotationAdminException exception) {
+			throw exception;
+		}
+		catch (RuntimeException exception) {
+			throw new QuotationAdminException(
+				"TEMPLATE_CONFIGURATION_ERROR",
+				"無法載入鎖定版本的 Excel 範本定義",
+				exception
+			);
+		}
+	}
+
 	// 方法：將單筆 JSON 範本定義轉成明確型別並保留所有儲存格定位。
 	private TemplateDefinition templateDefinition(JsonNode node) {
 		JsonNode header = node.path("header");
@@ -1257,7 +1316,21 @@ public class QuotationWorkbookService {
 	}
 
 	// 方法：優先使用本機可編輯範本，封裝執行時則改用 Maven 內嵌的同名 classpath 範本。
-	private InputStream openTemplate(TemplateDefinition template) throws IOException {
+	private InputStream openTemplate(
+		TemplateDefinition template,
+		Long quotationId
+	) throws IOException {
+		if (companyAssets != null) {
+			if (quotationId == null) throw validation("正式報價缺少公司資產版本");
+
+			return new ByteArrayInputStream(
+				companyAssets.forQuotation(
+					quotationId,
+					templatePurpose(template.schemeCode())
+				)
+			);
+		}
+
 		Path localPath = Path.of(template.workbookPath()).toAbsolutePath().normalize();
 		if (Files.isRegularFile(localPath)) {
 			// 檔案系統：開啟管理者可直接替換的本機 Excel 範本。
@@ -1269,6 +1342,19 @@ public class QuotationWorkbookService {
 		if (!classpathTemplate.exists()) throw validation("找不到 Excel 範本：" + template.workbookPath());
 
 		return classpathTemplate.getInputStream();
+	}
+
+	// 方法：執行此方法定義的受控處理流程。
+	private CompanyAssetPurpose templatePurpose(String schemeCode) {
+		return switch (normalizeSchemeCode(schemeCode)) {
+			case "BLANK" -> CompanyAssetPurpose.TEMPLATE_BLANK;
+			case "CNS" -> CompanyAssetPurpose.TEMPLATE_CNS;
+			case "GENERAL" -> CompanyAssetPurpose.TEMPLATE_GENERAL;
+			case "MARINE" -> CompanyAssetPurpose.TEMPLATE_MARINE;
+			case "SALES" -> CompanyAssetPurpose.TEMPLATE_SALES;
+			default -> throw validation("找不到報價格式公司資產：" + schemeCode);
+
+		};
 	}
 
 	// 方法：以報價名稱與格式建立唯一檔名，不覆寫既有報價單。

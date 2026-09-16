@@ -1,9 +1,12 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import dev.miudog.linebotcommercial.service.ai.AiExtractionException;
+import dev.miudog.linebotcommercial.service.ai.AiCompletionException;
 import dev.miudog.linebotcommercial.service.ai.AiImageInput;
 import dev.miudog.linebotcommercial.service.ai.AiJsonCompletionClient;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -12,6 +15,7 @@ import java.net.ConnectException;
 import java.net.http.HttpTimeoutException;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -21,6 +25,7 @@ import java.util.Set;
 public class QuotationAiParsingService {
 
 	private static final int MAXIMUM_RESPONSE_LENGTH = 2_000_000;
+	private static final Logger log = LoggerFactory.getLogger(QuotationAiParsingService.class);
 
 	private final AiJsonCompletionClient completionClient;
 	private final QuotationAiPromptService promptService;
@@ -43,6 +48,11 @@ public class QuotationAiParsingService {
 	// 方法：判斷目前是否已設定可用的 AI 模型連線。
 	public boolean isConfigured() {
 		return completionClient.isConfigured();
+	}
+
+	// 方法：CSV 直接由程式解析，AI 未設定時也可建立待確認草稿。
+	public ParseResult parseCsv(String csv) {
+		return new QuotationInputCsvService(validationService, objectMapper).parse(csv);
 	}
 
 	// 方法：解析報價指令、核對候選圖片，並從資料庫解析固定品項欄位與直接計價結果。
@@ -69,20 +79,49 @@ public class QuotationAiParsingService {
 			lockedSchemeCode
 		);
 
-		String rawJson;
-		try {
-			rawJson = completionClient.completeJson(
-				prompt.systemPrompt(),
-				prompt.userPrompt(),
-				safeImages
-			);
-		}
-		catch (AiExtractionException exception) {
-			throw classifiedCallFailure(exception);
-		}
+		String userPrompt = prompt.userPrompt();
+		for (int attempt = 1; attempt <= 2; attempt++) {
+			String rawJson;
+			try {
+				rawJson = completionClient.completeJson(
+					prompt.apiSystemPrompt(),
+					userPrompt,
+					safeImages,
+					prompt.responseSchema()
+				);
+			}
+			catch (AiExtractionException exception) {
+				throw classifiedCallFailure(exception);
+			}
 
+			try {
+				ParseResult result = validateResponse(rawJson, lockedSchemeCode, prompt.imageMessageIds());
+
+				// 日誌：記錄完成驗證的嘗試次數，不記錄使用者資料。
+				log.info("event=quotation_parse_validated attemptCount={} imageCount={}", attempt, safeImages.size());
+				return result;
+			}
+			catch (QuotationAiException exception) {
+				// 日誌：只記錄穩定錯誤代碼，供統計首次成功率及修復率。
+				log.warn("event=quotation_parse_rejected attemptCount={} code={}", attempt, exception.code());
+				if (attempt == 2 || rawJson == null || rawJson.length() > 16000) throw exception;
+
+				// 序列化：把錯誤與待修復片段封裝為不可信資料，只允許一次結構／欄位修復。
+				userPrompt = prompt.userPrompt() + "\n僅依原始輸入修復下列回應；缺值不可猜測。<REPAIR_DATA>"
+					+ objectMapper.writeValueAsString(Map.of(
+						"code", exception.code(),
+						"error", exception.getMessage(),
+						"response", rawJson
+					)) + "</REPAIR_DATA>";
+			}
+		}
+		throw new IllegalStateException("報價解析重試次數不正確");
+	}
+
+	// 方法：所有嘗試共用相同圖片與主檔驗證，修復後不降低標準。
+	private ParseResult validateResponse(String rawJson, String lockedSchemeCode, List<String> imageMessageIds) {
 		JsonNode root = parseStrictJsonObject(rawJson);
-		ensureExactImageAssessments(root, prompt.imageMessageIds());
+		ensureExactImageAssessments(root, imageMessageIds);
 		try {
 			QuotationRequestValidationService.ValidatedQuotationRequest request = validationService.validate(
 				root,
@@ -156,6 +195,14 @@ public class QuotationAiParsingService {
 
 	// 方法：把 AI HTTP、連線、逾時與回應格式失敗分成可行動的穩定代碼。
 	private QuotationAiException classifiedCallFailure(AiExtractionException exception) {
+		if (exception instanceof AiCompletionException completion) {
+			String detail = switch (completion.code()) {
+				case "AI_OUTPUT_TRUNCATED" -> "AI 輸出超過 token 上限，請拆分品項或調整輸出預算";
+				case "AI_REFUSED" -> "AI 無法處理本次資料，請修改輸入或使用 CSV";
+				default -> "AI 回傳格式不符報價規格";
+			};
+			return new QuotationAiException(completion.code(), detail, exception);
+		}
 		String message = exception.getMessage() == null ? "" : exception.getMessage();
 		if (message.contains("尚未設定")) return new QuotationAiException("AI_NOT_CONFIGURED", "AI 服務尚未設定", exception);
 

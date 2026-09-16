@@ -252,3 +252,6 @@ docker compose up --build -d
 - [部署與外部串接指南](01-bot-deployment.md)
 - [LINE Bot 規則與各階段處理](02-linebot-rules.md)
 - [類別索引](reference/index.md)
+# ⚠️ 歷史文件
+
+Windows installer 發布已退役。現行容器發布與回復請使用 [部署 Runbook](deployment-runbook.md)。

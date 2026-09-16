@@ -255,7 +255,7 @@ class QuotationDurableReplyIntegrationTest {
 			"GENERAL",
 			BigDecimal.ONE,
 			new QuotationRequestValidationService.HeaderPatch(
-				extracted("正定工程"),
+				extracted("範例工程"),
 				extracted("測試工程"),
 				null,
 				null,

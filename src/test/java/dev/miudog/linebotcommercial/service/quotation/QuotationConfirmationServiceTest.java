@@ -38,14 +38,14 @@ class QuotationConfirmationServiceTest {
 	@Test
 	@Transactional
 	void allocatesSequenceAndPersistsImmutableSnapshotAfterConfirmation() {
-		long draftId = insertConfirmedDraft("GENERAL", "正定工程股份有限公司", "中壢案");
+		long draftId = insertConfirmedDraft("GENERAL", "範例工程股份有限公司", "中壢案");
 		QuotationConfirmationResult result = service.confirm(command(draftId, "GENERAL", "evt-" + UUID.randomUUID()));
 		LocalDate today = LocalDate.now(ZoneId.of("Asia/Taipei"));
 
 		assertThat(result.sequenceNumber()).isEqualTo(1);
 		assertThat(result.folderName()).isEqualTo(today.toString().replace("-", "") + "-01");
 		assertThat(result.quotationNumber()).isEqualTo(today.toString().replace("-", "") + "01");
-		assertThat(result.fileBaseName()).isEqualTo("正定工程股份有限公司-中壢案 " + result.folderName());
+		assertThat(result.fileBaseName()).isEqualTo("範例工程股份有限公司-中壢案 " + result.folderName());
 		assertThat(result.quotationDate()).isEqualTo(today);
 		assertThat(result.validUntil()).isEqualTo(today.plusDays(21));
 
@@ -71,7 +71,7 @@ class QuotationConfirmationServiceTest {
 		assertThat(quotation.get("additional_header")).isEqualTo("Tax ID 12345678");
 		assertThat(quotation.get("sales_representative")).isEqualTo("陳業務");
 		assertThat(quotation)
-			.containsEntry("customer_name", "正定工程股份有限公司")
+			.containsEntry("customer_name", "範例工程股份有限公司")
 			.containsEntry("customer_phone", "02-12345678")
 			.containsEntry("customer_fax", "02-87654321")
 			.containsEntry("customer_email", "quote@example.test")
@@ -135,7 +135,7 @@ class QuotationConfirmationServiceTest {
 	@Test
 	@DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
 	void failedSnapshotInsertRollsBackTerminalStateEventAndSequenceAndAllowsRetry() {
-		long draftId = insertConfirmedDraft("GENERAL", "正定工程", "重試工程");
+		long draftId = insertConfirmedDraft("GENERAL", "範例工程", "重試工程");
 		String eventId = "evt-rollback-" + UUID.randomUUID();
 		QuotationConfirmationCommand invalid = commandWithInvalidLine(draftId, eventId);
 

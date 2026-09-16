@@ -73,6 +73,22 @@ class QuotationPendingImagePreviewServiceTest {
 	}
 
 	@Test
+	void resolvesSignedPreviewFromObjectStorage() throws Exception {
+		byte[] original = Files.readAllBytes(temporaryDirectory.resolve(".pending/original.png"));
+		var objects = org.mockito.Mockito.mock(dev.miudog.linebotcommercial.storage.ObjectStorage.class);
+		org.mockito.Mockito.when(objects.get("staging/pending/original.png")).thenReturn(original);
+		org.mockito.Mockito.when(objects.metadata("staging/pending/original.png")).thenReturn(
+			new dev.miudog.linebotcommercial.storage.StoredObject("staging/pending/original.png", "v1", "etag", "hash", original.length, "image/png")
+		);
+		jdbc.update("UPDATE pending_image SET staging_path = 'staging/pending/original.png' WHERE message_id = 'M1'");
+		var deployed = new QuotationPendingImagePreviewService(jdbc,
+			new FileStorageService(temporaryDirectory.toString(), false, objects),
+			"https://quotes.example.test", SECRET, Clock.fixed(NOW, ZoneOffset.UTC));
+		var preview = deployed.issueSelected(1, "U1");
+		assertThat(deployed.resolve(token(preview.originalUrl())).bytes()).isEqualTo(original);
+	}
+
+	@Test
 	void rejectsTamperedTokensAndNonHttpsConfiguration() {
 		QuotationImagePreview preview = service.issueSelected(1, "U1");
 		String tampered = token(preview.originalUrl()) + "x";

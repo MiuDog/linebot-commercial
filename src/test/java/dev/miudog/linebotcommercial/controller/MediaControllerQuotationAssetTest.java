@@ -1,24 +1,13 @@
 package dev.miudog.linebotcommercial.controller;
 
 import dev.miudog.linebotcommercial.domain.Asset;
-import dev.miudog.linebotcommercial.service.AssetPathResolver;
 import dev.miudog.linebotcommercial.service.AssetService;
-import dev.miudog.linebotcommercial.service.FileStorageService;
-import dev.miudog.linebotcommercial.service.quotation.QuotationOutputDirectoryService;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -28,41 +17,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class MediaControllerQuotationAssetTest {
 
-	@TempDir Path root;
-	Connection connection;
 	MockMvc mvc;
 
+	// 方法：建立以物件儲存內容為來源的媒體控制器測試環境。
 	@BeforeEach
 	void setUp() throws Exception {
-		Path assetsRoot = root.resolve("assets");
-		Path quotationRoot = root.resolve("quotations");
-		Path image = quotationRoot.resolve("報價單/20260811-01/image-01.jpg");
-		Files.createDirectories(image.getParent());
-		Files.writeString(image, "formal-image");
-
-		connection = DriverManager.getConnection("jdbc:sqlite::memory:");
-		JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
-		jdbc.execute("CREATE TABLE quotation_asset (asset_id INTEGER NOT NULL)");
-		jdbc.update("INSERT INTO quotation_asset (asset_id) VALUES (1)");
-		AssetPathResolver paths = new AssetPathResolver(
-			jdbc,
-			new FileStorageService(assetsRoot.toString()),
-			new QuotationOutputDirectoryService(quotationRoot.toString())
-		);
 		AssetService assets = Mockito.mock(AssetService.class);
 		Asset asset = new Asset(
 			1L, "M1", "public-token", "user", "U1", "U1",
 			"報價單/20260811-01/image-01.jpg", "image/jpeg", 12L, Instant.now(), List.of()
 		);
 		Mockito.when(assets.findByShareToken("public-token")).thenReturn(Optional.of(asset));
-		mvc = MockMvcBuilders.standaloneSetup(new MediaController(assets, paths)).build();
+		Mockito.when(assets.contentOf(asset)).thenReturn(
+			"formal-image".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+		);
+		mvc = MockMvcBuilders.standaloneSetup(new MediaController(assets)).build();
 	}
 
-	@AfterEach
-	void tearDown() throws Exception {
-		connection.close();
-	}
-
+	// 方法：正式媒體端點回傳物件儲存中的不可變內容。
 	@Test
 	void servesFormalQuotationAssetFromQuotationRootWhenAssetRootIsDifferent() throws Exception {
 		mvc.perform(get("/media/public-token"))

@@ -1,61 +1,152 @@
-# ============================================================
-# 測試階段： docker compose --profile dev up --build -d   （含 ngrok 隧道）
-# 部署階段： docker compose up --build -d                 （不啟 ngrok）
-#
-# 所有設定都從同目錄的 .env 讀入，請先 cp .env.example .env 並填值。
-#
-# 所有持久資料預設位於 ./system-data，容器內固定掛在 /data/system-root。
-# ============================================================
+name: ${COMPOSE_PROJECT_NAME:-linebot-commercial}
 
 services:
-  # ----------------------------------------------------------
-  # LINE Bot 本體
-  # ----------------------------------------------------------
-  linebot:
-    image: linebot-commercial
-    build: .
-    container_name: linebot-commercial-service
+  database:
+    image: postgres:17.11-alpine3.24
+    environment:
+      POSTGRES_DB: linebot_commercial
+      POSTGRES_USER: linebot
+      POSTGRES_PASSWORD_FILE: /run/secrets/DATABASE_PASSWORD
+    secrets:
+      - DATABASE_PASSWORD
     volumes:
-      # 一次掛載共同根目錄，圖片、資料庫、報價與日誌都保存在其子路徑。
-      - "${SYSTEM_ROOT_PATH:-./system-data}:/data/system-root"
-    # .env 內所有變數會整批帶進容器，新增 AI_* 等變數時不必回來改這個檔案
-    env_file:
-      - .env
-    environment:
-      # 容器內只覆寫共同根目錄，所有子路徑由 Spring 設定推導。
-      - SYSTEM_ROOT_PATH=/data/system-root
-      # 主機埠只綁 loopback，因此允許 Docker 私有橋接來源進入本機管理頁。
-      - LOCAL_ADMIN_CONTAINER_HOST_ACCESS=true
-    ports:
-      - "127.0.0.1:8088:8088"
-    # Docker Desktop 重啟後自動恢復服務，手動 stop 時則保持停止。
-    restart: unless-stopped
+      - database-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8088/actuator/health"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U linebot -d linebot_commercial"]
+      interval: 5s
       timeout: 5s
-      start_period: 40s
-      retries: 3
-
-  # ----------------------------------------------------------
-  # 外網穿透（僅測試階段）
-  #
-  # 掛在 dev profile 底下，部署到公司伺服器時不會被啟動——
-  # 正式環境應該用固定網域加反向代理，而不是 ngrok。
-  # ----------------------------------------------------------
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: assets-manager-ngrok-tunnel
-    profiles:
-      - dev
-    command:
-      - "http"
-      - "linebot:8088"   # 走 compose 預設網路直接穿透 linebot 容器
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    ports:
-      - "4040:4040"      # ngrok 本地控制台，可從這裡看到當前公開網址
-    depends_on:
-      - linebot
-    # 測試階段讓公開 webhook 隧 Docker Desktop 一併恢復。
+      retries: 20
     restart: unless-stopped
+
+  object-storage:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/OBJECT_STORAGE_ACCESS_KEY
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/OBJECT_STORAGE_SECRET_KEY
+    secrets:
+      - OBJECT_STORAGE_ACCESS_KEY
+      - OBJECT_STORAGE_SECRET_KEY
+    volumes:
+      - object-storage-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  object-storage-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      object-storage:
+        condition: service_healthy
+    secrets:
+      - OBJECT_STORAGE_ACCESS_KEY
+      - OBJECT_STORAGE_SECRET_KEY
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        mc alias set local http://object-storage:9000
+        "$$(cat /run/secrets/OBJECT_STORAGE_ACCESS_KEY)"
+        "$$(cat /run/secrets/OBJECT_STORAGE_SECRET_KEY)";
+        mc mb --ignore-existing local/${OBJECT_STORAGE_BUCKET:-linebot-commercial};
+        mc version enable local/${OBJECT_STORAGE_BUCKET:-linebot-commercial}
+    restart: "no"
+
+  app:
+    image: ${APP_IMAGE:-linebot-commercial:local}
+    build:
+      context: .
+    environment:
+      COMPANY_ID: ${COMPANY_ID:-company-local}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      DATABASE_URL: jdbc:postgresql://database:5432/linebot_commercial
+      DATABASE_USERNAME: linebot
+      OBJECT_STORAGE_ENDPOINT: http://object-storage:9000
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-linebot-commercial}
+      OBJECT_STORAGE_FORCE_PATH_STYLE: "true"
+      AI_API_URL: ${AI_API_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MAX_COMPLETION_TOKENS: ${AI_MAX_COMPLETION_TOKENS:-4000}
+      SYSTEM_ROOT_PATH: /tmp/linebot
+      LOCAL_ADMIN_CONTAINER_HOST_ACCESS: "true"
+      ADMIN_LOCAL_ONLY: "true"
+      ADMIN_TOKEN_REQUIRED: "true"
+      LEGACY_SQLITE_ENABLED: "false"
+      LEGACY_FILESYSTEM_ENABLED: "false"
+      QUOTATION_TAX_RATE: ${QUOTATION_TAX_RATE:-0.05}
+      QUOTATION_VALIDITY_DAYS: ${QUOTATION_VALIDITY_DAYS:-15}
+    secrets:
+      - DATABASE_PASSWORD
+      - OBJECT_STORAGE_ACCESS_KEY
+      - OBJECT_STORAGE_SECRET_KEY
+      - LINE_BOT_CHANNEL_TOKEN
+      - LINE_BOT_CHANNEL_SECRET
+      - ADMIN_TOKEN
+      - AI_API_KEY
+      - QUOTATION_POSTBACK_SECRET
+      - QUOTATION_IMAGE_LINK_SECRET
+    depends_on:
+      database:
+        condition: service_healthy
+      object-storage-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${APP_PORT:-8088}:8088"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8088/readyz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 45s
+      retries: 10
+    stop_grace_period: 40s
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.8.3
+    profiles: ["tunnel"]
+    command: ["tunnel", "--no-autoupdate", "--protocol", "${CLOUDFLARED_PROTOCOL:-http2}", "run"]
+    environment:
+      TUNNEL_TOKEN_FILE: /run/secrets/CLOUDFLARED_TOKEN
+    secrets:
+      - CLOUDFLARED_TOKEN
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+secrets:
+  DATABASE_PASSWORD:
+    file: ${SECRETS_DIR:-./secrets}/database-password
+  OBJECT_STORAGE_ACCESS_KEY:
+    file: ${SECRETS_DIR:-./secrets}/object-storage-access-key
+  OBJECT_STORAGE_SECRET_KEY:
+    file: ${SECRETS_DIR:-./secrets}/object-storage-secret-key
+  LINE_BOT_CHANNEL_TOKEN:
+    file: ${SECRETS_DIR:-./secrets}/line-channel-token
+  LINE_BOT_CHANNEL_SECRET:
+    file: ${SECRETS_DIR:-./secrets}/line-channel-secret
+  ADMIN_TOKEN:
+    file: ${SECRETS_DIR:-./secrets}/admin-token
+  AI_API_KEY:
+    file: ${SECRETS_DIR:-./secrets}/ai-api-key
+  QUOTATION_POSTBACK_SECRET:
+    file: ${SECRETS_DIR:-./secrets}/quotation-postback-secret
+  QUOTATION_IMAGE_LINK_SECRET:
+    file: ${SECRETS_DIR:-./secrets}/quotation-image-link-secret
+  CLOUDFLARED_TOKEN:
+    file: ${SECRETS_DIR:-./secrets}/cloudflared-token
+
+volumes:
+  database-data:
+  object-storage-data:

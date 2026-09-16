@@ -55,11 +55,11 @@ class QuotationDeliveryServiceTest {
 		verify(line).push(eq("U-line-user"), messages.capture(), any(UUID.class));
 		String payload = messages.getValue().toString();
 		assertThat(payload)
-			.contains("正定工程", "港區搭架", "2026081101", "105,000", "https://quotation.example.test")
+			.contains("範例工程", "港區搭架", "2026081101", "105,000", "https://quotation.example.test")
 			.doesNotContain("C:\\", "file:", "application/pdf", "pdfPath");
 		verify(repository).markSent(81, "provider-message-1");
 		assertThat(output.getAll())
-			.doesNotContain("U-line-user", "safe-token", "正定工程", "港區搭架");
+			.doesNotContain("U-line-user", "safe-token", "範例工程", "港區搭架");
 	}
 
 	@Test
@@ -69,7 +69,7 @@ class QuotationDeliveryServiceTest {
 		LineStorageService line = mock(LineStorageService.class);
 		QuotationDeliverySnapshot snapshot = new QuotationDeliverySnapshot(
 			41,
-			"正定工程",
+			"範例工程",
 			"港區搭架",
 			"2026081101",
 			"TWD",
@@ -109,7 +109,7 @@ class QuotationDeliveryServiceTest {
 		LineStorageService line = mock(LineStorageService.class);
 		QuotationDeliverySnapshot snapshot = new QuotationDeliverySnapshot(
 			41,
-			"正定工程",
+			"範例工程",
 			"港區搭架",
 			"2026081101",
 			"TWD",
@@ -239,7 +239,7 @@ class QuotationDeliveryServiceTest {
 	private QuotationDeliverySnapshot snapshot() {
 		return new QuotationDeliverySnapshot(
 			41,
-			"正定工程",
+			"範例工程",
 			"港區搭架",
 			"2026081101",
 			"TWD",

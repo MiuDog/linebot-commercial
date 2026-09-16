@@ -172,7 +172,7 @@ class QuotationContractTest {
 
 		assertThat(template.path("sheetName").asString()).isEqualTo(sheetName);
 		assertThat(template.path("workbookPath").asString())
-			.isEqualTo("outputs/excel-templates/quotation-template-" + schemeCode + ".xlsx");
+			.isEqualTo("src/test/resources/quotation/templates/quotation-template-" + schemeCode + ".xlsx");
 		assertThat(template.path("detail").path("firstRow").asInt()).isEqualTo(firstRow);
 		assertThat(template.path("detail").path("lastRow").asInt()).isEqualTo(lastRow);
 		assertThat(template.path("totals").path("total").asString()).isEqualTo(totalCell);
