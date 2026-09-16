@@ -111,14 +111,21 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		if (schemedDraft == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
 
 		List<AiImageInput> images = csv != null || quotedImageMessageId == null ? List.of() : imageInputs(schemedDraft);
-		QuotationAiParsingService.ParseResult parsed = csv == null ? parser.parse(text, images, lockedSchemeCode) : csv;
+		QuotationAiParsingService.ParseResult parsed = csv;
+		if (parsed == null) {
+			parsed = parser.workflowEnabled()
+				? parser.parseScoped(text, images, lockedSchemeCode, new QuotationModelWorkflow.Scope(ownerId,
+					schemedDraft.draftId() + ":" + schemedDraft.revision() + ":" + messageId))
+				: parser.parse(text, images, lockedSchemeCode);
+		}
+		QuotationAiParsingService.ParseResult accepted = parsed;
 		QuotationDraftSnapshot committed = transactions.execute(status -> commitParsedText(
 			schemedDraft,
 			ownerId,
 			messageId,
 			text,
 			quotedImageMessageId,
-			parsed
+			accepted
 		));
 		if (committed == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
 

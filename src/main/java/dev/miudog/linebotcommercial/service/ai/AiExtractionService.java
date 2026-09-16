@@ -121,9 +121,15 @@ public class AiExtractionService implements AiJsonCompletionClient {
 	//#region 初始化與設定
 
 	// 方法：初始化 AiExtractionService。
+	@Autowired
 	public AiExtractionService(@Value("${app.ai.timeout-seconds:}") String timeoutSecondsRaw) {
-		this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
-		this.timeoutSeconds = parseTimeoutSeconds(timeoutSecondsRaw);
+		this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(), parseTimeoutSeconds(timeoutSecondsRaw));
+	}
+
+	// 方法：角色客戶端共用執行緒安全的 HTTP 連線池，各自保留不可變的逾時與模型設定。
+	private AiExtractionService(HttpClient httpClient, int timeoutSeconds) {
+		this.httpClient = httpClient;
+		this.timeoutSeconds = timeoutSeconds;
 	}
 
 	// 方法：在完整 Spring 容器中接入外部網路 RED 與 AI usage 成本稽核。
@@ -176,6 +182,23 @@ public class AiExtractionService implements AiJsonCompletionClient {
 	// 方法：將 Schema 交給供應商約束解碼；不支援時由既有 HTTP 錯誤處理明確拒絕。
 	@Override
 	public String completeJson(String systemPrompt, String userPrompt, List<AiImageInput> images, JsonNode responseSchema) {
+		return completeMeasured(systemPrompt, userPrompt, images, responseSchema).content();
+	}
+
+	// 方法：建立獨立角色客戶端，不修改共享單模型服務或其他同時執行的請求。
+	public AiExtractionService profile(String url, String key, String name, int tokens, int seconds) {
+		AiExtractionService client = new AiExtractionService(httpClient, seconds);
+		client.apiUrl = url;
+		client.apiKey = key;
+		client.model = name;
+		client.maxCompletionTokens = tokens;
+		// 成本：角色模型可能不同價，不沿用基底模型單一費率製造錯誤金額。
+		client.configureObservability(networkLogger, new AiUsageAuditService(new AiUsageCostCalculator("USD", "", "", "")));
+		return client;
+	}
+
+	// 方法：回傳本次呼叫的 usage，不使用可被其他執行緒覆寫的最近一次狀態。
+	public Completion completeMeasured(String systemPrompt, String userPrompt, List<AiImageInput> images, JsonNode responseSchema) {
 		long startedAt = System.nanoTime();
 		List<AiImageInput> safeImages = validateCompletionInput(systemPrompt, userPrompt, images);
 
@@ -216,7 +239,9 @@ public class AiExtractionService implements AiJsonCompletionClient {
 				currentRequestId(),
 				elapsedMilliseconds(startedAt)
 			);
-			return content;
+			JsonNode usage = objectMapper.readTree(responseBody).path("usage").path("total_tokens");
+			long totalTokens = usage.isIntegralNumber() && usage.asLong() >= 0 ? usage.asLong() : -1;
+			return new Completion(content, totalTokens);
 		}
 		catch (RuntimeException exception) {
 			// 日誌：記錄 JSON 模型呼叫失敗的安全摘要。
@@ -229,6 +254,8 @@ public class AiExtractionService implements AiJsonCompletionClient {
 			throw exception;
 		}
 	}
+
+	public record Completion(String content, long totalTokens) {}
 
 	/**
 	 * 把圖片送給模型並取回結構化欄位。

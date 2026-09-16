@@ -162,6 +162,14 @@ function Get-RequiredSecretDefinitions {
 		$definitions.Add([pscustomobject]@{ Name = "ai-api-key"; Label = "AI API Key（未啟用 AI）"; MinimumLength = 0; Generated = $true; Empty = $true })
 	}
 	$definitions.Add([pscustomobject]@{ Name = "quotation-postback-secret"; Label = "報價操作簽章"; MinimumLength = 32; Generated = $true; Empty = $false })
+	if ($Environment["AI_WORKFLOW_ENABLED"] -eq "true") {
+		foreach ($role in @("TEXT", "VISION", "ESCALATION")) {
+			$roleUrl = $Environment["AI_${role}_API_URL"]
+			if (-not [string]::IsNullOrWhiteSpace($roleUrl) -and $roleUrl.Trim() -cne $Environment["AI_API_URL"]) {
+				$definitions.Add([pscustomobject]@{ Name = "ai-$($role.ToLowerInvariant())-api-key"; Label = "$role 模型 API Key"; MinimumLength = 10; Generated = $false; Empty = $false })
+			}
+		}
+	}
 	$definitions.Add([pscustomobject]@{ Name = "quotation-image-link-secret"; Label = "報價圖片連結簽章"; MinimumLength = 32; Generated = $true; Empty = $false })
 
 	if ($Environment["TUNNEL_ENABLED"] -eq "true") {

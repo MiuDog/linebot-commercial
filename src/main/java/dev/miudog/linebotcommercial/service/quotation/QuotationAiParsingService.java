@@ -31,6 +31,32 @@ public class QuotationAiParsingService {
 	private final QuotationAiPromptService promptService;
 	private final QuotationRequestValidationService validationService;
 	private final ObjectMapper objectMapper;
+	private QuotationModelWorkflow workflow;
+
+	// 方法：選用新 workflow，保留既有建構介面供舊呼叫者與回歸測試使用。
+	@org.springframework.beans.factory.annotation.Autowired
+	public void configureWorkflow(QuotationModelWorkflow workflow) {
+		this.workflow = workflow;
+	}
+
+	// 方法：舊部署與獨立測試預設維持原單模型路徑。
+	public boolean workflowEnabled() {
+		return workflow != null && workflow.enabled();
+	}
+
+	// 方法：傳遞使用者及草稿事件版本作為持久檢查點隔離邊界。
+	public ParseResult parseScoped(String instruction, List<AiImageInput> images, String scheme, QuotationModelWorkflow.Scope scope) {
+		if (!workflowEnabled()) return parse(instruction, images, scheme);
+
+		List<AiImageInput> safeImages = images == null ? List.of() : List.copyOf(images);
+		try {
+			return workflow.parse(instruction, safeImages, scheme, scope,
+				raw -> validateResponse(raw, scheme, safeImages.stream().map(AiImageInput::messageId).toList()));
+		}
+		catch (AiExtractionException exception) {
+			throw classifiedCallFailure(exception);
+		}
+	}
 
 	// 方法：建立報價 AI 解析服務並注入模型、提示詞及主檔驗證元件。
 	public QuotationAiParsingService(
@@ -47,7 +73,7 @@ public class QuotationAiParsingService {
 
 	// 方法：判斷目前是否已設定可用的 AI 模型連線。
 	public boolean isConfigured() {
-		return completionClient.isConfigured();
+		return workflowEnabled() ? workflow.isConfigured() : completionClient.isConfigured();
 	}
 
 	// 方法：CSV 直接由程式解析，AI 未設定時也可建立待確認草稿。
@@ -62,6 +88,10 @@ public class QuotationAiParsingService {
 
 	// 方法：以使用者已指定的報價格式解析報價指令；格式由應用程式鎖定，AI 只負責提取資料。
 	public ParseResult parse(String instruction, List<AiImageInput> images, String lockedSchemeCode) {
+		if (workflowEnabled()) {
+			String isolated = java.util.UUID.randomUUID().toString();
+			return parseScoped(instruction, images, lockedSchemeCode, new QuotationModelWorkflow.Scope(isolated, isolated));
+		}
 		if (!completionClient.isConfigured()) {
 			throw new QuotationAiException(
 				"AI_NOT_CONFIGURED",

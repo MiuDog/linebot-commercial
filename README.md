@@ -106,6 +106,8 @@ docker compose --profile tunnel down
 
 ## 報價穩定性與低 token
 
+新增選用的 [多模型 workflow](docs/quotation-model-workflow.md)：圖片觀察、文字抽取與一次升級可各自使用不同模型／端點，具整輪預算與持久檢查點。`AI_WORKFLOW_ENABLED=false` 預設保留原單模型行為；設定為 `true` 才啟用。CSV、計價、預覽、確認與產檔不變。
+
 已加入 strict JSON Schema、依格式縮小品項目錄、最多一次契約修復，以及截斷／拒絕分類。普通文字修正不會重送全部圖片，計價與確認仍由程式執行。`AI_MAX_COMPLETION_TOKENS` 預設 4000，應依截斷率及用量調整。
 
 重複報價可在 LINE 私訊直接上傳 [報價輸入 CSV](docs/quotation-input-csv.md)，不使用 AI 抽取，仍走草稿、預覽及確認。此 CSV 與維護品項的主檔 CSV 不同。改善內容與後續量測見 [低 token 報價穩定性](docs/quotation-ai-reliability.md)；尚未宣稱真實模型成功率提升幅度。
