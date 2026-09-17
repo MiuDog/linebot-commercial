@@ -45,6 +45,7 @@ public class QuotationAiPromptService {
 		9. missingBaseFields 與 missingItemFields 必須一次列出全部缺漏，讓應用程式以單一訊息回問；低信心、缺少與衝突分別使用 LOW_CONFIDENCE、MISSING、CONFLICT。
 		10. 每張候選圖片都要產生 qualityScore、viewpointScore、distinctivenessScore 與 reason；selectedImageMessageId 必須是最高 distinctivenessScore 的圖片，同分可任選。沒有圖片時填 null 與空陣列。
 		11. nextAction 只描述下一步，不得執行下一步、呼叫 LINE、輸出檔案或確認報價。基礎缺漏優先 REQUEST_BASE_FIELDS，其次 REQUEST_ITEM_FIELDS，再依需要 REQUEST_IMAGE_DECISION，資料完整才 SHOW_PREVIEW。
+		11-1. MARINE／BLANK 只有尚未選圖且使用者尚未拒絕圖片時才需要 REQUEST_IMAGE_DECISION；已選圖或 imageDeclined=true 且無其他缺漏時填 SHOW_PREVIEW。imageDeclined 只能依使用者明確拒絕圖片填 true，不能自行假設。nextAction 是建議，應用程式會依驗證資料與合併後草稿重新決定。
 		12. SUMMARY_ONLY 只代表報表不揭露船用內部明細，不代表可以編造船用計算結果；缺少目錄或規則時應清楚列出缺漏。
 
 		JSON Schema：

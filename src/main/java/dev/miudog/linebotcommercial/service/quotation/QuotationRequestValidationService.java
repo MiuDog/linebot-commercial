@@ -196,9 +196,9 @@ public class QuotationRequestValidationService {
 
 		List<MissingBaseField> missingBaseFields = validateMissingBaseFields(root.get("missingBaseFields"));
 		List<MissingItemFieldGroup> missingItemFields = validateMissingItemFields(root.get("missingItemFields"));
-		String nextAction = requiredEnum(root, "nextAction", "nextAction", NEXT_ACTIONS);
-		validateNextAction(
-			nextAction,
+		// 白名單仍嚴格驗證；流程由程式推導，不因模型猜錯合法動作而丟棄已驗證資料。
+		requiredEnum(root, "nextAction", "nextAction", NEXT_ACTIONS);
+		String nextAction = resolveNextAction(
 			schemeCode,
 			selectedImageMessageId,
 			imageDeclined,
@@ -545,9 +545,8 @@ public class QuotationRequestValidationService {
 		return List.copyOf(groups);
 	}
 
-	// 方法：依合併缺漏優先順序驗證 nextAction，只回傳宣告值而不執行任何外部動作。
-	private void validateNextAction(
-		String nextAction,
+	// 方法：依已驗證 patch 推導動作；合併草稿後仍由對話狀態機決定實際下一步。
+	private String resolveNextAction(
 		String schemeCode,
 		String selectedImageMessageId,
 		boolean imageDeclined,
@@ -563,9 +562,7 @@ public class QuotationRequestValidationService {
 		}
 		else expected = "SHOW_PREVIEW";
 
-		if (!expected.equals(nextAction)) {
-			throw validation("nextAction 必須為 " + expected + "；應用程式只會執行通過驗證的白名單動作");
-		}
+		return expected;
 	}
 
 	// 方法：船用、空白或已有候選圖片但尚未選擇時，需要明確完成圖片決策。
