@@ -52,7 +52,7 @@ class QuotationModelWorkflowTest {
 		}
 	}
 
-	// 方法：失敗後只升級一次，同一份資料仍不通過時直接停止，不降低驗證標準。
+	// 方法：修復保留驗證標準，達到既有輸出token預算時可早於五次停止。
 	@Test
 	void escalatesValidationFailureOnceAndStopsOnRepeatedFailure() throws Exception {
 		try (Fixture fixture = new Fixture(directory)) {
@@ -69,7 +69,7 @@ class QuotationModelWorkflowTest {
 				throw new QuotationAiException("AI_MASTER_DATA_VALIDATION_FAILED", "invalid");
 
 			})).isInstanceOf(QuotationAiException.class);
-			assertThat(fixture.requests).hasSize(4);
+			assertThat(fixture.requests).hasSize(5);
 		}
 	}
 
@@ -169,11 +169,12 @@ class QuotationModelWorkflowTest {
 	@Test
 	void rejectsInventedImageIdsWithoutCachingOrCallingText() throws Exception {
 		try (Fixture fixture = new Fixture(directory)) {
+			fixture.env.setProperty("app.ai.workflow.max-output-tokens", "20000");
 			fixture.responses = model -> "{\"images\":[{\"messageId\":\"invented\",\"transcription\":\"\",\"description\":\"\"}]}";
 			assertThatThrownBy(() -> fixture.workflow().parse("建立", List.of(new AiImageInput("image-1", new byte[] {1}, "image/png")),
 				"CNS", new QuotationModelWorkflow.Scope("owner", "event"), this::accepted))
-				.isInstanceOfSatisfying(QuotationAiException.class, error -> assertThat(error.code()).isEqualTo("AI_IMAGE_RESPONSE_INVALID"));
-			assertThat(fixture.requests).hasSize(1);
+					.isInstanceOfSatisfying(QuotationAiException.class, error -> assertThat(error.code()).isEqualTo("AI_IMAGE_RESPONSE_INVALID"));
+			assertThat(fixture.requests).hasSize(5);
 			assertThat(fixture.jdbc.queryForObject("SELECT COUNT(*) FROM quotation_model_checkpoint", Integer.class)).isZero();
 		}
 	}
@@ -238,6 +239,28 @@ class QuotationModelWorkflowTest {
 		var request = mock(QuotationRequestValidationService.ValidatedQuotationRequest.class);
 		when(request.missingItemFields()).thenReturn(List.of());
 		return new QuotationAiParsingService.ParseResult(request, raw);
+	}
+
+	// 方法：供應商暫時失敗最多五次；預算足夠時第五次有效結構可成功。
+	@Test
+	void sharesFiveCallCeilingAcrossTransientAndValidationRetries() throws Exception {
+		try (Fixture fixture = new Fixture(directory)) {
+			fixture.env.setProperty("app.ai.workflow.max-output-tokens", "20000");
+			var validations = new java.util.concurrent.atomic.AtomicInteger();
+			var result = fixture.workflow().parse("建立", List.of(), "CNS", new QuotationModelWorkflow.Scope("owner", "success"), raw -> {
+				if (validations.incrementAndGet() < 5) throw new QuotationAiException("AI_RESPONSE_INVALID", "invalid");
+
+				return accepted(raw);
+
+			});
+			assertThat(result).isNotNull();
+			assertThat(fixture.requests).hasSize(5);
+			fixture.requests.clear();
+			fixture.status = 503;
+			assertThatThrownBy(() -> fixture.workflow().parse("建立", List.of(), "CNS", new QuotationModelWorkflow.Scope("owner", "unavailable"), this::accepted))
+				.hasMessageContaining("503");
+			assertThat(fixture.requests).hasSize(5);
+		}
 	}
 
 	private static final class Fixture implements AutoCloseable {

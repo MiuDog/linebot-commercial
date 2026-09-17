@@ -55,6 +55,20 @@ class LineWebhookControllerTest {
 
 	LineWebhookController controller;
 
+	// 方法：免費進度查詢只使用本事件reply token，不啟動AI、草稿或主動推播。
+	@Test
+	void progressQueryDoesNotEnterQuotationOrCommandWorkflow() throws Exception {
+		String payload = """
+			{"events":[{"type":"message","replyToken":"progress-token",
+			"source":{"type":"user","userId":"owner-a"},
+			"message":{"id":"progress-1","type":"text","text":"#報價進度"}}]}
+			""";
+		controller.handleWebhook(signature(payload), payload);
+		verify(lineService).replyText(eq("progress-token"), org.mockito.ArgumentMatchers.contains("目前沒有近期處理紀錄"));
+		verifyNoInteractions(quotationWorkflow, commandService);
+		verify(lineService, never()).showLoading(org.mockito.ArgumentMatchers.anyString());
+	}
+
 	@BeforeEach
 	void setUp() {
 		controller = new LineWebhookController(

@@ -21,6 +21,19 @@ import static org.mockito.Mockito.when;
 
 class LineStorageServicePushTest {
 
+	// 方法：動畫只能使用loading端點；失敗不得轉成reply或push而消耗訊息額度。
+	@Test
+	void loadingUsesSeparateEndpointAndIgnoresNetworkFailure() throws Exception {
+		HttpClient http = mock(HttpClient.class);
+		when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenThrow(new java.io.IOException("offline"));
+		var service = new LineStorageService(mock(NetworkObservationLogger.class), http, new ObjectMapper(), "test-token");
+		service.showLoading("owner");
+		var request = ArgumentCaptor.forClass(HttpRequest.class);
+		verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+		assertThat(request.getValue().uri().getPath()).isEqualTo("/v2/bot/chat/loading/start");
+		assertThat(request.getValue().timeout()).contains(Duration.ofSeconds(2));
+	}
+
 	// 方法：驗證所有 LINE 發送請求套用客戶設定的單次逾時。
 	@Test
 	void appliesConfiguredTimeoutToLineRequests() throws Exception {

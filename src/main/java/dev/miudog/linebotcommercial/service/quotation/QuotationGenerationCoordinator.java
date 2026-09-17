@@ -15,6 +15,7 @@ public class QuotationGenerationCoordinator {
 	private final QuotationGenerationRepository generations;
 	private final QuotationPdfService pdfs;
 	private final QuotationDeliveryService deliveries;
+	private QuotationProgressService progress = new QuotationProgressService();
 
 	// 方法：建立正式報價產生協調器。
 	@Autowired
@@ -111,6 +112,21 @@ public class QuotationGenerationCoordinator {
 
 	// 方法：依持久化檔案狀態續跑未完成階段，重啟或重複排程不覆寫已完成產物。
 	public void resumeConfirmed(QuotationConfirmedGenerationCommand command) {
+		progress.track(command == null ? null : command.destinationId(), () -> {
+			resumeStages(command);
+			return null;
+
+		}, "背景報價工作完成，請查看文件交付結果。");
+	}
+
+	// 方法：背景產檔與私人查詢共用進度，不新增主動通知。
+	@org.springframework.beans.factory.annotation.Autowired
+	public void configureProgress(QuotationProgressService progress) {
+		this.progress = progress;
+	}
+
+	// 方法：依既有檔案狀態執行實際階段，跳過已完成的產物。
+	private void resumeStages(QuotationConfirmedGenerationCommand command) {
 		if (command == null || command.confirmation() == null || command.calculation() == null) {
 			throw new QuotationGenerationException("INVALID_CONFIRMED_COMMAND", "已確認報價產生資料不完整", null);
 		}
@@ -120,15 +136,18 @@ public class QuotationGenerationCoordinator {
 		if (stage.sent()) return;
 
 		if (!stage.xlsxReady()) {
+			progress.update("正在歸檔圖片與產生Excel報價。");
 			generateWorkbook(command);
 			stage = generations.stage(quotationId);
 		}
 		if (pdfs == null || deliveries == null) return;
 
 		if (!stage.pdfReady()) {
+			progress.update("Excel已完成，正在轉換PDF。");
 			pdfs.export(quotationId);
 		}
 
+		progress.update("文件已完成，正在交付下載連結。");
 		QuotationDeliveryResult delivery = deliveries.deliverFinal(
 			quotationId,
 			requiredDestination(command.destinationId())

@@ -594,7 +594,7 @@
     "title": "舊路徑相容",
     "mode": "工具/隔離環境",
     "steps": "AI_WORKFLOW_ENABLED=false執行五種文字腳本與CSV。",
-    "expected": "舊單模型最多一次修復；CSV零模型；計價與確認相同。",
+    "expected": "單模型最多5次嘗試；CSV零模型；計價與確認相同。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiParsingServiceTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
@@ -661,7 +661,7 @@
     "title": "拒絕/截斷/HTTP錯誤",
     "mode": "工具/隔離環境",
     "steps": "stub回refusal、finish_reason=length、401、403、429、500、timeout及broken JSON。",
-    "expected": "分類錯誤；拒絕/HTTP不轉模型規避，契約錯誤最多一次修復/升級。",
+    "expected": "分類錯誤；拒絕/HTTP不轉模型規避，契約錯誤與暫時故障合計最多5次模型呼叫，仍受預算限制。",
     "tests": [
       "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
       "src/test/java/dev/miudog/linebotcommercial/service/ai/AiStructuredCompletionTest.java",

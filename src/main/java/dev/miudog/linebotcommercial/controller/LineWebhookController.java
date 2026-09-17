@@ -60,6 +60,19 @@ public class LineWebhookController {
 	private final CommandService commandService;
 	private final ImageArchiveService imageArchiveService;
 	private final LineStorageService lineService;
+	private dev.miudog.linebotcommercial.service.quotation.QuotationProgressService progress = new dev.miudog.linebotcommercial.service.quotation.QuotationProgressService();
+
+	// 方法：共用短期進度查詢，保持舊有測試建構介面。
+	@org.springframework.beans.factory.annotation.Autowired
+	public void configureProgress(dev.miudog.linebotcommercial.service.quotation.QuotationProgressService progress) {
+		this.progress = progress;
+	}
+
+	// 方法：報價事件先顯示動畫，再追蹤實際處理步驟，不額外發送push訊息。
+	private List<QuotationLineMessage> trackQuotation(String owner, java.util.function.Supplier<List<QuotationLineMessage>> operation) {
+		lineService.showLoading(owner);
+		return progress.track(owner, operation);
+	}
 	private final QuotationLineWorkflowService quotationWorkflow;
 	private final QuotationReplyOutboxService replyOutbox;
 	private final ObjectMapper objectMapper = new ObjectMapper();
@@ -194,7 +207,7 @@ public class LineWebhookController {
 							eventId,
 							uploaderId,
 							replyToken,
-							quotationWorkflow.handleImages(eventId, completedSet, uploaderId)
+							trackQuotation(uploaderId, () -> quotationWorkflow.handleImages(eventId, completedSet, uploaderId))
 						);
 					}
 					catch (QuotationLineWorkflowException exception) {
@@ -254,9 +267,9 @@ public class LineWebhookController {
 			}
 			// 字元解碼：非法 UTF-8 必須報錯，不以替代字元悄悄改寫客戶資料。
 			String csv = StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();
-			replyQuotationMessages(eventId, ownerId, replyToken, quotationWorkflow.handleText(
+			replyQuotationMessages(eventId, ownerId, replyToken, trackQuotation(ownerId, () -> quotationWorkflow.handleText(
 				eventId, messageId, ownerId, QuotationInputCsvService.PREFIX + csv, null
-			));
+			)));
 		}
 		catch (java.io.IOException exception) {
 			replyQuotationFailure(replyToken, QuotationLineFailureMessageResolver.Operation.TEXT,
@@ -283,6 +296,11 @@ public class LineWebhookController {
 		// 步驟 0：標記機器人的 ping 是連線自我檢查，優先於其他文字流程處理。
 		if (selfMentionText != null && commandService.handleMentionPing(selfMentionText, eventTimestamp, replyToken)) return;
 
+		if ("user".equals(sourceType) && "#報價進度".equals(text == null ? "" : text.strip())) {
+			lineService.replyText(replyToken, progress.status(uploaderId));
+			return;
+		}
+
 		if (!"user".equals(sourceType) && isQuotationCommand(text)) {
 			lineService.replyText(replyToken, "報價建立僅支援一對一私訊，請私訊機器人後重新輸入。");
 			return;
@@ -293,7 +311,7 @@ public class LineWebhookController {
 					eventId,
 					uploaderId,
 					replyToken,
-					quotationWorkflow.handleText(eventId, messageId, uploaderId, text, quotedMessageId)
+					trackQuotation(uploaderId, () -> quotationWorkflow.handleText(eventId, messageId, uploaderId, text, quotedMessageId))
 				);
 			}
 			catch (QuotationLineWorkflowException exception) {
@@ -335,11 +353,11 @@ public class LineWebhookController {
 				getSafeText(event, "webhookEventId"),
 				userId,
 				replyToken,
-				quotationWorkflow.handlePostback(
+				trackQuotation(userId, () -> quotationWorkflow.handlePostback(
 					getSafeText(event, "webhookEventId"),
 					userId,
 					getSafeText(postback, "data")
-				)
+				))
 			);
 		}
 		catch (QuotationPostbackException exception) {

@@ -87,7 +87,7 @@ class QuotationAiParsingServiceTest {
 	}
 
 	@Test
-	void neverRetriesRefusalsAndStopsAfterTwoInvalidResponses() {
+	void neverRetriesRefusalsAndStopsAfterFiveInvalidResponses() {
 		List<AiImageInput> images = images();
 		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
 			.thenThrow(new dev.miudog.linebotcommercial.service.ai.AiCompletionException("AI_REFUSED"));
@@ -97,7 +97,7 @@ class QuotationAiParsingServiceTest {
 		when(client.isConfigured()).thenReturn(true);
 		when(client.completeJson(anyString(), anyString(), eq(images), isNull())).thenReturn("{broken");
 		assertAiErrorCode(images, "AI_RESPONSE_INVALID");
-		org.mockito.Mockito.verify(client, org.mockito.Mockito.times(2))
+		org.mockito.Mockito.verify(client, org.mockito.Mockito.times(5))
 			.completeJson(anyString(), anyString(), eq(images), isNull());
 	}
 
@@ -156,16 +156,31 @@ class QuotationAiParsingServiceTest {
 	@Test
 	void classifiesTimeoutAuthenticationRateLimitAndMasterDataFailures() {
 		List<AiImageInput> images = images();
+		for (String status : List.of("401", "403", "429", "503")) {
+			org.mockito.Mockito.reset(client);
+			when(client.isConfigured()).thenReturn(true);
+			when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
+				.thenThrow(new AiExtractionException("模型回應狀態碼 " + status, (Throwable) null));
+			boolean auth = status.equals("401") || status.equals("403");
+			assertAiErrorCode(images, auth ? "AI_AUTH_FAILED" : status.equals("429") ? "AI_RATE_LIMITED" : "AI_SERVICE_UNAVAILABLE");
+			org.mockito.Mockito.verify(client, org.mockito.Mockito.times(auth ? 1 : 5)).completeJson(anyString(), anyString(), eq(images), isNull());
+		}
+		org.mockito.Mockito.reset(client);
+		when(client.isConfigured()).thenReturn(true);
 		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
-			.thenThrow(new AiExtractionException("呼叫模型失敗", new HttpTimeoutException("timeout")))
-			.thenThrow(new AiExtractionException("模型回應狀態碼 401", (Throwable) null))
-			.thenThrow(new AiExtractionException("模型回應狀態碼 429", (Throwable) null))
 			.thenReturn(validModelJson().replace("EXTERNAL_SCAFFOLD", "UNKNOWN_ITEM"));
-
-		assertAiErrorCode(images, "AI_TIMEOUT");
-		assertAiErrorCode(images, "AI_AUTH_FAILED");
-		assertAiErrorCode(images, "AI_RATE_LIMITED");
 		assertAiErrorCode(images, "AI_MASTER_DATA_VALIDATION_FAILED");
+	}
+
+	// 方法：傳輸失敗與格式修復共用五次上限，第五次成功可正常套用。
+	@Test
+	void recoversOnFifthAttemptAcrossTransportAndFormatFailures() {
+		List<AiImageInput> images = images();
+		when(client.completeJson(anyString(), anyString(), eq(images), isNull()))
+			.thenThrow(new AiExtractionException("連線逾時", new HttpTimeoutException("timeout")))
+			.thenReturn("{broken", "", "{broken", validModelJson());
+		assertThat(service.parse("外部鷹架 2 平方米", images, "CNS").request().items()).hasSize(1);
+		org.mockito.Mockito.verify(client, org.mockito.Mockito.times(5)).completeJson(anyString(), anyString(), eq(images), isNull());
 	}
 
 	private List<AiImageInput> images() {
