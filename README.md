@@ -110,6 +110,8 @@ docker compose --profile tunnel down
 
 `linebot.cmd` →「首次設定」現在可啟用 harness 並設定 TEXT／VISION／ESCALATION 模型。驗證會列出各角色實際模型；留空會沿用 `AI_MODEL`，三者相同時會提醒。OpenAI Platform 的 API 網址是 `https://api.openai.com/v1`，不是 `https://openai.com` 或管理後台。更新 `.env` 後使用 `docker compose up -d --force-recreate app` 套用；單純 restart 不會更新容器環境變數。本機格式驗證成功不代表金鑰或模型權限有效。
 
+更換金鑰時，精靈會顯示「已寫入並讀回確認」與實際檔案位置；空白、過短或多行輸入會保留原檔案並回報失敗。設定後請回主選單啟動服務：控制台會強制重建 App 並等待健康檢查，確保載入新 Secret。只保存檔案不會自動更新已執行中的 App；保存與健康檢查也不等同供應商認證成功。
+
 已加入 strict JSON Schema、依格式縮小品項目錄，以及最多5次嘗試（含首次）的暫時故障重試／格式修復。401／403、拒絕及截斷直接回報可行動的錯誤；workflow仍受整輪token與期限限制。普通文字修正不會重送全部圖片，計價與確認仍由程式執行。`AI_MAX_COMPLETION_TOKENS` 預設4000，應依截斷率及用量調整。
 
 處理期間顯示LINE載入動畫；在私訊輸入 **`#報價進度`** 可查詢辨識、驗證、重試、Excel、PDF及交付階段。查詢只用該次事件的免費reply，不呼叫AI或新增草稿；不會為進度額外發送push。詳見[重試與LINE進度限制](docs/quotation-model-workflow.md#重試與line進度)。

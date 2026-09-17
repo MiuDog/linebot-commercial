@@ -122,6 +122,11 @@ function Save-CustomerSecret {
 	# 外部檔案 API：建立本機 Secret 目錄並以 UTF-8 無 BOM 保存單行內容。
 	[System.IO.Directory]::CreateDirectory($secretDirectory) | Out-Null
 	[System.IO.File]::WriteAllText($secretPath, $Value, [System.Text.UTF8Encoding]::new($false))
+
+	# 外部檔案 API：立即讀回比對，只有實際保存成功才能顯示完成。
+	if ([System.IO.File]::ReadAllText($secretPath) -cne $Value) {
+		throw [System.IO.IOException]::new("Secret 保存後比對失敗。")
+	}
 }
 
 # 方法：詢問一般設定，空白輸入時保留目前值。
@@ -389,6 +394,13 @@ function Invoke-ComposeUp {
 		return $false
 	}
 
+	# 外部 Docker API：Secret 內容異動不一定觸發 Compose 重建，固定重建 App 以重新載入憑證。
+	& docker compose up -d --no-deps --no-build --force-recreate --wait app
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "[未完成] App 未能重新載入設定；請執行連線診斷，不能視為新金鑰已生效。" -ForegroundColor Red
+		return $false
+	}
+
 	Write-Host "`n[完成] $ProductName 已啟動。" -ForegroundColor Green
 	$environment = Read-CustomerEnvironment $EnvironmentPath
 	Write-Host "本機狀態：http://127.0.0.1:$($environment["APP_PORT"])/readyz"
@@ -530,8 +542,16 @@ function Invoke-CustomerSetup {
 		$secretPath = Join-Path (Join-Path $ProjectRoot "secrets") $definition.Name
 		if ((Test-Path -LiteralPath $secretPath -PathType Leaf) -and
 			-not [string]::IsNullOrWhiteSpace([System.IO.File]::ReadAllText($secretPath))) {
-			$replace = Read-Host "$($definition.Label) 已設定，是否更換？（y/N）"
-			if ($replace -notmatch "^[yY]$") { continue }
+			$replace = (Read-Host "$($definition.Label) 已設定，是否更換？（y/N）").Trim()
+			if ($replace -eq "" -or $replace -match "^[nN]$") {
+				Write-Host "[保留] $($definition.Label) 未更換。"
+				continue
+			}
+			if ($replace -notmatch "^[yY]$") {
+				Write-Host "[未完成] 更換選項只接受 y 或 n；本欄位尚未修改，請重新執行設定。" -ForegroundColor Red
+				$script:OperationExitCode = 2
+				return
+			}
 		}
 
 		if ($definition.Generated) {
@@ -551,12 +571,22 @@ function Invoke-CustomerSetup {
 
 		$secureValue = Read-Host "輸入 $($definition.Label)（畫面不會顯示內容）" -AsSecureString
 		$value = ConvertFrom-CustomerSecureString $secureValue
+		if ([string]::IsNullOrWhiteSpace($value) -or $value.Length -lt $definition.MinimumLength -or
+			$value -cne $value.Trim() -or $value.Contains("`r") -or $value.Contains("`n")) {
+			Write-Host "[未保存] $($definition.Label) 為空、長度不足或含多行／前後空白；原檔案保留，請重新執行設定。" -ForegroundColor Red
+			$script:OperationExitCode = 2
+			return
+		}
 		Save-CustomerSecret $definition.Name $value
-		Write-Host "[完成] 已保存 $($definition.Label)，內容不會顯示於畫面。" -ForegroundColor Green
+		$value = $null
+		$secureValue.Dispose()
+		Write-Host "[完成] 已寫入並讀回確認 $($definition.Label)：$secretPath（不顯示內容）。" -ForegroundColor Green
 	}
 
 	$validation = Test-CustomerConfiguration
 	Show-ConfigurationValidation $validation
+	if (-not $validation.IsValid) { $script:OperationExitCode = 2; return }
+	Write-Host "設定保存完成。已執行中的容器尚未自動更新；請回主選單啟動服務以套用設定。"
 }
 
 #endregion
