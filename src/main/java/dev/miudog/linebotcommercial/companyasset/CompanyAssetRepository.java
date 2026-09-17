@@ -151,6 +151,31 @@ public class CompanyAssetRepository {
 			.list();
 	}
 
+	// 方法：將版本化範本登錄到確認流程的外鍵表；舊版本不可變，回復時只切換啟用狀態。
+	public void registerTemplates(long setId, tools.jackson.databind.JsonNode definitions) {
+		for (var template : definitions.path("templates")) {
+			String scheme = template.required("schemeCode").asString();
+			long schemeId = jdbc.sql("SELECT id FROM quotation_scheme WHERE code = ?").param(scheme).query(Long.class).single();
+			jdbc.sql("UPDATE quotation_template SET is_active = 0 WHERE scheme_id = ?").param(schemeId).update();
+			jdbc.sql("""
+				INSERT INTO quotation_template (
+					template_key, scheme_id, version, sheet_name, summary_only,
+					detail_first_row, detail_last_row, column_mapping_json,
+					subtotal_cell, pre_tax_cell, tax_cell, total_cell, is_active
+				)
+				VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM quotation_template WHERE scheme_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+				ON CONFLICT (template_key) DO UPDATE SET is_active = 1
+				""")
+				.params("asset-set-" + setId + "-" + scheme, schemeId, schemeId,
+					template.required("sheetName").asString(), template.path("summaryOnly").asBoolean() ? 1 : 0,
+					template.required("detail").required("firstRow").asInt(), template.required("detail").required("lastRow").asInt(),
+					template.required("detail").required("columns").toString(),
+					template.required("totals").required("subtotal").asString(), template.required("totals").required("preTax").asString(),
+					template.required("totals").required("tax").asString(), template.required("totals").required("total").asString())
+				.update();
+		}
+	}
+
 	// 方法：執行此方法定義的受控處理流程。
 	public void promoteObject(
 		long setId,

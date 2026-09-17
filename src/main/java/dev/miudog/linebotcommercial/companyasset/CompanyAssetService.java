@@ -328,6 +328,12 @@ public class CompanyAssetService {
 			.findFirst()
 			.orElseThrow(() -> new IllegalStateException("公司資產版本缺少品項主檔"));
 		masterData.importCsv(storage.get(itemMaster.objectKey()));
+		StoredManifestObject definitions = repository.objects(set.id()).stream()
+			.filter(object -> object.purpose() == CompanyAssetPurpose.TEMPLATE_DEFINITIONS)
+			.findFirst().orElseThrow(() -> new IllegalStateException("公司資產版本缺少範本定義"));
+		var templates = mapper.readTree(storage.get(definitions.objectKey()));
+		validateTemplateDefinitions(templates);
+		repository.registerTemplates(set.id(), templates);
 	}
 
 	// 方法：在改動主檔前確認目標版本狀態，避免無效請求產生暫時性資料變更。

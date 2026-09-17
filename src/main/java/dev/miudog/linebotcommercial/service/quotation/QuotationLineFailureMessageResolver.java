@@ -14,6 +14,10 @@ public final class QuotationLineFailureMessageResolver {
 	public static Failure resolve(RuntimeException exception, Operation operation) {
 		if (exception instanceof QuotationAiException aiException) return aiFailure(aiException);
 
+		if (exception instanceof QuotationConfirmationException confirmation) return new Failure(confirmation.code(), withCode(safeDetail(confirmation.getMessage()), confirmation.code()));
+
+		if (exception instanceof QuotationConversationException conversation) return new Failure(conversation.code(), withCode(safeDetail(conversation.getMessage()), conversation.code()));
+
 		if (exception instanceof QuotationLineWorkflowException workflowException) return new Failure(workflowException.code(), withCode(workflowException.getMessage(), workflowException.code()));
 
 		if (exception instanceof QuotationPostbackException postbackException) {
