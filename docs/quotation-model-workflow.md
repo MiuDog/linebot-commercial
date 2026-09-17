@@ -54,6 +54,24 @@ docker compose up --build -d --wait
 - 整輪等待期限涵蓋模型步驟；逾時取消等待，外部供應商是否停止計費取決於其服務。
 - 模型成本紀錄保留模型與 token；角色不沿用基底模型的單一價格，費率未設定時金額維持未知。
 
+## 設定與路由確認
+
+`nextAction` 是模型的白名單建議；程式先驗證所有資料，再依「基礎缺漏 → 品項缺漏 → 圖片決策 → 預覽」推導結果。船用／空白在已選圖或明確拒絕圖片後，不再因模型仍建議詢問圖片而整批失敗。未知動作仍拒絕，合併既有草稿後的實際下一步由對話狀態機決定，AI 不能直接確認、計價或傳送報價。
+
+「首次設定」可啟用 harness，並分別指定三個角色的模型與端點。使用 OpenAI 官方 API 且角色尚未設定時，精靈提供以下可修改的預設：
+
+| 角色 | 模型 | 執行條件 |
+| --- | --- | --- |
+| TEXT | `gpt-5.6-luna` | 文字抽取，或整合圖片觀察結果 |
+| VISION | `gpt-5.6-terra` | 有圖片且未命中可重用觀察結果 |
+| ESCALATION | `gpt-5.6-sol` | 文字驗證失敗或候選衝突，且尚有預算 |
+
+模型能力參考官方文件：[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)、[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)。這是按角色分工的設定建議，尚未代表在你的資料或帳號上通過實測。使用者不用逐筆指定模型；harness 按輸入與驗證結果選擇角色，不會自行從供應商模型清單挑選任意模型。CSV 與計價不需要模型。
+
+舊設定保持相容：workflow 關閉時採 `AI_MODEL`；角色模型留空也沿用它。控制台驗證會列出實際模型，三角色相同會提示。設定有異動須重新建立 app 容器，`docker compose restart` 不會載入新的環境變數。
+
+OpenAI Platform 使用 `https://api.openai.com/v1`。網站／管理後台網址會在送出憑證前攔截並回覆 `AI_ENDPOINT_INVALID`。若正式 API 仍回覆 `401 invalid_api_key`，請在首次設定對「API Key 已設定，是否更換」回答 `y`，輸入有效金鑰，再重新建立容器。不要將金鑰貼到對話或提交 Git。本機設定格式通過與 Docker 健康，均不代表 API 認證與模型權限已通過。
+
 ## 持久恢復與隱私
 
 Flyway V3 新增 `quotation_model_checkpoint`，不修改既有表或資料。圖片觀察按 owner、圖片內容／ID、提示詞、Schema、端點／模型設定隔離；文字結果另包含草稿 revision 與訊息 ID。同事件回復仍扣除已保存步驟的配額，成功結果重新通過業務驗證；不同事件重用圖片不再支付模型呼叫。

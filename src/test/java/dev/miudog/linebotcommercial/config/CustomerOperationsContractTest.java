@@ -150,7 +150,37 @@ class CustomerOperationsContractTest {
 		assertThat(runValidation(projectRoot)).isZero();
 	}
 
-	// 方法：Windows 控制台在設定缺漏時回傳非零，供捷徑與維運工具可靠判斷。
+	// 方法：基底與各角色誤填官網時均須阻擋，並先確認其他設定有效。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void rejectsWebsiteUrlsForBaseAndWorkflowRoles(@TempDir Path projectRoot) throws Exception {
+		for (String setting : java.util.List.of("AI_API_URL", "AI_TEXT_API_URL", "AI_VISION_API_URL", "AI_ESCALATION_API_URL")) {
+			writeValidFixture(projectRoot);
+			writeSecret(projectRoot.resolve("secrets"), "ai-api-key", "test-key-not-for-production");
+			for (String role : java.util.List.of("text", "vision", "escalation")) {
+				writeSecret(projectRoot.resolve("secrets"), "ai-" + role + "-api-key", "test-role-key-not-for-production");
+			}
+			Files.writeString(projectRoot.resolve(".env"), "\nAI_API_URL=https://api.openai.com/v1\nAI_MODEL=test-model\nAI_WORKFLOW_ENABLED=true\n",
+				StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+			assertThat(runValidation(projectRoot)).isZero();
+			Files.writeString(projectRoot.resolve(".env"), setting + "=https://openai.com\n",
+				StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+			assertThat(runValidation(projectRoot)).isEqualTo(2);
+		}
+	}
+
+	// 方法：官方 API 端點與不同模型設定可通過本機格式驗證，不代表遠端權限已驗證。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void acceptsExplicitWorkflowModels(@TempDir Path projectRoot) throws Exception {
+		writeValidFixture(projectRoot);
+		writeSecret(projectRoot.resolve("secrets"), "ai-api-key", "test-key-not-for-production");
+		Files.writeString(projectRoot.resolve(".env"), "\nAI_API_URL=https://api.openai.com/v1\nAI_MODEL=legacy\nAI_WORKFLOW_ENABLED=true\nAI_TEXT_MODEL=text\nAI_VISION_MODEL=vision\nAI_ESCALATION_MODEL=escalation\n",
+			StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+		assertThat(runValidation(projectRoot)).isZero();
+	}
+
+	// 方法：缺少設定時回傳失敗碼。
 	@Test
 	@EnabledOnOs(OS.WINDOWS)
 	void returnsFailureExitCodeWhenCustomerConfigurationIsMissing(@TempDir Path projectRoot) throws Exception {
@@ -197,6 +227,71 @@ class CustomerOperationsContractTest {
 		writeSecret(secretDirectory, "ai-api-key", "");
 		writeSecret(secretDirectory, "quotation-postback-secret", "0123456789abcdef0123456789abcdef");
 		writeSecret(secretDirectory, "quotation-image-link-secret", "0123456789abcdef0123456789abcdef");
+	}
+
+	// 方法：以假輸入驅動實際精靈，驗證確認選項、寫入與保留舊值；不使用真實憑證。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void wizardReplacesKeyAfterYesAndPreservesItOnInvalidPaste(@TempDir Path projectRoot) throws Exception {
+		for (String scenario : java.util.List.of("yes", "padded-yes", "empty-paste", "start", "start-failure")) {
+			writeValidFixture(projectRoot);
+			Path keyPath = projectRoot.resolve("secrets/ai-api-key");
+			Files.writeString(keyPath, "old-test-key-not-real");
+			Files.writeString(projectRoot.resolve(".env"), "\nAI_API_URL=https://api.openai.com/v1\nAI_MODEL=test-model\n",
+				StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+			String runner = """
+				param([string]$Source, [string]$Fixture, [string]$Scenario)
+				$ErrorActionPreference = 'Stop'
+				$text = [IO.File]::ReadAllText($Source)
+				$cut = $text.LastIndexOf('# 外部主流程')
+				$library = Join-Path $Fixture 'console-library.ps1'
+				[IO.File]::WriteAllText($library, $text.Substring(0, $cut), [Text.UTF8Encoding]::new($true))
+				. $library -Action Setup -ProjectRootOverride $Fixture
+				if ($Scenario -like 'start*') {
+					$script:commands = @()
+					function docker {
+						$script:commands += ($args -join ' ')
+						$global:LASTEXITCODE = 0
+						if ($Scenario -eq 'start-failure' -and $args -contains '--force-recreate') { $global:LASTEXITCODE = 1 }
+					}
+					$started = Invoke-ComposeUp $false
+					if ($script:commands.Count -ne 2 -or $script:commands[1] -ne 'compose up -d --no-deps --no-build --force-recreate --wait app') { exit 12 }
+					if ($started -ne ($Scenario -eq 'start')) { exit 13 }
+					exit 0
+				}
+				function Read-Host {
+					param([string]$Prompt, [switch]$AsSecureString)
+					if ($AsSecureString) {
+						$paste = 'new-test-key-not-real'
+						if ($Scenario -eq 'empty-paste') { $paste = ' ' }
+						$secret = [Security.SecureString]::new()
+						foreach ($character in $paste.ToCharArray()) { $secret.AppendChar($character) }
+						return $secret
+					}
+					if ($Prompt -like 'AI API Key 已設定*') {
+						if ($Scenario -eq 'padded-yes') { return ' y ' }
+						return 'y'
+					}
+					return ''
+				}
+				Invoke-CustomerSetup
+				$expectedExit = 0
+				if ($Scenario -eq 'empty-paste') { $expectedExit = 2 }
+				if ($script:OperationExitCode -ne $expectedExit) { exit 14 }
+				""";
+			Path runnerPath = projectRoot.resolve("wizard-test.ps1");
+			Files.writeString(runnerPath, "\uFEFF" + runner, StandardCharsets.UTF_8);
+			Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+				runnerPath.toString(), "-Source", Path.of("scripts/customer-console.ps1").toAbsolutePath().toString(),
+				"-Fixture", projectRoot.toString(), "-Scenario", scenario)
+				.redirectErrorStream(true).start();
+			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			assertThat(process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+			assertThat(process.exitValue()).as(output).isZero();
+			assertThat(Files.readString(keyPath)).as(scenario)
+				.isEqualTo(scenario.equals("empty-paste") || scenario.startsWith("start") ? "old-test-key-not-real" : "new-test-key-not-real");
+			assertThat(Files.readString(projectRoot.resolve("secrets/database-password")).trim()).isEqualTo("0123456789abcdef0123456789abcdef");
+		}
 	}
 
 	// 方法：保存具單一尾端換行的測試 Secret。

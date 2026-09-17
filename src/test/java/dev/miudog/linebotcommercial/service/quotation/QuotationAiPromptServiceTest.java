@@ -40,6 +40,19 @@ class QuotationAiPromptServiceTest {
 	}
 
 	@Test
+	void suppliesMissingFieldsAndStableItemIdsWithoutReplayingPrices() {
+		QuotationDraftSnapshot draft = new QuotationDraftSnapshot(1L, 2, QuotationDraftStatus.COLLECTING_ITEMS,
+			"SALES", java.util.Map.of("companyName", "已填公司", "workName", "已填工程", "salesRepresentative", "承辦"),
+			List.of(new QuotationDraftItem("TEMP-1", QuotationDraftItemKind.CUSTOM,
+				java.util.Map.of("itemName", "扣件", "quantity", "2", "unitPrice", "98765"))),
+			List.of(), null, false, false, false, null);
+		QuotationAiPromptService.Prompt prompt = service.build("規格是 M8", List.of(), "SALES", draft);
+		assertThat(prompt.userPrompt()).contains("DRAFT_CONTEXT", "TEMP-1", "已填公司", "missingItemFields", "specification")
+			.doesNotContain("98765");
+		assertThat(prompt.systemPrompt()).contains("clientItemId 必須沿用既有 itemKey");
+	}
+
+	@Test
 	void excludesOtherSchemesAndCatalogsForDynamicFormats() {
 		for (String scheme : List.of("MARINE", "BLANK", "SALES", "GENERAL")) {
 			assertThat(service.build("建立報價", List.of(), scheme).systemPrompt())

@@ -71,6 +71,14 @@ public class QuotationConfirmationService {
 			generationJobs.enqueueIfAbsent(existing.quotationId(), MDC.get("requestId"));
 			return existing;
 		}
+		if (!legacyFilesystem) {
+			try {
+				companyAssets.activeSetId();
+			}
+			catch (IllegalStateException exception) {
+				throw new QuotationConfirmationException("QUOTATION_ASSETS_NOT_READY", "尚未啟用公司報價資產包，請管理員匯入並啟用正式範本與公司素材後，再按確認。草稿仍保留。");
+			}
+		}
 
 		DraftRecord draftRecord = requireConfirmableDraft(
 			draft.draftId(),
@@ -147,12 +155,15 @@ public class QuotationConfirmationService {
 				s.code AS scheme_code, s.id AS scheme_id, t.id AS template_id
 			FROM quotation_draft d
 			JOIN quotation_scheme s ON s.id = d.scheme_id
-			JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
+			LEFT JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
 			WHERE d.id = ?
 			""", draftId);
 		if (rows.size() != 1) throw error("找不到可使用的確認草稿或啟用範本");
 
 		Map<String, Object> row = rows.getFirst();
+		if (row.get("template_id") == null) {
+			throw new QuotationConfirmationException("QUOTATION_TEMPLATE_NOT_READY", "此報價格式尚未啟用範本，請管理員啟用公司資產版本後，再按確認。草稿仍保留。");
+		}
 		if (!"AWAITING_CONFIRMATION".equals(row.get("status"))) throw error("資料庫草稿不在可確認狀態");
 
 		int persistedRevision = ((Number) row.get("revision")).intValue();
@@ -253,7 +264,7 @@ public class QuotationConfirmationService {
 				""";
 			PreparedStatement statement = connection.prepareStatement(
 				sql,
-				Statement.RETURN_GENERATED_KEYS
+				new String[] {"id"}
 			);
 			statement.setLong(1, draft.draftId());
 			statement.setString(2, quotationNumber);

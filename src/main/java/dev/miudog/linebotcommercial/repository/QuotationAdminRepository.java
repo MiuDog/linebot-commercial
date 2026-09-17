@@ -105,7 +105,7 @@ public class QuotationAdminRepository {
 			VALUES (?, ?, ?, ?)
 			""")
 			.params(code, name, objectMapper.writeValueAsString(aliases), isActive ? 1 : 0)
-			.update(keys);
+			.update(keys, "id");
 		Number key = keys.getKey();
 		if (key == null) throw new IllegalStateException("建立品項後未取得主鍵");
 

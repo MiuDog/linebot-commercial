@@ -462,6 +462,10 @@ public class AiExtractionService implements AiJsonCompletionClient {
 	// 方法：由共同 AI API 基底網址推導 Chat Completions 端點，並相容既有完整端點設定。
 	private String chatCompletionsUrl() {
 		String normalized = apiUrl.replaceFirst("/+$", "");
+		String host = URI.create(normalized).getHost();
+		if (host != null && java.util.Set.of("openai.com", "www.openai.com", "platform.openai.com", "chatgpt.com", "www.chatgpt.com", "chat.openai.com").contains(host.toLowerCase(java.util.Locale.ROOT))) {
+			throw new AiCompletionException("AI_ENDPOINT_INVALID");
+		}
 		if (normalized.endsWith("/chat/completions")) return normalized;
 
 		return normalized + "/chat/completions";

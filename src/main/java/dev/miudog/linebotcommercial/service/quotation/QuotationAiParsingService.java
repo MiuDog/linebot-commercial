@@ -65,6 +65,20 @@ public class QuotationAiParsingService {
 		}
 	}
 
+	// 方法：傳遞已依擁有者載入的草稿，讓單模型與 harness 使用相同續問上下文。
+	public ParseResult parseDraft(String instruction, List<AiImageInput> images, QuotationDraftSnapshot draft, QuotationModelWorkflow.Scope scope) {
+		List<AiImageInput> safeImages = images == null ? List.of() : List.copyOf(images);
+		if (!workflowEnabled()) return parse(instruction, safeImages, draft.schemeCode(), draft);
+
+		try {
+			return workflow.parse(instruction, safeImages, draft.schemeCode(), scope,
+				raw -> validateResponse(raw, draft.schemeCode(), safeImages.stream().map(AiImageInput::messageId).toList()), draft);
+		}
+		catch (AiExtractionException exception) {
+			throw classifiedCallFailure(exception);
+		}
+	}
+
 	// 方法：建立報價 AI 解析服務並注入模型、提示詞及主檔驗證元件。
 	public QuotationAiParsingService(
 		AiJsonCompletionClient completionClient,
@@ -96,6 +110,11 @@ public class QuotationAiParsingService {
 
 	// 方法：以使用者已指定的報價格式解析報價指令；格式由應用程式鎖定，AI 只負責提取資料。
 	public ParseResult parse(String instruction, List<AiImageInput> images, String lockedSchemeCode) {
+		return parse(instruction, images, lockedSchemeCode, null);
+	}
+
+	// 方法：舊介面保持相容，草稿路徑才附加上下文。
+	private ParseResult parse(String instruction, List<AiImageInput> images, String lockedSchemeCode, QuotationDraftSnapshot draft) {
 		if (workflowEnabled()) {
 			String isolated = java.util.UUID.randomUUID().toString();
 			return parseScoped(instruction, images, lockedSchemeCode, new QuotationModelWorkflow.Scope(isolated, isolated));
@@ -111,11 +130,9 @@ public class QuotationAiParsingService {
 		List<String> imageMessageIds = safeImages.stream()
 			.map(AiImageInput::messageId)
 			.toList();
-		QuotationAiPromptService.Prompt prompt = promptService.build(
-			instruction,
-			imageMessageIds,
-			lockedSchemeCode
-		);
+		QuotationAiPromptService.Prompt prompt = draft == null
+			? promptService.build(instruction, imageMessageIds, lockedSchemeCode)
+			: promptService.build(instruction, imageMessageIds, lockedSchemeCode, draft);
 
 		String userPrompt = prompt.userPrompt();
 		for (int attempt = 1; attempt <= QuotationAiRetry.MAX_ATTEMPTS; attempt++) {
@@ -246,6 +263,7 @@ public class QuotationAiParsingService {
 	static QuotationAiException classifiedCallFailure(AiExtractionException exception) {
 		if (exception instanceof AiCompletionException completion) {
 			String detail = switch (completion.code()) {
+				case "AI_ENDPOINT_INVALID" -> "AI 網址誤設為網站或管理後台，請改用供應商 API 端點";
 				case "AI_OUTPUT_TRUNCATED" -> "AI 輸出超過 token 上限，請拆分品項或調整輸出預算";
 				case "AI_REFUSED" -> "AI 無法處理本次資料，請修改輸入或使用 CSV";
 				default -> "AI 回傳格式不符報價規格";

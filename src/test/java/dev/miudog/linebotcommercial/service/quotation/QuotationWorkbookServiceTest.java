@@ -38,6 +38,29 @@ class QuotationWorkbookServiceTest {
 	}
 
 	@Test
+	void printsEachGeneratedSheetAsOneCompletePage() throws Exception {
+		for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
+			var result = service().generate(header("VERIFY-" + scheme), quotation(
+				scheme, item("EXTERNAL_SCAFFOLD", "驗證品項", "", "組", "100", "2", "200")
+			));
+			try (WorkbookReader workbook = new WorkbookReader(result.path())) {
+				String namespace = workbook.sheet.getDocumentElement().getNamespaceURI();
+				Element setup = (Element) workbook.sheet.getElementsByTagNameNS(namespace, "pageSetup").item(0);
+				Element properties = (Element) workbook.sheet.getElementsByTagNameNS(namespace, "pageSetUpPr").item(0);
+				assertThat(setup.getAttribute("fitToWidth")).isEqualTo("1");
+				assertThat(setup.getAttribute("fitToHeight")).isEqualTo("1");
+				assertThat(setup.hasAttribute("scale")).isFalse();
+				assertThat(properties.getAttribute("fitToPage")).isEqualTo("1");
+				NodeList rows = workbook.sheet.getElementsByTagNameNS(namespace, "row");
+				for (int index = 0; index < rows.getLength(); index++) {
+					Element row = (Element) rows.item(index);
+					if (row.hasAttribute("ht")) assertThat(row.getAttribute("customHeight")).isEqualTo("1");
+				}
+			}
+		}
+	}
+
+	@Test
 	void writesDirectItemsAndFormulaTotalsIntoTheConfiguredQuotationDirectory() throws Exception {
 		QuotationWorkbookService service = service();
 		QuotationWorkbookService.GenerationResult result = service.generate(

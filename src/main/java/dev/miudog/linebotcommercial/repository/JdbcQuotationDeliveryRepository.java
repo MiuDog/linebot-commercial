@@ -84,7 +84,7 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 						quotation_id, destination_type, destination_id, delivery_kind, status
 					)
 					VALUES (?, 'LINE_USER', ?, 'FINAL', 'SENDING')
-					""", Statement.RETURN_GENERATED_KEYS);
+					""", new String[]{"id"});
 				statement.setLong(1, quotationId);
 				statement.setString(2, destinationId);
 				return statement;
