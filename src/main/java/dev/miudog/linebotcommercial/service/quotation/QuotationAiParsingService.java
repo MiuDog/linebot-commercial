@@ -246,6 +246,7 @@ public class QuotationAiParsingService {
 	static QuotationAiException classifiedCallFailure(AiExtractionException exception) {
 		if (exception instanceof AiCompletionException completion) {
 			String detail = switch (completion.code()) {
+				case "AI_ENDPOINT_INVALID" -> "AI 網址誤設為網站或管理後台，請改用供應商 API 端點";
 				case "AI_OUTPUT_TRUNCATED" -> "AI 輸出超過 token 上限，請拆分品項或調整輸出預算";
 				case "AI_REFUSED" -> "AI 無法處理本次資料，請修改輸入或使用 CSV";
 				default -> "AI 回傳格式不符報價規格";

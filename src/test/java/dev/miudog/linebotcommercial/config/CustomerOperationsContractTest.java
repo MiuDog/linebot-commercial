@@ -150,7 +150,37 @@ class CustomerOperationsContractTest {
 		assertThat(runValidation(projectRoot)).isZero();
 	}
 
-	// 方法：Windows 控制台在設定缺漏時回傳非零，供捷徑與維運工具可靠判斷。
+	// 方法：基底與各角色誤填官網時均須阻擋，並先確認其他設定有效。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void rejectsWebsiteUrlsForBaseAndWorkflowRoles(@TempDir Path projectRoot) throws Exception {
+		for (String setting : java.util.List.of("AI_API_URL", "AI_TEXT_API_URL", "AI_VISION_API_URL", "AI_ESCALATION_API_URL")) {
+			writeValidFixture(projectRoot);
+			writeSecret(projectRoot.resolve("secrets"), "ai-api-key", "test-key-not-for-production");
+			for (String role : java.util.List.of("text", "vision", "escalation")) {
+				writeSecret(projectRoot.resolve("secrets"), "ai-" + role + "-api-key", "test-role-key-not-for-production");
+			}
+			Files.writeString(projectRoot.resolve(".env"), "\nAI_API_URL=https://api.openai.com/v1\nAI_MODEL=test-model\nAI_WORKFLOW_ENABLED=true\n",
+				StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+			assertThat(runValidation(projectRoot)).isZero();
+			Files.writeString(projectRoot.resolve(".env"), setting + "=https://openai.com\n",
+				StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+			assertThat(runValidation(projectRoot)).isEqualTo(2);
+		}
+	}
+
+	// 方法：官方 API 端點與不同模型設定可通過本機格式驗證，不代表遠端權限已驗證。
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void acceptsExplicitWorkflowModels(@TempDir Path projectRoot) throws Exception {
+		writeValidFixture(projectRoot);
+		writeSecret(projectRoot.resolve("secrets"), "ai-api-key", "test-key-not-for-production");
+		Files.writeString(projectRoot.resolve(".env"), "\nAI_API_URL=https://api.openai.com/v1\nAI_MODEL=legacy\nAI_WORKFLOW_ENABLED=true\nAI_TEXT_MODEL=text\nAI_VISION_MODEL=vision\nAI_ESCALATION_MODEL=escalation\n",
+			StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+		assertThat(runValidation(projectRoot)).isZero();
+	}
+
+	// 方法：缺少設定時回傳失敗碼。
 	@Test
 	@EnabledOnOs(OS.WINDOWS)
 	void returnsFailureExitCodeWhenCustomerConfigurationIsMissing(@TempDir Path projectRoot) throws Exception {

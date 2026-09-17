@@ -15,6 +15,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiStructuredCompletionTest {
 
+	// 方法：錯填官方網站時在送出憑證前中止，保留可判讀的端點錯誤。
+	@Test
+	void rejectsWebsiteEndpointsBeforeSendingCredentials() {
+		for (String host : List.of("openai.com", "www.openai.com", "platform.openai.com", "chatgpt.com", "chat.openai.com")) {
+			AiExtractionService service = new AiExtractionService("5").profile("https://" + host, "test-key", "test-model", 4000, 1);
+			assertThatThrownBy(() -> service.completeJson("rules", "input", List.of(), new ObjectMapper().readTree("{}")))
+				.isInstanceOf(AiCompletionException.class)
+				.hasMessage("AI_ENDPOINT_INVALID");
+		}
+	}
+
 	@Test
 	void sendsStrictSchemaAndRejectsIncompleteOrRefusedCompletions() throws Exception {
 		ObjectMapper mapper = new ObjectMapper();

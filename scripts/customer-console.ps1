@@ -248,6 +248,19 @@ function Test-CustomerConfiguration {
 		$issues.Add((New-ConfigurationIssue "AI API 網址" "AI_API_URL 不是有效的 HTTPS 網址。" "填入供應商提供的 HTTPS API 基底網址，不要填管理後台網址。"))
 	}
 
+	# 各角色端點都需檢查，避免設定精靈接受官網或管理後台網址。
+	foreach ($urlName in @("AI_API_URL", "AI_TEXT_API_URL", "AI_VISION_API_URL", "AI_ESCALATION_API_URL")) {
+		$configuredUrl = $environment[$urlName]
+		if ([string]::IsNullOrWhiteSpace($configuredUrl)) { continue }
+		if ($urlName -ne "AI_API_URL" -and $environment["AI_WORKFLOW_ENABLED"] -ne "true") { continue }
+		$endpoint = $null
+		$validEndpoint = [System.Uri]::TryCreate($configuredUrl, [System.UriKind]::Absolute, [ref]$endpoint)
+		if (-not $validEndpoint -or $endpoint.Scheme -ne "https" -or
+			$endpoint.Host -in @("openai.com", "www.openai.com", "platform.openai.com", "chatgpt.com", "www.chatgpt.com", "chat.openai.com")) {
+			$issues.Add((New-ConfigurationIssue $urlName "不是可用的 HTTPS API 網址，或誤填網站／管理後台。" "OpenAI Platform 使用 https://api.openai.com/v1；其他供應商使用其 API 網址。"))
+		}
+	}
+
 	$secretDirectory = Join-Path $ProjectRoot "secrets"
 	foreach ($definition in Get-RequiredSecretDefinitions $environment) {
 		$secretPath = Join-Path $secretDirectory $definition.Name
@@ -276,7 +289,24 @@ function Show-ConfigurationValidation {
 	)
 
 	if ($Validation.IsValid) {
-		Write-Host "[通過] 設定完整，可安全啟動。" -ForegroundColor Green
+		Write-Host "[通過] 本機設定格式完整；尚未驗證 API 金鑰與模型權限。" -ForegroundColor Green
+		$environment = $Validation.Environment
+		if ($environment["AI_WORKFLOW_ENABLED"] -eq "true") {
+			Write-Host "[AI 路由] Harness 已啟用：圖片 → VISION；文字 → TEXT；驗證修復 → ESCALATION。"
+			$models = @()
+			foreach ($role in @("TEXT", "VISION", "ESCALATION")) {
+				$model = $environment["AI_${role}_MODEL"]
+				if ([string]::IsNullOrWhiteSpace($model)) { $model = $environment["AI_MODEL"] }
+				$models += $model
+				Write-Host "[AI 路由] $role = $model"
+			}
+			if (@($models | Select-Object -Unique).Count -eq 1) {
+				Write-Host "[注意] 三個角色目前使用同一模型；請在首次設定指定不同角色模型。" -ForegroundColor Yellow
+			}
+		}
+		else {
+			Write-Host "[AI 路由] Harness 未啟用，沿用單模型 AI_MODEL。"
+		}
 		return
 	}
 
@@ -470,6 +500,30 @@ function Invoke-CustomerSetup {
 	Set-CustomerEnvironmentValue $EnvironmentPath "AI_API_URL" $aiApiUrl
 	Set-CustomerEnvironmentValue $EnvironmentPath "AI_MODEL" $aiModel
 	Set-CustomerEnvironmentValue $EnvironmentPath "TUNNEL_ENABLED" $tunnelEnabled.ToString().ToLowerInvariant()
+
+	if (-not [string]::IsNullOrWhiteSpace($aiApiUrl)) {
+		$workflowEnabled = $environment["AI_WORKFLOW_ENABLED"] -eq "true"
+		$workflowAnswer = Read-Host "啟用 harness 多模型分工？目前：$workflowEnabled（y/n，Enter 保留）"
+		if ($workflowAnswer -match "^[yY]$") { $workflowEnabled = $true }
+		if ($workflowAnswer -match "^[nN]$") { $workflowEnabled = $false }
+		Set-CustomerEnvironmentValue $EnvironmentPath "AI_WORKFLOW_ENABLED" $workflowEnabled.ToString().ToLowerInvariant()
+		if ($workflowEnabled) {
+			$openAiDefaults = @{ TEXT = "gpt-5.6-luna"; VISION = "gpt-5.6-terra"; ESCALATION = "gpt-5.6-sol" }
+			foreach ($role in @("TEXT", "VISION", "ESCALATION")) {
+				$currentModel = $environment["AI_${role}_MODEL"]
+				if ([string]::IsNullOrWhiteSpace($currentModel)) {
+					$currentModel = $aiModel
+					if ($aiApiUrl.TrimEnd('/') -in @("https://api.openai.com/v1", "https://api.openai.com/v1/chat/completions")) {
+						$currentModel = $openAiDefaults[$role]
+					}
+				}
+				$roleModel = Read-CustomerValue "$role 模型（需具備 API 使用權限）" $currentModel
+				$roleUrl = Read-CustomerValue "$role API 網址（空白沿用基底網址）" $environment["AI_${role}_API_URL"]
+				Set-CustomerEnvironmentValue $EnvironmentPath "AI_${role}_MODEL" $roleModel
+				Set-CustomerEnvironmentValue $EnvironmentPath "AI_${role}_API_URL" $roleUrl
+			}
+		}
+	}
 
 	$environment = Read-CustomerEnvironment $EnvironmentPath
 	foreach ($definition in Get-RequiredSecretDefinitions $environment) {
