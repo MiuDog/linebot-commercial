@@ -32,6 +32,13 @@ public class QuotationAiParsingService {
 	private final QuotationRequestValidationService validationService;
 	private final ObjectMapper objectMapper;
 	private QuotationModelWorkflow workflow;
+	private QuotationProgressService progress = new QuotationProgressService();
+
+	// 方法：共用查詢進度，不改變既有建構介面。
+	@org.springframework.beans.factory.annotation.Autowired
+	public void configureProgress(QuotationProgressService progress) {
+		this.progress = progress;
+	}
 
 	// 方法：選用新 workflow，保留既有建構介面供舊呼叫者與回歸測試使用。
 	@org.springframework.beans.factory.annotation.Autowired
@@ -78,6 +85,7 @@ public class QuotationAiParsingService {
 
 	// 方法：CSV 直接由程式解析，AI 未設定時也可建立待確認草稿。
 	public ParseResult parseCsv(String csv) {
+		progress.update("正在讀取CSV並驗證品項，不使用AI。");
 		return new QuotationInputCsvService(validationService, objectMapper).parse(csv);
 	}
 
@@ -110,7 +118,8 @@ public class QuotationAiParsingService {
 		);
 
 		String userPrompt = prompt.userPrompt();
-		for (int attempt = 1; attempt <= 2; attempt++) {
+		for (int attempt = 1; attempt <= QuotationAiRetry.MAX_ATTEMPTS; attempt++) {
+			progress.update("正在辨識報價資料（第 " + attempt + "/5 次嘗試）。");
 			String rawJson;
 			try {
 				rawJson = completionClient.completeJson(
@@ -121,10 +130,18 @@ public class QuotationAiParsingService {
 				);
 			}
 			catch (AiExtractionException exception) {
-				throw classifiedCallFailure(exception);
+				QuotationAiException failure = classifiedCallFailure(exception);
+				if (attempt == QuotationAiRetry.MAX_ATTEMPTS || !QuotationAiRetry.allowed(failure)) throw failure;
+
+				// 日誌：只記錄代碼與次數，不記錄供應商本文或金鑰。
+				log.warn("event=quotation_transport_retry attemptCount={} code={}", attempt, failure.code());
+				progress.update("AI 暫時失敗，準備第 " + (attempt + 1) + "/5 次嘗試。");
+				QuotationAiRetry.pause(attempt);
+				continue;
 			}
 
 			try {
+				progress.update("正在驗證欄位與品項主檔。");
 				ParseResult result = validateResponse(rawJson, lockedSchemeCode, prompt.imageMessageIds());
 
 				// 日誌：記錄完成驗證的嘗試次數，不記錄使用者資料。
@@ -134,15 +151,17 @@ public class QuotationAiParsingService {
 			catch (QuotationAiException exception) {
 				// 日誌：只記錄穩定錯誤代碼，供統計首次成功率及修復率。
 				log.warn("event=quotation_parse_rejected attemptCount={} code={}", attempt, exception.code());
-				if (attempt == 2 || rawJson == null || rawJson.length() > 16000) throw exception;
+				if (attempt == QuotationAiRetry.MAX_ATTEMPTS || !QuotationAiRetry.allowed(exception)) throw exception;
 
-				// 序列化：把錯誤與待修復片段封裝為不可信資料，只允許一次結構／欄位修復。
+				// 序列化：修復資料保持有界；大型或空回應重新提取，不重複堆積歷次輸出。
 				userPrompt = prompt.userPrompt() + "\n僅依原始輸入修復下列回應；缺值不可猜測。<REPAIR_DATA>"
 					+ objectMapper.writeValueAsString(Map.of(
 						"code", exception.code(),
 						"error", exception.getMessage(),
-						"response", rawJson
+						"response", rawJson == null || rawJson.length() > 16000 ? "" : rawJson
 					)) + "</REPAIR_DATA>";
+				progress.update("格式驗證未通過，準備第 " + (attempt + 1) + "/5 次修復。");
+				QuotationAiRetry.pause(attempt);
 			}
 		}
 		throw new IllegalStateException("報價解析重試次數不正確");
@@ -224,7 +243,7 @@ public class QuotationAiParsingService {
 	}
 
 	// 方法：把 AI HTTP、連線、逾時與回應格式失敗分成可行動的穩定代碼。
-	private QuotationAiException classifiedCallFailure(AiExtractionException exception) {
+	static QuotationAiException classifiedCallFailure(AiExtractionException exception) {
 		if (exception instanceof AiCompletionException completion) {
 			String detail = switch (completion.code()) {
 				case "AI_OUTPUT_TRUNCATED" -> "AI 輸出超過 token 上限，請拆分品項或調整輸出預算";
@@ -254,7 +273,7 @@ public class QuotationAiParsingService {
 	}
 
 	// 方法：沿受控例外鏈查找指定原因類型，不解析或輸出外部錯誤內容。
-	private boolean causedBy(Throwable source, Class<? extends Throwable> type) {
+	private static boolean causedBy(Throwable source, Class<? extends Throwable> type) {
 		Throwable current = source;
 		while (current != null) {
 			if (type.isInstance(current)) return true;

@@ -2,13 +2,13 @@
 
 ## 相容性與範圍
 
-`AI_WORKFLOW_ENABLED=false` 是預設值：自然語言仍使用原來的單模型與最多一次修復。CSV、草稿合併、單價與合計、確認、XLSX／PDF、交付重試均保留原流程。開啟後只替換 AI 抽取步驟，不讓模型直接計價或確認報價。
+`AI_WORKFLOW_ENABLED=false` 是預設值：自然語言使用原來的單模型，最多5次嘗試（首次加最多4次重試）。CSV、草稿合併、單價與合計、確認、XLSX／PDF、交付重試均保留原流程。開啟後只替換 AI 抽取步驟，不讓模型直接計價或確認報價。
 
 1. CSV 直接解析，零模型呼叫。
 2. 沒有圖片的文字呼叫 TEXT。
 3. 有圖片時先呼叫 VISION，只取得每張圖的原文與內容描述，再將觀察資料交給 TEXT；TEXT 不重收圖片。
-4. 所有結果通過原有業務驗證。契約錯誤或候選 CONFLICT 才呼叫 ESCALATION 一次。
-5. 缺少資料維持補問；拒絕、截斷、認證或 HTTP 失敗不自動切模型。
+4. 所有結果通過原有業務驗證。契約錯誤使用ESCALATION修復，所有角色合計最多5次網路呼叫；候選CONFLICT升級後仍衝突則補問。
+5. 缺少資料維持補問；拒絕、截斷、認證或其他4xx不重試。429、5xx、連線與逾時在同角色重試，不能藉換模型繞過權限。
 
 角色都使用支援 strict JSON Schema 的 **OpenAI-compatible Chat Completions**。這不是對任意廠商原生 API 的轉接器，端點必須相容。VISION 必須支援圖片。
 
@@ -21,7 +21,7 @@ AI_WORKFLOW_ENABLED=true
 AI_TEXT_MODEL=填入文字抽取模型名稱
 AI_VISION_MODEL=填入支援圖片的模型名稱
 AI_ESCALATION_MODEL=填入較強的模型名稱
-AI_WORKFLOW_MAX_CALLS=3
+AI_WORKFLOW_MAX_CALLS=5
 AI_WORKFLOW_MAX_OUTPUT_TOKENS=12000
 AI_WORKFLOW_MAX_TOTAL_TOKENS=32000
 AI_WORKFLOW_TIMEOUT_SECONDS=120
@@ -47,7 +47,7 @@ docker compose up --build -d --wait
 
 ## 配額的精確意義
 
-- 呼叫上限為 1–3；設定 1 時只能處理單步文字，有圖片時可能在 VISION 後停止。
+- 呼叫上限為1–5，預設5；所有角色與重試共用此上限。設定1時只能處理單步文字，有圖片時可能在VISION後停止。既有`.env`若明確設3，仍只允許3次；需要5次請改成5。
 - 累計輸出上限是**分配給請求的輸出 token 總和**。即使模型提前結束，也保守扣除該次配額；後續模型的輸出上限會縮到剩餘額度。一般三步預設各分配 4000。
 - total token 門檻根據供應商 `usage.total_tokens`，包含輸入及輸出；達到門檻後不再追加呼叫。**這不是精確的帳單硬上限**：輸入 token 在呼叫前沒有跨模型一致的計數器，當次回應可能已超出門檻。
 - 缺少 usage 時仍可使用已驗證的當次結果，但不再追加模型呼叫，不把未知當作零。
@@ -71,3 +71,16 @@ HTTP 回應到保存之間若程序崩潰，或外部呼叫失敗但供應商已
 `QuotationModelWorkflowTest` 使用本機 HTTP stub 與真實 SQLite checkpoint，覆蓋三角色、五種格式的原驗證器、CSV 零呼叫、重啟恢復、跨 owner 隔離、TTL、模型變更、各種配額、獨立金鑰、拒絕、HTTP 失敗與逾時。原有完整回歸測試繼續執行。
 
 Stub 能證明流程與契約，不能證明某個真實模型的辨識品質。正式啟用前用實際可用的模型與去識別化案例測量欄位正確率、補問率、每筆 token 與延遲；LINE 外網和公司資產啟用仍是原有部署前置條件。
+
+## 重試與LINE進度
+
+- JSON無效、欄位／圖片評估不完整、429、5xx、連線及逾時：逐次延遲200、400、800、1600毫秒，最多5次嘗試。格式修復仍使用原始輸入及同一套業務驗證。
+- 401／403是驗證或權限問題：檢查基底與角色API端點、金鑰、模型存取權；相同設定原樣重送無法修復，因此直接停止。其他4xx、模型拒絕及token截斷也直接提示修正輸入／設定。
+- 最多5次不是保證每次都做滿：workflow的輸出預算12000若每次分配4000，可能3次即停止；未知usage或期限用盡也提前停止。不自動增加預算。
+- [LINE Reply API](https://developers.line.biz/en/reference/messaging-api/#send-reply-message)每個事件的token只能使用一次，應於收到webhook後一分鐘內使用；單次最多5則訊息，不能分時多次回覆。
+- 處理期間顯示最長60秒的[載入動畫](https://developers.line.biz/en/docs/messaging-api/use-loading-indicator/)，動畫不含自訂階段文字，且只有使用者開著聊天室時可見。
+- 私訊`#報價進度`使用新的事件token回覆實際階段，包括文字／圖片辨識、驗證、修復、Excel產生、PDF轉換及文件交付。只查自己的進度，不呼叫模型、不建立草稿。
+- 進度為單機記憶體中的最近事件，保留15分鐘；服務重啟後消失。多副本部署需要黏著路由或改成共用狀態儲存。完成或失敗均如實顯示，不把等待當成成功。
+- Reply[不計入方案訊息數](https://developers.line.biz/en/docs/messaging-api/pricing/)；分時主動Push會計入方案額度。本次不新增進度Push。既有背景文件交付與reply過期後的outbox處理仍沿用原流程，不能將整個產檔交付宣稱為完全免費。
+
+2026-09-17：完整 clean verify 回歸434項全部通過，包含第五次成功、五次停止、401／403不重試、配額限制、進度隔離及查詢不觸發AI。外部LINE／真實模型體驗仍待實測。

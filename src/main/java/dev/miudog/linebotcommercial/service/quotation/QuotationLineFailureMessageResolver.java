@@ -53,11 +53,11 @@ public final class QuotationLineFailureMessageResolver {
 			case "AI_OUTPUT_TRUNCATED" -> "AI 輸出被截斷，請拆分輸入或請管理員調整輸出預算。";
 			case "AI_NOT_CONFIGURED" -> "報價 AI 尚未設定，請管理員檢查 AI_API_URL、AI_API_KEY 與 AI_MODEL。";
 			case "AI_TIMEOUT" -> "AI 解析超過等待時間，請稍後重送同一段報價指令。";
-			case "AI_AUTH_FAILED" -> "AI API 驗證失敗，請管理員檢查 API 金鑰。";
+			case "AI_AUTH_FAILED" -> "AI API 驗證失敗（401／403），已停止重試。請管理員檢查 API 金鑰、端點及模型權限；重送相同設定無法修正。";
 			case "AI_RATE_LIMITED" -> "AI 服務目前請求過多，請稍後再試。";
 			case "AI_REQUEST_REJECTED" -> "AI 服務拒絕請求，請管理員檢查 API 網址與模型名稱。";
 			case "AI_SERVICE_UNAVAILABLE" -> "AI 服務暫時無法連線，請稍後重送報價指令。";
-			case "AI_RESPONSE_INVALID" -> "AI 回傳格式不完整，請重送一次報價指令。";
+			case "AI_RESPONSE_INVALID" -> "AI 回傳格式不完整，自動修復未成功（每輪最多5次，仍受預算與期限限制）。請改用CSV或縮小本次輸入。";
 			case "AI_IMAGE_RESPONSE_INVALID" -> "AI 沒有完整評估候選圖片，請重新上傳圖片。";
 			case "AI_MASTER_DATA_VALIDATION_FAILED" -> "AI 辨識結果無法套用品項主檔：" + safeDetail(exception.getMessage())
 				+ "\n請改用品項主檔中的名稱，或補充報價格式與數量。";

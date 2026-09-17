@@ -49,6 +49,26 @@ public class LineStorageService {
 	/** LINE push 成功後可供稽核保存的供應商訊息識別碼。 */
 	public record LinePushReceipt(String providerMessageId) {}
 
+	// 方法：顯示處理中動畫，不消耗reply token；失敗不阻擋報價且不改用push。
+	public void showLoading(String userId) {
+		if (userId == null || userId.isBlank()) return;
+
+		try {
+			HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.line.me/v2/bot/chat/loading/start"))
+				.timeout(Duration.ofSeconds(2)).header("Authorization", "Bearer " + channelToken)
+				.header("Content-Type", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of("chatId", userId, "loadingSeconds", 60)))).build();
+			httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+		}
+		catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+		}
+		catch (Exception exception) {
+			// 日誌：動畫是盡力顯示，不輸出憑證、使用者識別或外部回應。
+			log.debug("event=line_loading_unavailable");
+		}
+	}
+
 	/** LINE Messaging API 發送失敗的穩定錯誤契約，不攜帶原始回應內容。 */
 	public static class LineMessagingException extends RuntimeException {
 
