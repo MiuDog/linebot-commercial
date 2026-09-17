@@ -49,7 +49,7 @@ public class CompanyAssetRepository {
 				manifestHash,
 				actor
 			)
-			.update(keys);
+			.update(keys, "id");
 		Number key = keys.getKey();
 		if (key == null) throw new IllegalStateException("無法建立公司資產版本");
 
