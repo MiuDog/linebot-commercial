@@ -120,7 +120,7 @@ AI 不得決定單價、複價、稅額或總價。
 - `itemCode` 必須來自呼叫模型時提供的可用品項清單。
 - 標準品項只允許 `itemCode`、`quantity`、`sourceText`、`confidence`；出現名稱、規格、單位、單價、備註或複價會整份拒絕。
 - `customItems` 的臨時／動態品項可保存使用者明確提供的固定欄位，但每個值都要附來源原文及信心，缺漏欄位必須為 `null`。
-- CNS／一般架最多兩筆 `TEMPORARY`；空白／銷售使用 `DYNAMIC`，且不會自動寫回正式主檔。
+- CNS／一般架使用不限筆數的 `TEMPORARY`；空白／銷售使用 `DYNAMIC`，且不會自動寫回正式主檔。
 - AI 不可輸出複價、小計、稅額、總價、流水號、檔案路徑或傳送狀態。
 - 沒有圖片時，`selectedImageMessageId` 為 `null`；若使用者明確拒絕圖片，`imageDeclined` 才可為 `true`。
 - 圖片有多張時，`selectedImageMessageId` 必須存在於 `imageAssessments`，且必須是

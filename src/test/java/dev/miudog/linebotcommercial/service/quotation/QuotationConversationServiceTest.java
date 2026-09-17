@@ -12,6 +12,20 @@ class QuotationConversationServiceTest {
 
 	private final QuotationConversationService service = new QuotationConversationService();
 
+	// 方法：固定格式超過舊有兩筆與二百筆門檻仍可進入預覽及確認。
+	@Test
+	void acceptsLargeTemporaryListsWithoutChangingDynamicLimits() {
+		var items = java.util.stream.IntStream.range(0, 250).mapToObj(index -> customItemComplete("custom-" + index)).toList();
+		for (String scheme : List.of("CNS", "GENERAL")) {
+			var reviewed = service.review(draft("測試公司", "測試工程", scheme, items));
+			assertThat(reviewed.nextAction()).isEqualTo(QuotationNextAction.SHOW_PREVIEW);
+			var confirmed = service.confirm(service.markPreviewPresented(reviewed.draft()), "confirm-" + scheme);
+			assertThat(confirmed.draft().items()).hasSize(250);
+		}
+		assertThatThrownBy(() -> service.review(draft("測試公司", "測試工程", "SALES", items)))
+			.hasMessageContaining("200");
+	}
+
 	// 方法：基礎資料缺少時一次回報所有欄位。
 	@Test
 	void reportsAllMissingBaseFieldsInOneDecision() {

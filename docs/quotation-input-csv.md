@@ -22,11 +22,11 @@ schemeCode,companyName,workName,salesRepresentative,contactName,phone,itemCode,i
 | quantity | 每列必填，大於 0 |
 | remark | 自訂品項選填；固定代碼品項留空 |
 
-價格允許 0；數量與價格上限均為 1,000,000,000，最多 6 位小數，不接受千分位或科學記號。CNS／GENERAL 自訂品項沿用最多兩筆的業務限制；MARINE／BLANK／SALES 全部使用自訂品項。圖片格式仍要求圖片或明確略過。
+價格允許 0；數量與價格上限均為 1,000,000,000，最多 6 位小數，不接受千分位或科學記號。CNS／GENERAL 臨時品項不限筆數，仍須完整資料與確認；MARINE／BLANK／SALES 全部使用自訂品項。圖片格式仍要求圖片或明確略過。
 
 ## 檔案與更新規則
 
-- 上限 1 MiB、200 筆品項，UTF-8 可含 BOM。
+- 檔案上限1MiB，UTF-8可含BOM。CNS／GENERAL臨時品項不限筆數；MARINE／BLANK／SALES維持最多200筆動態品項。
 - 逗號、換行或雙引號所在儲存格需以雙引號包住，內部雙引號寫成兩個；Excel 匯出會處理。
 - 錯誤列號是含表頭的 CSV 紀錄序號，儲存格換行不另算一列。
 - 同一 LINE 事件重送不重複套用。另傳檔案會合併到目前草稿，**不是整份取代**；省略的舊品項不會自動刪除。

@@ -1,0 +1,893 @@
+[
+  {
+    "id": "CNS-文字",
+    "category": "五格式入口",
+    "title": "CNS架文字完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 conversations/cns.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計1210.00、稅額60.50、總額1270.50（5%）；使用 CNS 主檔全 21 列；EXTERNAL_SCAFFOLD 單價 10、ELEVATOR_GATE 單價 210。其餘 19 列數量與複價必須空白，不是 0；CSV 不可提供固定品項單價。 文字抽取需實際模型驗收。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "conversations/cns.md"
+    ],
+    "status": "待執行",
+    "scheme": "CNS"
+  },
+  {
+    "id": "CNS-CSV",
+    "category": "五格式入口",
+    "title": "CNS架CSV完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 csv/cns-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計1210.00、稅額60.50、總額1270.50（5%）；使用 CNS 主檔全 21 列；EXTERNAL_SCAFFOLD 單價 10、ELEVATOR_GATE 單價 210。其餘 19 列數量與複價必須空白，不是 0；CSV 不可提供固定品項單價。 CSV抽取零模型呼叫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "csv/cns-complete.csv"
+    ],
+    "status": "待執行",
+    "scheme": "CNS"
+  },
+  {
+    "id": "GENERAL-文字",
+    "category": "五格式入口",
+    "title": "一般架文字完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 conversations/general.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計3760.00、稅額188.00、總額3948.00（5%）；使用一般架自己的20列主檔及價格版本；本案例在隔離測試主檔將 EXTERNAL_SCAFFOLD 設為12、DUST_NET 設為35，與 CNS 不同。不得讀到 CNS 價格；不含 ELEVATOR_GATE。其餘18列保留空白數量與複價。 文字抽取需實際模型驗收。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "conversations/general.md"
+    ],
+    "status": "待執行",
+    "scheme": "GENERAL"
+  },
+  {
+    "id": "GENERAL-CSV",
+    "category": "五格式入口",
+    "title": "一般架CSV完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 csv/general-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計3760.00、稅額188.00、總額3948.00（5%）；使用一般架自己的20列主檔及價格版本；本案例在隔離測試主檔將 EXTERNAL_SCAFFOLD 設為12、DUST_NET 設為35，與 CNS 不同。不得讀到 CNS 價格；不含 ELEVATOR_GATE。其餘18列保留空白數量與複價。 CSV抽取零模型呼叫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "csv/general-complete.csv"
+    ],
+    "status": "待執行",
+    "scheme": "GENERAL"
+  },
+  {
+    "id": "MARINE-文字",
+    "category": "五格式入口",
+    "title": "船用文字完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 conversations/marine.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計16400.00、稅額820.00、總額17220.00（5%）；內部3筆計價明細，客戶可見明細為0筆，只交付彙總。三筆動態列合法，不受臨時品項筆數限制。必須明確選圖或不提供圖片。 文字抽取需實際模型驗收。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "conversations/marine.md"
+    ],
+    "status": "待執行",
+    "scheme": "MARINE"
+  },
+  {
+    "id": "MARINE-CSV",
+    "category": "五格式入口",
+    "title": "船用CSV完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 csv/marine-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計16400.00、稅額820.00、總額17220.00（5%）；內部3筆計價明細，客戶可見明細為0筆，只交付彙總。三筆動態列合法，不受臨時品項筆數限制。必須明確選圖或不提供圖片。 CSV抽取零模型呼叫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "csv/marine-complete.csv"
+    ],
+    "status": "待執行",
+    "scheme": "MARINE"
+  },
+  {
+    "id": "BLANK-文字",
+    "category": "五格式入口",
+    "title": "空白文字完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 conversations/blank.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計12000.00、稅額600.00、總額12600.00（5%）；直接使用使用者報的一式價格12000，只有1筆客戶可见工程明細；不得展開 CNS／一般架主檔。必須明確選圖或不提供圖片。 文字抽取需實際模型驗收。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "conversations/blank.md"
+    ],
+    "status": "待執行",
+    "scheme": "BLANK"
+  },
+  {
+    "id": "BLANK-CSV",
+    "category": "五格式入口",
+    "title": "空白CSV完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 csv/blank-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計12000.00、稅額600.00、總額12600.00（5%）；直接使用使用者報的一式價格12000，只有1筆客戶可见工程明細；不得展開 CNS／一般架主檔。必須明確選圖或不提供圖片。 CSV抽取零模型呼叫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "csv/blank-complete.csv"
+    ],
+    "status": "待執行",
+    "scheme": "BLANK"
+  },
+  {
+    "id": "SALES-文字",
+    "category": "五格式入口",
+    "title": "銷售文字完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 conversations/sales.md 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計1604.96、稅額80.25、總額1685.21（5%）；3筆動態商品明細完整呈現，包含0單價贈品；單號依銷售範本顯示 S 前綴。價格只取自使用者輸入，不回寫主檔；無圖時不強制圖片決策。 文字抽取需實際模型驗收。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "conversations/sales.md"
+    ],
+    "status": "待執行",
+    "scheme": "SALES"
+  },
+  {
+    "id": "SALES-CSV",
+    "category": "五格式入口",
+    "title": "銷售CSV完整報價",
+    "mode": "LINE人工",
+    "steps": "新草稿；依 csv/sales-complete.csv 送出。補齊提示欄位，完成圖片選擇或略過後檢查預覽；確認產檔。",
+    "expected": "小計1604.96、稅額80.25、總額1685.21（5%）；3筆動態商品明細完整呈現，包含0單價贈品；單號依銷售範本顯示 S 前綴。價格只取自使用者輸入，不回寫主檔；無圖時不強制圖片決策。 CSV抽取零模型呼叫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [
+      "csv/sales-complete.csv"
+    ],
+    "status": "待執行",
+    "scheme": "SALES"
+  },
+  {
+    "id": "BTN-01",
+    "category": "按鈕",
+    "title": "格式按鈕",
+    "mode": "LINE人工",
+    "steps": "私訊 #報價，不指定格式；按最新卡片的「銷售」。",
+    "expected": "只切換到SALES，不猜格式、不建立正式單號。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "SELECT_SCHEME"
+  },
+  {
+    "id": "BTN-02",
+    "category": "按鈕",
+    "title": "修改預覽",
+    "mode": "LINE人工",
+    "steps": "完成SALES專屬範例預覽，按修改；將銷售支架數量10改成4。",
+    "expected": "小計881.96、稅44.10、總額926.06；另外兩筆保留，贈品金額仍為0。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "MODIFY"
+  },
+  {
+    "id": "BTN-03",
+    "category": "按鈕",
+    "title": "取消草稿",
+    "mode": "LINE人工",
+    "steps": "新草稿或預覽狀態按最新取消按鈕，之後再建立報價。",
+    "expected": "原草稿取消且不產正式單號；新流程使用新草稿。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "CANCEL"
+  },
+  {
+    "id": "BTN-04",
+    "category": "按鈕",
+    "title": "略過圖片",
+    "mode": "LINE人工",
+    "steps": "建立MARINE或BLANK範例；在圖片詢問按明確不提供圖片的選項。",
+    "expected": "記錄明確略過後才進入預覽；不能默認使用者不提供。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "DECLINE_IMAGE"
+  },
+  {
+    "id": "BTN-05",
+    "category": "按鈕",
+    "title": "選擇圖片",
+    "mode": "LINE人工",
+    "steps": "上傳candidate-a.png及candidate-b.png，從最新圖片選單選第二張。",
+    "expected": "預覽與正式文件只放所選圖片；其他原圖仍歸檔。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "SELECT_IMAGE"
+  },
+  {
+    "id": "BTN-06",
+    "category": "按鈕",
+    "title": "移除選圖",
+    "mode": "LINE人工",
+    "steps": "先選圖片後按最新移除圖片選項，再作圖片決策。",
+    "expected": "選圖關聯正確更新，不能繼續產出被移除的選圖；依格式重新詢問或略過。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "REMOVE_IMAGE"
+  },
+  {
+    "id": "BTN-07",
+    "category": "按鈕",
+    "title": "圖片選單分頁",
+    "mode": "LINE人工",
+    "steps": "上傳足以超過單頁選項的候選圖，再按下一頁及前一頁。",
+    "expected": "頁次、候選圖與簽名資源ID正確，不越界、不遺漏；使用工具測試涵蓋過量邊界。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "IMAGE_OPTIONS_PAGE"
+  },
+  {
+    "id": "BTN-08",
+    "category": "按鈕",
+    "title": "確認產檔",
+    "mode": "LINE人工",
+    "steps": "完成全部必要資訊，檢查預覽後按最新確認按鈕。",
+    "expected": "只有此受簽名保護動作建立正式快照與單號，背景產檔後交付。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java"
+    ],
+    "files": [],
+    "status": "待執行",
+    "action": "CONFIRM"
+  },
+  {
+    "id": "FLOW-01",
+    "category": "FLOW",
+    "title": "未指定與多格式",
+    "mode": "LINE人工",
+    "steps": "分別傳 #報價、#報價 CNS 船用。",
+    "expected": "要求選擇單一格式；不讓模型猜測。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationSchemeKeywordsTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-02",
+    "category": "FLOW",
+    "title": "缺表頭",
+    "mode": "LINE人工",
+    "steps": "上傳 sales-missing-header.csv，再依提示只補公司、工程、業務承辦。",
+    "expected": "一次列出缺欄位；補件保留品項與已存在欄位。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-03",
+    "category": "FLOW",
+    "title": "缺價格/數量",
+    "mode": "LINE人工",
+    "steps": "私訊 #報價 銷售，新增支架規格A單位組，但不提供單價與數量。",
+    "expected": "補問缺值，不猜價、不直接產檔。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationRequestValidationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-04",
+    "category": "FLOW",
+    "title": "別名與近似名稱",
+    "mode": "LINE人工",
+    "steps": "隔離主檔為外部鷹架設定別名外架；傳 #報價 CNS 外架2式。",
+    "expected": "映射至啟用代碼；近似名稱須確認，低信心補問，不新增重複品項。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiPromptServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationRequestValidationServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-05",
+    "category": "FLOW",
+    "title": "刪除固定列",
+    "mode": "LINE人工",
+    "steps": "用CNS固定品項範例建立草稿，再傳「明確刪除DUST_NET，其他保持不變」。",
+    "expected": "只有明確刪除代碼被移除；未指定固定列仍保留空白數量、不計價。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationCalculationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-06",
+    "category": "FLOW",
+    "title": "固定鎖價與惡意金額",
+    "mode": "LINE人工",
+    "steps": "固定品項輸入指定不合理單價或要求合計1元。",
+    "expected": "固定品項採主檔價；拒絕/忽略AI自算金額，合計由程式重算。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationCalculationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationContractTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-07",
+    "category": "FLOW",
+    "title": "臨時品項不限筆數",
+    "mode": "LINE人工",
+    "steps": "新草稿分別上傳CNS及一般架的3筆、250筆臨時品項CSV，確認後檢查全部分頁。",
+    "expected": "全部接受；250筆小計2500、稅125、合計2625；固定空白列保留，臨時資料不回寫主檔。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationRequestValidationServiceTest.java"
+    ],
+    "files": [
+      "csv/cns-3-temporary.csv",
+      "csv/cns-250-temporary.csv",
+      "csv/general-3-temporary.csv",
+      "csv/general-250-temporary.csv"
+    ],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-08",
+    "category": "FLOW",
+    "title": "格式鎖定衝突",
+    "mode": "LINE人工",
+    "steps": "先建立CNS草稿，再上傳sales-complete.csv。",
+    "expected": "回覆CSV_SCHEME_CONFLICT；原草稿資料不被改寫。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FLOW-09",
+    "category": "FLOW",
+    "title": "文字修改null欄位",
+    "mode": "LINE人工",
+    "steps": "只修改電話，其他表頭讓模型回null。",
+    "expected": "null表示未變更；不清空公司、工程或業務承辦。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiParsingServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "CSV-01",
+    "category": "CSV",
+    "title": "合併而非整份取代",
+    "mode": "LINE人工",
+    "steps": "SALES完整CSV後，上傳只含第一筆銷售支架且數量4的CSV。",
+    "expected": "小計881.96、稅44.10、總額926.06；另外兩筆保留，贈品金額仍為0。 CSV省略的兩列不得刪除。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "CSV-02",
+    "category": "CSV",
+    "title": "格式/引號/UTF8",
+    "mode": "LINE人工",
+    "steps": "逐一使用csv-manifest.json列出的38份檔案，先用自動測試核對，再選代表檔上傳。",
+    "expected": "合法檔成功，錯誤檔回覆可定位欄位或編碼錯誤；不得留下半套修改。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/controller/LineWebhookControllerTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "CSV-03",
+    "category": "CSV",
+    "title": "檔案大小與偽造宣告",
+    "mode": "LINE人工",
+    "steps": "由測試工具送出宣告超過1MiB、實際超過1MiB但宣告較小的檔案。",
+    "expected": "兩者均拒絕；未進入草稿mutation，下載串流關閉。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/controller/LineWebhookControllerTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "CSV-04",
+    "category": "CSV",
+    "title": "200與201筆",
+    "mode": "LINE人工",
+    "steps": "使用sales-200-items.csv及invalid-201-items.csv。",
+    "expected": "200筆可解析且總額210.00；201筆拒絕；另驗正式文件分頁。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "CSV-05",
+    "category": "CSV",
+    "title": "零價與四捨五入",
+    "mode": "LINE人工",
+    "steps": "使用sales-zero-price.csv及sales-rounding.csv。",
+    "expected": "零價允許，零數量拒絕；10.005×1複價10.01、稅0.50、合計10.51。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationExamplePackTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationCalculationServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-01",
+    "category": "IMAGE",
+    "title": "名片OCR",
+    "mode": "LINE人工",
+    "steps": "先上傳business-card.png；在引用回覆該圖片時傳「#報價 銷售，依名片填公司與聯絡人，工程為圖片測試，承辦測試承辦甲」。",
+    "expected": "辨識公司/聯絡人/0000000000；缺品項補問；不把標示TEST ONLY當交易資料。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-02",
+    "category": "IMAGE",
+    "title": "圖片規格與資料注入",
+    "mode": "LINE人工",
+    "steps": "引用spec-sheet.png建立SALES草稿，另引用instruction-trap.png。",
+    "expected": "規格圖可抽取兩筆明確品項；注入圖片不得覆寫系統規則、單價或確認流程。人工實測模型行為。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationRequestValidationServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-03",
+    "category": "IMAGE",
+    "title": "看不清的圖片",
+    "mode": "LINE人工",
+    "steps": "上傳unreadable.png並引用要求填入電話。",
+    "expected": "不能臆造電話；原值不變或補問。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiParsingServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-04",
+    "category": "IMAGE",
+    "title": "多圖排序與批次",
+    "mode": "LINE人工",
+    "steps": "一次傳多張candidate圖形成LINE imageSet；打亂事件順序並重送其中一張。",
+    "expected": "收齊或受控結束後評估；候選ID不遺漏、不重複；不產生多份草稿。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/controller/LineWebhookControllerTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/SqliteQuotationDraftWorkflowPortTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-05",
+    "category": "IMAGE",
+    "title": "圖片隱私與有效期",
+    "mode": "LINE人工",
+    "steps": "由工具修改預覽token、到期時間或切換另一owner存取。",
+    "expected": "拒絕無效/過期/跨owner預覽；S3模式仍可正常讀圖。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPendingImagePreviewServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/controller/MediaControllerQuotationAssetTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "IMAGE-06",
+    "category": "IMAGE",
+    "title": "圖片文件佈局",
+    "mode": "LINE人工",
+    "steps": "分別選landscape candidate-a與portrait candidate-b；以200筆測試品項產檔。",
+    "expected": "等比例、不變形、在品項後；不足空間另頁；公司範本既有圖片保持。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-01",
+    "category": "MODEL",
+    "title": "舊路徑相容",
+    "mode": "工具/隔離環境",
+    "steps": "AI_WORKFLOW_ENABLED=false執行五種文字腳本與CSV。",
+    "expected": "舊單模型最多一次修復；CSV零模型；計價與確認相同。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiParsingServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-02",
+    "category": "MODEL",
+    "title": "三角色分流",
+    "mode": "工具/隔離環境",
+    "steps": "在隔離環境啟用workflow，TEXT/VISION/ESCALATION設定不同模型，執行帶圖案例。",
+    "expected": "先VISION再TEXT；TEXT不收到原圖；只有契約錯誤/CONFLICT升級一次。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-03",
+    "category": "MODEL",
+    "title": "持久恢復",
+    "mode": "工具/隔離環境",
+    "steps": "完成模型步驟後模擬worker中斷，在相同owner/draft revision/event重送。",
+    "expected": "讀取checkpoint並重新業務驗證，已保存步驟不重呼叫；預算沿用。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationDurableReplyIntegrationTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-04",
+    "category": "MODEL",
+    "title": "快取失效與隔離",
+    "mode": "工具/隔離環境",
+    "steps": "更換owner、圖片內容、模型、Schema或使快取逾期再執行。",
+    "expected": "不可錯用舊快取；另一owner不可重用前者私有資料；TTL清除。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-05",
+    "category": "MODEL",
+    "title": "配額與unknown usage",
+    "mode": "工具/隔離環境",
+    "steps": "用本機stub分別模擬max-calls、output budget、total token門檻與不回usage。",
+    "expected": "停止額外呼叫並回AI_WORKFLOW_BUDGET；unknown不是零；總帳單門檻不是精確硬上限。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-06",
+    "category": "MODEL",
+    "title": "拒絕/截斷/HTTP錯誤",
+    "mode": "工具/隔離環境",
+    "steps": "stub回refusal、finish_reason=length、401、403、429、500、timeout及broken JSON。",
+    "expected": "分類錯誤；拒絕/HTTP不轉模型規避，契約錯誤最多一次修復/升級。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/ai/AiStructuredCompletionTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAiParsingServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-07",
+    "category": "MODEL",
+    "title": "跨端點憑證",
+    "mode": "工具/隔離環境",
+    "steps": "角色端點不同但不提供角色Secret，再補上測試專用金鑰。",
+    "expected": "缺獨立金鑰先拒絕；不得將基底金鑰送往新端點。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationModelWorkflowTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "MODEL-08",
+    "category": "MODEL",
+    "title": "稽核與機密",
+    "mode": "工具/隔離環境",
+    "steps": "比對workflow步驟、usage、requestId及錯誤log。",
+    "expected": "記錄角色/token/快取/失敗；不輸出憑證、完整客戶文字與圖片；未知成本不猜測。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/observability/AiUsageAuditServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/observability/SensitiveDataSanitizerTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/observability/MethodTraceLoggerIntegrationTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "SAFE-01",
+    "category": "SAFE",
+    "title": "私訊與群組",
+    "mode": "工具/隔離環境",
+    "steps": "同一文字/CSV/圖片分別從一對一和群組送出。",
+    "expected": "群組不建立報價；私訊才進報價入口。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/controller/LineWebhookControllerTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "SAFE-02",
+    "category": "SAFE",
+    "title": "Webhook簽章",
+    "mode": "工具/隔離環境",
+    "steps": "stub傳正確、缺漏與錯誤X-Line-Signature，並測試空channel secret。",
+    "expected": "不可信請求在進入業務流程前拒絕。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/controller/LineWebhookControllerTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "SAFE-03",
+    "category": "SAFE",
+    "title": "事件重送與並行確認",
+    "mode": "工具/隔離環境",
+    "steps": "工具重送同一事件，並行按確認，再模擬確認交易失敗。",
+    "expected": "不重建正式報價、不重複單號；失敗回滾事件/快照/流水狀態。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConfirmationConcurrencyTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConfirmationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationDurableReplyIntegrationTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "SAFE-04",
+    "category": "SAFE",
+    "title": "過期卡片/他人卡片",
+    "mode": "工具/隔離環境",
+    "steps": "修改草稿後按舊按鈕；使用另一owner或竄改HMAC/動作。",
+    "expected": "拒絕過期revision、跨owner、過期簽章及不支援動作。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPostbackSignerTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationLineWorkflowServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "SAFE-05",
+    "category": "SAFE",
+    "title": "取消與確認競爭",
+    "mode": "工具/隔離環境",
+    "steps": "工具同時取消和確認同一草稿，再重送成功動作。",
+    "expected": "只有合法狀態轉換成功；不出現取消後又新增正式報價。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConversationServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationConfirmationServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FILES-01",
+    "category": "FILES",
+    "title": "XLSX/PDF正常與分頁",
+    "mode": "工具/隔離環境",
+    "steps": "五份完整案例及200筆案例確認後開啟實際XLSX和PDF。",
+    "expected": "日期/期限/單號/檔名一致；金額、圖片、分頁及彙總符合格式；LibreOffice可讀。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationWorkbookServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPdfServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FILES-02",
+    "category": "FILES",
+    "title": "產檔失敗與重試",
+    "mode": "工具/隔離環境",
+    "steps": "測試環境模擬模板或LibreOffice失敗，再修復並重試。",
+    "expected": "保存失敗狀態與已有XLSX；重試沿用同單號、快照和資產版本，不重跑AI。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationGenerationJobWorkerTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/controller/QuotationXlsxRetryControllerTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPdfServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FILES-03",
+    "category": "FILES",
+    "title": "交付失敗與outbox恢復",
+    "mode": "工具/隔離環境",
+    "steps": "stub使LINE reply/push失敗或worker中斷，恢復後重試。",
+    "expected": "durable outbox保留payload與狀態，不重新計價或分配單號。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationReplyOutboxServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationDeliveryServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FILES-04",
+    "category": "FILES",
+    "title": "下載有效期與撤銷",
+    "mode": "工具/隔離環境",
+    "steps": "測試HTTPS下載有效、過期、撤銷、竄改及未知token。",
+    "expected": "只允許有效資源下載；DB保存token hash，無法下載未就緒文件。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/controller/QuotationDownloadControllerTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "FILES-05",
+    "category": "FILES",
+    "title": "S3歸檔與路徑",
+    "mode": "工具/隔離環境",
+    "steps": "工具測試S3圖片讀取、正式歸檔、跳脫/絕對路徑與不存在物件。",
+    "expected": "合法物件可讀；越權路徑拒絕；預檢失敗不留下半套正式輸出。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationAssetArchiveServiceTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationPendingImagePreviewServiceTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "ASSET-01",
+    "category": "ASSET",
+    "title": "CSV主檔交換",
+    "mode": "工具/隔離環境",
+    "steps": "隔離環境匯出主檔CSV，修改別名/價格，驗證後透過資產版本發布。",
+    "expected": "檔案保留完整欄位；錯誤資料整批拒絕；不存在列依契約停用；不用舊網頁逐筆編輯。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/service/quotation/QuotationMasterDataCsvValidationTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "ASSET-02",
+    "category": "ASSET",
+    "title": "資產版本/核准/回復",
+    "mode": "工具/隔離環境",
+    "steps": "stage、validate、approve、activate新版本，建立報價，再rollback並重試舊報價。",
+    "expected": "hash/schema/必要檔檢查；主檔與active切換在交易中；舊報價鎖定版本。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/companyasset/CompanyAssetServiceActivationTest.java",
+      "src/test/java/dev/miudog/linebotcommercial/repository/QuotationGenerationSnapshotRepositoryTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "OPS-01",
+    "category": "OPS",
+    "title": "服務健康與重啟",
+    "mode": "工具/隔離環境",
+    "steps": "docker compose up -d --wait；檢查readyz；stop再up。",
+    "expected": "DB/S3/App healthy，資料卷保留；不使用down -v。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/config/UnifiedEnvironmentConfigurationTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  },
+  {
+    "id": "OPS-02",
+    "category": "OPS",
+    "title": "Windows首次設定",
+    "mode": "工具/隔離環境",
+    "steps": "PowerShell5.1執行prepare-local-settings.ps1兩次。",
+    "expected": "無編碼ParserError；不覆寫已有Secret，空白外部憑證提示待補。",
+    "tests": [
+      "src/test/java/dev/miudog/linebotcommercial/config/CustomerOperationsContractTest.java"
+    ],
+    "files": [],
+    "status": "待執行"
+  }
+]

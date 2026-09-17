@@ -1,5 +1,7 @@
 # LINE AI 自動化報價驗收證據矩陣
 
+新版可執行輸入與操作步驟見 [報價測試套件](examples/quotation-test-pack/README.md) 及 [60 項功能案例](examples/quotation-test-pack/coverage-matrix.md)。案例清單與歷史驗收證據分開維護；實機結果請填入套件的執行紀錄。
+
 依據：[08 LINE AI 自動化報價 SRS](08-quotation-automation-srs.md)。本表區分「自動驗證」、
 「實機／檔案驗證」及「待補人工證據」；功能已實作不等於沙盒或特定主機已實測。
 
@@ -22,7 +24,7 @@
 | AC-02 | 通過 | `QuotationAiParsingServiceTest`、`QuotationRequestValidationServiceTest`、`SqliteQuotationDraftWorkflowPortTest` | 低信心缺漏、OCR 抬頭與既有欄位合併均有測試。 |
 | AC-03 | 通過 | `QuotationConversationServiceTest`、`QuotationLineMessageBuilderTest`、`SqliteQuotationDraftWorkflowPortTest` | 基礎與品項缺漏一次列出，局部補件重驗及取消按鈕均有測試。 |
 | AC-04 | 通過 | `QuotationCalculationServiceTest`、`QuotationWorkbookServiceTest` | 固定鎖價列保留；數量與複價空白列不進合計。 |
-| AC-05 | 通過 | `QuotationRequestValidationServiceTest`、`QuotationCalculationServiceTest` | CNS／一般架第三筆臨時品項被拒絕，動態格式採不同上限。 |
+| AC-05 | 自動驗證通過；實機待驗 | `QuotationExamplePackTest`、`QuotationConversationServiceTest`、`QuotationFixedSchemeFormalFlowTest` | CNS／一般架臨時品項不限筆數，已驗證3筆及250筆解析、計價、確認與跨頁XLSX。船用／空白／銷售保留原有200筆上限。 |
 | AC-06 | 通過 | `QuotationRequestValidationServiceTest`、`QuotationConfirmationServiceTest` | 動態品項只進草稿／正式快照，未回寫主檔。 |
 | AC-07 | 通過 | `QuotationCalculationServiceTest`、`QuotationWorkbookServiceTest` | 船用客戶列只含彙總，工作簿不暴露內部公式。 |
 | AC-08 | 通過 | `QuotationConversationServiceTest`、`QuotationLineMessageBuilderTest` | 船用／空白必問圖片，明確拒絕後才進預覽。 |

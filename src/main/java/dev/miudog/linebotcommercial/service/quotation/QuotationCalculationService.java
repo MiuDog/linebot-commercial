@@ -20,7 +20,6 @@ import java.util.Set;
 public class QuotationCalculationService {
 
 	private static final int MONEY_SCALE = 2;
-	private static final int MAXIMUM_FIXED_SCHEME_CUSTOM_ITEMS = 2;
 	private static final int MAXIMUM_DYNAMIC_ITEMS = 200;
 	private static final Set<String> FIXED_SCHEMES = Set.of("CNS", "GENERAL");
 	private static final Set<String> DYNAMIC_SCHEMES = Set.of("MARINE", "BLANK", "SALES");
@@ -87,10 +86,6 @@ public class QuotationCalculationService {
 		List<QuotationCalculationRequest.CustomItem> customItems,
 		Set<String> removedItemCodes
 	) {
-		if (customItems.size() > MAXIMUM_FIXED_SCHEME_CUSTOM_ITEMS) {
-			throw validation(schemeCode + " 每張報價最多 2 筆臨時品項");
-		}
-
 		// 外部 API：從資料庫取得當下全部啟用中的鎖價品項。
 		List<QuotationAdminRepository.SchemeItem> catalogItems = repository.findActiveSchemeItems(schemeCode);
 		Map<String, QuotationAdminRepository.SchemeItem> catalog = new LinkedHashMap<>();
@@ -136,7 +131,7 @@ public class QuotationCalculationService {
 		return lines;
 	}
 
-	// 方法：建立船用、空白或銷售的動態列，且不套用固定方案的兩筆上限。
+	// 方法：建立船用、空白或銷售的動態列，維持這三種格式的既有上限。
 	private List<QuotationCalculationResult.QuotationLine> resolveDynamicSchemeLines(
 		String schemeCode,
 		List<QuotationCalculationRequest.StandardItemIntent> standardIntents,

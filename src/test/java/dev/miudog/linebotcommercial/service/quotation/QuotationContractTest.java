@@ -119,7 +119,7 @@ class QuotationContractTest {
 			.isEqualByComparingTo("1000000000");
 		assertThat(customProperties.path("quantity").path("$ref").asString())
 			.isEqualTo("#/$defs/nullablePositiveExplicitDecimal");
-		assertThat(properties.path("customItems").path("maxItems").asInt()).isEqualTo(200);
+		assertThat(properties.path("customItems").has("maxItems")).isFalse();
 		assertThat(properties.path("imageAssessments").path("maxItems").asInt()).isBetween(1, 50);
 		assertThat(properties.path("selectedImageMessageId").path("description").asString())
 			.contains("highest distinctiveness score");

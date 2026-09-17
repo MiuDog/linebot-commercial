@@ -211,7 +211,7 @@ class QuotationRequestValidationServiceTest {
 	}
 
 	@Test
-	void rejectsTheThirdTemporaryItemForCns() {
+	void acceptsTheThirdTemporaryItemForCns() {
 		String customItem = customItemJson("temporary-2", "臨時品項二");
 		String request = validRequest().replace(
 			"\"customItems\": [" + customItemJson("temporary-1", "臨時品項") + "]",
@@ -221,9 +221,7 @@ class QuotationRequestValidationServiceTest {
 				+ customItemJson("temporary-3", "臨時品項三") + "]"
 		);
 
-		assertThatThrownBy(() -> service.validate(readJson(request), "CNS"))
-			.isInstanceOf(QuotationAdminException.class)
-			.hasMessageContaining("最多 2 筆");
+		assertThat(service.validate(readJson(request), "CNS").customItems()).hasSize(3);
 	}
 
 	@Test

@@ -354,11 +354,10 @@ public class QuotationRequestValidationService {
 
 	// 方法：驗證臨時或動態品項只包含使用者明確提供且附來源信心的欄位。
 	private List<CustomItem> validateCustomItems(JsonNode node, String schemeCode) {
-		requireArray(node, "臨時或動態品項", 0, MAXIMUM_CUSTOM_ITEMS);
+		requireArray(node, "臨時或動態品項", 0, CATALOG_FREE_SCHEMES.contains(schemeCode) ? MAXIMUM_CUSTOM_ITEMS : Integer.MAX_VALUE);
 
 		Set<String> seenIds = new HashSet<>();
 		List<CustomItem> items = new ArrayList<>();
-		int temporaryCount = 0;
 		for (int index = 0; index < node.size(); index++) {
 			JsonNode itemNode = node.get(index);
 			String label = "臨時或動態品項第 " + (index + 1) + " 筆";
@@ -372,8 +371,6 @@ public class QuotationRequestValidationService {
 
 			String kind = requiredEnum(itemNode, "kind", label + "種類", Set.of("TEMPORARY", "DYNAMIC"));
 			validateCustomItemKind(schemeCode, kind, label);
-			if ("TEMPORARY".equals(kind)) temporaryCount++;
-
 			items.add(
 				new CustomItem(
 					clientItemId,
@@ -388,9 +385,6 @@ public class QuotationRequestValidationService {
 			);
 		}
 
-		if (("CNS".equals(schemeCode) || "GENERAL".equals(schemeCode)) && temporaryCount > 2) {
-			throw validation("CNS／一般架每張報價最多 2 筆臨時品項");
-		}
 		return List.copyOf(items);
 	}
 
