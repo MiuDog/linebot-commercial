@@ -63,7 +63,7 @@ class LineQuotationVerticalIntegrationTest {
 			QuotationCalculationService calculator = mock(QuotationCalculationService.class);
 			LineStorageService line = mock(LineStorageService.class);
 			String instruction = "#報價 空白格式，範例公司，船塢工程，業務王先生";
-			when(parser.parse(eq(instruction), anyList(), eq("BLANK"))).thenReturn(
+			when(parser.parseDraft(eq(instruction), anyList(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(
 				new QuotationAiParsingService.ParseResult(validatedRequest(), "{}")
 			);
 			when(calculator.calculate(org.mockito.ArgumentMatchers.any())).thenReturn(calculation());

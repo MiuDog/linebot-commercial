@@ -99,7 +99,7 @@ class QuotationDurableReplyIntegrationTest {
 		durableOutbox.retryPending("EV-TEXT-CRASH");
 		durableOutbox.retryPending("EV-TEXT-CRASH");
 
-		verify(context.parser, times(1)).parse(anyString(), anyList(), anyString());
+		verify(context.parser, times(1)).parseDraft(anyString(), anyList(), any(), any());
 		verify(context.line, times(1)).push(
 			org.mockito.ArgumentMatchers.eq("U-TEXT"),
 			anyList(),
@@ -189,7 +189,7 @@ class QuotationDurableReplyIntegrationTest {
 		TestContext context = context("slow-ai.sqlite", false);
 		CountDownLatch parsingStarted = new CountDownLatch(1);
 		CountDownLatch allowParsing = new CountDownLatch(1);
-		when(context.parser.parse(anyString(), anyList(), anyString())).thenAnswer(invocation -> {
+		when(context.parser.parseDraft(anyString(), anyList(), any(), any())).thenAnswer(invocation -> {
 			parsingStarted.countDown();
 			if (!allowParsing.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("test timeout");
 
@@ -229,7 +229,7 @@ class QuotationDurableReplyIntegrationTest {
 		});
 		QuotationAiParsingService parser = mock(QuotationAiParsingService.class);
 		if (configureParser) {
-			when(parser.parse(anyString(), anyList(), anyString())).thenReturn(
+			when(parser.parseDraft(anyString(), anyList(), any(), any())).thenReturn(
 				new QuotationAiParsingService.ParseResult(validatedRequest(), "{}")
 			);
 		}

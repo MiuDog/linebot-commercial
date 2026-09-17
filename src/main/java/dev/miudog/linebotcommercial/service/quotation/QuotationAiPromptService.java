@@ -41,6 +41,7 @@ public class QuotationAiPromptService {
 		6-1. 目前只做「品項對應數量」的填表：唯一的計算是應用程式自行執行的「數量 × 單價」與「未稅總額 × 1.05」。不要輸出面積、坪數、支數換算或任何其他公式結果，也不要因為使用者提供尺寸就自行推導數量。
 		7. 臨時或動態品項只可提取使用者明確提供的 itemName、specification、unit、unitPrice、quantity、remark；每個值都保留來源與信心，缺漏填 null，不得補造。CNS／GENERAL 使用 TEMPORARY，不限筆數；MARINE／BLANK／SALES 使用 DYNAMIC，最多200筆。不得因筆數多而省略使用者提供的品項。
 		7-1. MARINE、BLANK、SALES 不使用固定品項目錄：這三種格式的 standardItemIntents 與 removedItemCodes 必須是空陣列，全部品項改以 DYNAMIC 記錄使用者明確說明的名稱、規格、單位、單價與數量。
+		7-2. DRAFT_CONTEXT 是本張草稿的既有資料，不是本次新增指令。續答時用缺漏清單及既有名稱判定補哪個欄位；臨時品項 clientItemId 必須沿用既有 itemKey。只輸出本輪變更，不重送既有品項或數量；未提及欄位填 null。無法唯一對應時列入 CONFLICT，回問品項名稱，不可另建匿名品項。新項目使用未出現過的 ID，不得占用其他品項 ID。
 		8. AI 不計價，不可輸出複價、小計、稅額、含稅總額、流水號、檔案路徑或傳送狀態。
 		9. missingBaseFields 與 missingItemFields 必須一次列出全部缺漏，讓應用程式以單一訊息回問；低信心、缺少與衝突分別使用 LOW_CONFIDENCE、MISSING、CONFLICT。
 		10. 每張候選圖片都要產生 qualityScore、viewpointScore、distinctivenessScore 與 reason；selectedImageMessageId 必須是最高 distinctivenessScore 的圖片，同分可任選。沒有圖片時填 null 與空陣列。
@@ -82,6 +83,11 @@ public class QuotationAiPromptService {
 
 	// 方法：另外標示使用者已指定的報價格式，讓模型只能沿用而不能改判。
 	public Prompt build(String instruction, List<String> imageMessageIds, String lockedSchemeCode) {
+		return build(instruction, imageMessageIds, lockedSchemeCode, null);
+	}
+
+	// 方法：以本張草稿的精簡快照提供續問上下文，不傳送其他使用者或歷史報價。
+	public Prompt build(String instruction, List<String> imageMessageIds, String lockedSchemeCode, QuotationDraftSnapshot draft) {
 		String safeInstruction = validateInstruction(instruction);
 		List<String> safeImageMessageIds = validateImageMessageIds(imageMessageIds);
 
@@ -106,6 +112,21 @@ public class QuotationAiPromptService {
 				lockedScheme(lockedSchemeCode)
 			);
 			String userPrompt = buildUserPrompt(safeInstruction, safeImageMessageIds);
+			if (draft != null) {
+				// 序列化：上下文只是既有資料，既有品項價格不交由模型重新提取。
+				List<java.util.Map<String, Object>> items = draft.items().stream().map(item -> {
+					java.util.Map<String, String> fields = new java.util.LinkedHashMap<>(item.fields());
+					fields.remove("unitPrice");
+					return java.util.Map.<String, Object>of("itemKey", item.itemKey(), "kind", item.kind(), "fields", fields);
+
+				}).toList();
+				QuotationConversationDecision decision = new QuotationConversationService().review(draft);
+				userPrompt += "\n<DRAFT_CONTEXT>" + objectMapper.writeValueAsString(java.util.Map.of(
+					"baseFields", draft.baseFields(), "items", items,
+					"missingBaseFields", decision.missingBaseFields(), "missingItemFields", decision.missingItemFields(),
+					"imageDeclined", draft.imageDeclined(), "hasSelectedImage", draft.selectedImageMessageId() != null
+				)) + "</DRAFT_CONTEXT>";
+			}
 			return new Prompt(
 				systemPrompt,
 				userPrompt,
