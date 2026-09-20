@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 在單一 SQLite 交易中配置每日流水號並保存不可變報價快照。
+ * 在單一資料庫交易中配置每日流水號並保存不可變報價快照。
  */
 @Service
 public class QuotationConfirmationService {
@@ -54,7 +54,7 @@ public class QuotationConfirmationService {
 	// 方法：驗證確認意圖，並以冪等交易配置流水號與建立快照。
 	public QuotationConfirmationResult confirm(QuotationConfirmationCommand command) {
 		validateCommand(command);
-		// 外部呼叫：由 Spring 交易管理器在同一 SQLite 交易中完成配號與快照。
+		// 外部呼叫：由 Spring 交易管理器在同一交易中完成配號與快照。
 		QuotationConfirmationResult result = transactions.execute(
 			status -> confirmInTransaction(command)
 		);
@@ -70,6 +70,14 @@ public class QuotationConfirmationService {
 		if (existing != null) {
 			generationJobs.enqueueIfAbsent(existing.quotationId(), MDC.get("requestId"));
 			return existing;
+		}
+		if (!legacyFilesystem) {
+			try {
+				companyAssets.activeSetId();
+			}
+			catch (IllegalStateException exception) {
+				throw new QuotationConfirmationException("QUOTATION_ASSETS_NOT_READY", "尚未啟用公司報價資產包，請管理員匯入並啟用正式範本與公司素材後，再按確認。草稿仍保留。");
+			}
 		}
 
 		DraftRecord draftRecord = requireConfirmableDraft(
@@ -147,12 +155,15 @@ public class QuotationConfirmationService {
 				s.code AS scheme_code, s.id AS scheme_id, t.id AS template_id
 			FROM quotation_draft d
 			JOIN quotation_scheme s ON s.id = d.scheme_id
-			JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
+			LEFT JOIN quotation_template t ON t.scheme_id = s.id AND t.is_active = 1
 			WHERE d.id = ?
 			""", draftId);
 		if (rows.size() != 1) throw error("找不到可使用的確認草稿或啟用範本");
 
 		Map<String, Object> row = rows.getFirst();
+		if (row.get("template_id") == null) {
+			throw new QuotationConfirmationException("QUOTATION_TEMPLATE_NOT_READY", "此報價格式尚未啟用範本，請管理員啟用公司資產版本後，再按確認。草稿仍保留。");
+		}
 		if (!"AWAITING_CONFIRMATION".equals(row.get("status"))) throw error("資料庫草稿不在可確認狀態");
 
 		int persistedRevision = ((Number) row.get("revision")).intValue();
@@ -201,7 +212,7 @@ public class QuotationConfirmationService {
 			INSERT INTO quotation_daily_sequence (sequence_date, last_sequence, updated_at)
 			VALUES (?, 1, CURRENT_TIMESTAMP)
 			ON CONFLICT (sequence_date) DO UPDATE SET
-				last_sequence = last_sequence + 1,
+				last_sequence = quotation_daily_sequence.last_sequence + 1,
 				updated_at = CURRENT_TIMESTAMP
 			""", quotationDate.toString());
 		if (changed != 1) throw error("無法配置當日報價流水號");
@@ -253,7 +264,7 @@ public class QuotationConfirmationService {
 				""";
 			PreparedStatement statement = connection.prepareStatement(
 				sql,
-				Statement.RETURN_GENERATED_KEYS
+				new String[] {"id"}
 			);
 			statement.setLong(1, draft.draftId());
 			statement.setString(2, quotationNumber);
@@ -331,7 +342,7 @@ public class QuotationConfirmationService {
 		int changed = jdbc.update("""
 			UPDATE quotation_draft
 			SET status = 'CONFIRMED', revision = ?,
-				confirmed_at = COALESCE(confirmed_at, CURRENT_TIMESTAMP),
+				confirmed_at = COALESCE(confirmed_at, CAST(CURRENT_TIMESTAMP AS TEXT)),
 				updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND status = 'AWAITING_CONFIRMATION' AND revision = ?
 			""", confirmedRevision, draftId, confirmedRevision - 1);

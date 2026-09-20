@@ -1,6 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 
 /**
  * 將 LINE 報價流程例外轉成可行動、不洩漏內部資訊的穩定錯誤回覆。
@@ -14,6 +15,10 @@ public final class QuotationLineFailureMessageResolver {
 	public static Failure resolve(RuntimeException exception, Operation operation) {
 		if (exception instanceof QuotationAiException aiException) return aiFailure(aiException);
 
+		if (exception instanceof QuotationConfirmationException confirmation) return new Failure(confirmation.code(), withCode(safeDetail(confirmation.getMessage()), confirmation.code()));
+
+		if (exception instanceof QuotationConversationException conversation) return new Failure(conversation.code(), withCode(safeDetail(conversation.getMessage()), conversation.code()));
+
 		if (exception instanceof QuotationLineWorkflowException workflowException) return new Failure(workflowException.code(), withCode(workflowException.getMessage(), workflowException.code()));
 
 		if (exception instanceof QuotationPostbackException postbackException) {
@@ -23,10 +28,17 @@ public final class QuotationLineFailureMessageResolver {
 			);
 		}
 
-		if (exception instanceof DataAccessException) {
+		if (exception instanceof TransientDataAccessException) {
 			return new Failure(
 				"QUOTATION_DATABASE_BUSY",
 				withCode("報價資料庫目前忙碌，資料尚未遺失，請稍後重試。", "QUOTATION_DATABASE_BUSY")
+			);
+		}
+
+		if (exception instanceof DataAccessException) {
+			return new Failure(
+				"QUOTATION_DATABASE_ERROR",
+				withCode("報價資料處理失敗，請將錯誤代碼提供給管理員檢查。", "QUOTATION_DATABASE_ERROR")
 			);
 		}
 
@@ -48,6 +60,7 @@ public final class QuotationLineFailureMessageResolver {
 		String code = exception.code();
 		String message = switch (code) {
 			case "AI_WORKFLOW_CONFIG" -> "報價 workflow 設定不完整，請管理員檢查角色模型、端點、金鑰與配額。";
+			case "AI_ENDPOINT_INVALID" -> "AI 網址誤設為網站或管理後台。OpenAI Platform 請設定 https://api.openai.com/v1，重新建立容器後再試。";
 			case "AI_WORKFLOW_BUDGET" -> "本輪 AI 解析已達預算或供應商缺少用量資料，請拆分輸入或使用 CSV。";
 			case "AI_REFUSED" -> "AI 無法處理本次資料，請修改輸入或使用 CSV。";
 			case "AI_OUTPUT_TRUNCATED" -> "AI 輸出被截斷，請拆分輸入或請管理員調整輸出預算。";

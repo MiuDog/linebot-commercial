@@ -66,6 +66,11 @@ class SqliteQuotationDraftWorkflowPortTest {
 			new DataSourceTransactionManager(dataSource)
 		);
 		lenient().when(calculator.calculate(any())).thenReturn(calculation());
+		lenient().when(parser.parseDraft(any(), anyList(), any(), any())).thenAnswer(call -> {
+			QuotationDraftSnapshot draft = call.getArgument(2);
+			return parser.parse(call.getArgument(0), call.getArgument(1), draft.schemeCode());
+
+		});
 	}
 
 	@AfterEach
@@ -150,6 +155,8 @@ class SqliteQuotationDraftWorkflowPortTest {
 	@Test
 	void locksTheSchemeChosenByTheUserAndParsesWithIt() {
 		QuotationDraftWork created = port.applyText("U1", "M1", "#報價 外牆鷹架 2");
+		when(parser.parse("#報價 外牆鷹架 2\n格式已選擇，請處理尚未解析的報價內容。", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
 		QuotationDraftWork schemed = port.applyScheme(created.draft().draftId(), "U1", "GENERAL");
 		when(parser.parse("外部鷹架 2m2", List.of(), "GENERAL"))
 			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
@@ -157,6 +164,8 @@ class SqliteQuotationDraftWorkflowPortTest {
 		QuotationDraftWork parsed = port.applyText("U1", "M2", "外部鷹架 2m2");
 
 		assertThat(schemed.draft().schemeCode()).isEqualTo("GENERAL");
+		assertThat(schemed.draft().items()).hasSize(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quotation_draft_message WHERE ai_response_json IS NULL", Integer.class)).isZero();
 		assertThat(parsed.draft().schemeCode()).isEqualTo("GENERAL");
 		assertThat(parsed.draft().items()).hasSize(1);
 	}
@@ -372,6 +381,82 @@ class SqliteQuotationDraftWorkflowPortTest {
 			Integer.class,
 			first.draft().draftId()
 		)).isEqualTo(1);
+	}
+
+	@Test
+	void passesOnlyTheOwnersPersistedDraftToFollowupParsing() {
+		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 一般架");
+		when(parser.parse("公司是新公司", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(headerOnlyRequest("新公司", null), "{}"));
+		port.applyText("U1", "M2", "公司是新公司");
+		var context = org.mockito.ArgumentCaptor.forClass(QuotationDraftSnapshot.class);
+		verify(parser).parseDraft(eq("公司是新公司"), anyList(), context.capture(), any());
+		assertThat(context.getValue().draftId()).isEqualTo(first.draft().draftId());
+		assertThat(context.getValue().baseFields()).containsEntry("companyName", "範例工程");
+		assertThat(context.getValue().items()).hasSize(1);
+		assertThat(port.hasActiveDraft("U2")).isFalse();
+	}
+
+	@Test
+	void mergesChangedAiIdsWithoutAddingASecondCharge() {
+		when(parser.parse("#報價 銷售", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 銷售");
+		// 資料庫：模擬上一輪模型使用不同 ID，續問回傳完整同名品項。
+		jdbc.update("UPDATE quotation_draft_item SET client_item_id = 'TEMP-1' WHERE draft_id = ?", first.draft().draftId());
+		when(parser.parse("特製扣件 2 個", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		QuotationDraftWork next = port.applyText("U1", "M2", "特製扣件 2 個");
+		assertThat(next.draft().items()).singleElement().satisfies(item -> {
+			assertThat(item.itemKey()).isEqualTo("TEMP-1");
+			assertThat(item.fields()).containsEntry("quantity", "2");
+		});
+	}
+
+	@Test
+	void keepsAmbiguousSameNameRowsAndRollsBackTheWholePatch() {
+		when(parser.parse("#報價 銷售", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 銷售");
+		jdbc.update("UPDATE quotation_draft_item SET client_item_id = 'old-1' WHERE draft_id = ?", first.draft().draftId());
+		jdbc.update("""
+			INSERT INTO quotation_draft_item (draft_id, item_kind, client_item_id, item_name_snapshot, quantity, display_order)
+			VALUES (?, 'CUSTOM', 'old-2', '特製扣件', 5, 2)
+			""", first.draft().draftId());
+		QuotationDraftSnapshot before = port.load(first.draft().draftId(), "U1").draft();
+		when(parser.parse("特製扣件 2 個", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.applyText("U1", "M2", "特製扣件 2 個"))
+			.hasMessageContaining("無法唯一對應");
+		assertThat(port.load(first.draft().draftId(), "U1").draft()).isEqualTo(before);
+	}
+
+	@Test
+	void doesNotOverwriteAnExistingDifferentNameWhenAiReusesItsId() {
+		when(parser.parse("#報價 銷售", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 銷售");
+		jdbc.update("UPDATE quotation_draft_item SET item_name_snapshot = '護欄' WHERE draft_id = ?", first.draft().draftId());
+		when(parser.parse("扣件 2 個", List.of(), "SALES"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(customItemRequest(false), "{}"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.applyText("U1", "M2", "扣件 2 個"))
+			.hasMessageContaining("既有名稱不同");
+		assertThat(port.load(first.draft().draftId(), "U1").draft().items()).singleElement()
+			.satisfies(item -> assertThat(item.fields()).containsEntry("itemName", "護欄"));
+	}
+
+	@Test
+	void rejectsAConflictingNewSchemeWithoutChangingTheSavedDraft() {
+		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 一般架");
+		clearInvocations(parser);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.applyText("U1", "M2", "#報價 銷售"))
+			.hasMessageContaining("草稿");
+		assertThat(port.load(first.draft().draftId(), "U1").draft()).isEqualTo(first.draft());
+		verifyNoInteractions(parser);
 	}
 
 	@Test

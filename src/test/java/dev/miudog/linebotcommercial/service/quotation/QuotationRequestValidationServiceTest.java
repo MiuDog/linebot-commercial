@@ -198,6 +198,43 @@ class QuotationRequestValidationServiceTest {
 			.hasMessageContaining("nextAction");
 	}
 
+	// 方法：船用與空白已完成圖片決策時，模型錯猜下一步不應使有效動態品項整批失敗。
+	@Test
+	void derivesImageDecisionForMarineAndBlankInsteadOfTrustingModelAction() {
+		for (String scheme : List.of("MARINE", "BLANK")) {
+			for (boolean declined : List.of(false, true)) {
+				for (String suggested : List.of("SHOW_PREVIEW", "REQUEST_IMAGE_DECISION", "REQUEST_BASE_FIELDS", "REQUEST_ITEM_FIELDS")) {
+					String request = salesRequestWithDynamicItems(1)
+						.replace("\"SALES\"", "\"" + scheme + "\"")
+						.replace("\"imageDeclined\": false", "\"imageDeclined\": " + declined)
+						.replace("\"SHOW_PREVIEW\"", "\"" + suggested + "\"");
+					var result = service.validate(readJson(request), scheme);
+					assertThat(result.nextAction()).isEqualTo(declined ? "SHOW_PREVIEW" : "REQUEST_IMAGE_DECISION");
+					assertThat(result.customItems()).hasSize(1);
+				}
+			}
+		}
+	}
+
+	// 方法：已選圖、缺基礎欄位與缺品項欄位仍依固定優先順序，不能被模型預覽建議跳過。
+	@Test
+	void derivesActionFromValidatedFieldsForAllModes() {
+		for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
+			var root = (tools.jackson.databind.node.ObjectNode) readJson(salesRequestWithDynamicItems(0).replace("\"SALES\"", "\"" + scheme + "\""));
+			root.put("nextAction", "REQUEST_IMAGE_DECISION");
+			root.set("imageAssessments", readJson("[" + imageAssessmentJson("image-1", "0.95") + "]"));
+			root.put("selectedImageMessageId", "image-1");
+			assertThat(service.validate(root, scheme).nextAction()).isEqualTo("SHOW_PREVIEW");
+			root.put("nextAction", "SHOW_PREVIEW");
+			root.set("missingItemFields", readJson("""
+				[{"itemRef":"item-1","fields":["quantity"],"reason":"MISSING","sourceText":"品項未提供數量","confidence":0}]
+				"""));
+			assertThat(service.validate(root, scheme).nextAction()).isEqualTo("REQUEST_ITEM_FIELDS");
+			root.set("missingBaseFields", readJson("[" + missingBaseFieldJson("companyName") + "]"));
+			assertThat(service.validate(root, scheme).nextAction()).isEqualTo("REQUEST_BASE_FIELDS");
+		}
+	}
+
 	@Test
 	void rejectsAnActiveDatabaseSchemeOutsideTheFiveFormatContract() {
 		when(repository.findSchemes()).thenReturn(

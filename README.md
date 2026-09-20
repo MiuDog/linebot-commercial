@@ -108,9 +108,21 @@ docker compose --profile tunnel down
 
 新增選用的 [多模型 workflow](docs/quotation-model-workflow.md)：圖片觀察、文字抽取與一次升級可各自使用不同模型／端點，具整輪預算與持久檢查點。`AI_WORKFLOW_ENABLED=false` 預設保留原單模型行為；設定為 `true` 才啟用。CSV、計價、預覽、確認與產檔不變。
 
+`linebot.cmd` →「首次設定」現在可啟用 harness 並設定 TEXT／VISION／ESCALATION 模型。驗證會列出各角色實際模型；留空會沿用 `AI_MODEL`，三者相同時會提醒。OpenAI Platform 的 API 網址是 `https://api.openai.com/v1`，不是 `https://openai.com` 或管理後台。更新 `.env` 後使用 `docker compose up -d --force-recreate app` 套用；單純 restart 不會更新容器環境變數。本機格式驗證成功不代表金鑰或模型權限有效。
+
+更換金鑰時，精靈會顯示「已寫入並讀回確認」與實際檔案位置；空白、過短或多行輸入會保留原檔案並回報失敗。設定後請回主選單啟動服務：控制台會強制重建 App 並等待健康檢查，確保載入新 Secret。只保存檔案不會自動更新已執行中的 App；保存與健康檢查也不等同供應商認證成功。
+
 已加入 strict JSON Schema、依格式縮小品項目錄，以及最多5次嘗試（含首次）的暫時故障重試／格式修復。401／403、拒絕及截斷直接回報可行動的錯誤；workflow仍受整輪token與期限限制。普通文字修正不會重送全部圖片，計價與確認仍由程式執行。`AI_MAX_COMPLETION_TOKENS` 預設4000，應依截斷率及用量調整。
 
 處理期間顯示LINE載入動畫；在私訊輸入 **`#報價進度`** 可查詢辨識、驗證、重試、Excel、PDF及交付階段。查詢只用該次事件的免費reply，不呼叫AI或新增草稿；不會為進度額外發送push。詳見[重試與LINE進度限制](docs/quotation-model-workflow.md#重試與line進度)。
+
+### 使用者草稿記憶與續問
+
+一對一 LINE 報價依使用者 ID 保存於資料庫，服務重啟後仍可續接。缺少公司、工程、承辦或品項欄位時會保留已填資料並繼續補問；每輪 AI 只取得目前草稿的欄位、品項識別與缺漏，不需重送整段歷史對話。先傳內容再選格式時，也會保存原文並於選格式後接續解析。
+
+同一臨時品項的補答會沿用既有識別；模型換 ID 時僅在名稱與規格可唯一對應時更新，數量採覆寫而非累加。若有多個候選或 ID 對應不同名稱，會保留草稿並要求釐清。既有不同規格的同名品項仍可分列。
+
+每人同時處理一張草稿。更換格式請先按「取消報價」，再送出 `#報價`。已確認報價保留歷史資料，但目前沒有「自動套用上次報價」指令；新草稿不會帶入舊數量、單價或客戶資料。更新不會自動刪除先前已產生的重複列，舊草稿請核對明細，必要時取消後重建。
 
 重複報價可在 LINE 私訊直接上傳 [報價輸入 CSV](docs/quotation-input-csv.md)，不使用 AI 抽取，仍走草稿、預覽及確認。此 CSV 與維護品項的主檔 CSV 不同。改善內容與後續量測見 [低 token 報價穩定性](docs/quotation-ai-reliability.md)；尚未宣稱真實模型成功率提升幅度。
 
@@ -121,6 +133,21 @@ docker compose --profile tunnel down
 真實 LINE 對話與生成結果的截圖範例正在準備，進度與驗收步驟見 [實機範例](docs/examples/README.md)；尚未完成前不以模擬圖片代替。
 
 測試輸入已備妥：[五種報價格式測試套件](docs/examples/quotation-test-pack/README.md)，包含文字腳本、38 份 CSV、6 張合成圖片與 60 項功能案例。可執行 `./mvnw.cmd -q -Dtest=QuotationExamplePackTest test` 驗證範例檔案與預期計價。
+
+正式確認另有 PostgreSQL 回歸測試，涵蓋五種格式配號、快照、重複確認與失敗回滾。Linux CI 自動執行；本機可使用獨立測試容器（不連接正式資料庫、不發送 LINE）：
+
+```powershell
+docker run -d --rm --name quotation-confirmation-test -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1::5432 postgres:17.11-alpine3.24
+# 確認 pg_isready 回報 accepting connections 後再執行測試。
+docker exec quotation-confirmation-test pg_isready -U postgres
+$testPort = (docker port quotation-confirmation-test 5432/tcp).Split(':')[-1]
+$env:TEST_POSTGRES_URL = "jdbc:postgresql://127.0.0.1:$testPort/postgres"
+.\mvnw.cmd '-Dtest=QuotationPostgresConfirmationTest' test
+Remove-Item Env:TEST_POSTGRES_URL
+docker stop quotation-confirmation-test
+```
+
+未設定 `TEST_POSTGRES_URL` 時，此項測試會明確標示跳過，其餘 SQLite 測試照常執行。`QUOTATION_DATABASE_BUSY` 表示暫時性資料庫錯誤；SQL 或其他非暫時性資料存取錯誤回覆 `QUOTATION_DATABASE_ERROR`，應由管理員查閱同次操作日誌。
 
 ```text
 mvnw.cmd clean verify

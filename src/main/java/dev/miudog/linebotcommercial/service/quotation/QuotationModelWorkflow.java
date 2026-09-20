@@ -68,12 +68,20 @@ public class QuotationModelWorkflow {
 	// 方法：依固定步驟執行；缺少資料保持補問，契約修復與傳輸重試共用整輪預算。
 	public QuotationAiParsingService.ParseResult parse(String instruction, List<AiImageInput> images, String scheme,
 		Scope scope, Function<String, QuotationAiParsingService.ParseResult> validate) {
+		return parse(instruction, images, scheme, scope, validate, null);
+	}
+
+	// 方法：將目前草稿納入提示詞與檢查點內容摘要，避免跨輪沿用過時答案。
+	public QuotationAiParsingService.ParseResult parse(String instruction, List<AiImageInput> images, String scheme,
+		Scope scope, Function<String, QuotationAiParsingService.ParseResult> validate, QuotationDraftSnapshot draft) {
 		if (scope == null || scope.ownerId() == null || scope.ownerId().isBlank() || scope.eventKey() == null || scope.eventKey().isBlank()) {
 			throw new QuotationAiException("AI_WORKFLOW_CONFIG", "Workflow 缺少使用者或事件識別");
 		}
 		Session session = new Session(scope);
 		List<String> ids = images.stream().map(AiImageInput::messageId).toList();
-		QuotationAiPromptService.Prompt prompt = prompts.build(instruction, ids, scheme);
+		QuotationAiPromptService.Prompt prompt = draft == null
+			? prompts.build(instruction, ids, scheme)
+			: prompts.build(instruction, ids, scheme, draft);
 		String userPrompt = prompt.userPrompt();
 		if (!images.isEmpty()) {
 			JsonNode schema = visionSchema(ids);

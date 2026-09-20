@@ -32,6 +32,7 @@ class CompanyAssetServiceActivationTest {
 
 		InOrder ordered = inOrder(fixture.masterData(), fixture.repository());
 		ordered.verify(fixture.masterData()).importCsv(MASTER_DATA);
+		ordered.verify(fixture.repository()).registerTemplates(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.any());
 		ordered.verify(fixture.repository()).activate(42L, "asset-owner", false);
 	}
 
@@ -44,6 +45,7 @@ class CompanyAssetServiceActivationTest {
 
 		InOrder ordered = inOrder(fixture.masterData(), fixture.repository());
 		ordered.verify(fixture.masterData()).importCsv(MASTER_DATA);
+		ordered.verify(fixture.repository()).registerTemplates(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.any());
 		ordered.verify(fixture.repository()).activate(42L, "asset-owner", true);
 	}
 
@@ -92,14 +94,20 @@ class CompanyAssetServiceActivationTest {
 			"hash"
 		);
 		when(repository.required("2026.09.0")).thenReturn(approved, active);
-		when(repository.objects(42L)).thenReturn(List.of(itemMaster));
+		byte[] definitions = """
+			{"schemaVersion":"1.1","templates":[{"schemeCode":"CNS"},{"schemeCode":"GENERAL"},{"schemeCode":"MARINE"},{"schemeCode":"BLANK"},{"schemeCode":"SALES"}]}
+			""".getBytes(StandardCharsets.UTF_8);
+		StoredManifestObject templates = new StoredManifestObject(CompanyAssetPurpose.TEMPLATE_DEFINITIONS,
+			"company-assets/sets/2026.09.0/templates.bin", "version-1", "application/json", definitions.length, "hash");
+		when(repository.objects(42L)).thenReturn(List.of(itemMaster, templates));
 		when(storage.get(itemMaster.objectKey())).thenReturn(MASTER_DATA);
+		when(storage.get(templates.objectKey())).thenReturn(definitions);
 
 		CompanyAssetService service = new CompanyAssetService(
 			new CompanyProperties("company-test"),
 			storage,
 			repository,
-			mock(ObjectMapper.class),
+			new ObjectMapper(),
 			masterData
 		);
 		return new Fixture(service, repository, masterData);

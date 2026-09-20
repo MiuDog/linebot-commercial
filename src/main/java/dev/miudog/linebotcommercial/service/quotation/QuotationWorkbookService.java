@@ -566,7 +566,40 @@ public class QuotationWorkbookService {
 		}
 
 		writeTotals(document, template, subtotal, tax, total);
+		fitPrintedPage(document);
 		return serializeXml(document);
+	}
+
+	// 方法：每張工作表已由程式分頁，列印時完整縮成一頁，避免固定比例切斷備註欄與印章。
+	private void fitPrintedPage(Document document) {
+		// 保留母檔明訂列高，避免 LibreOffice 自動縮列後把印章留在列印區之外。
+		NodeList rows = document.getElementsByTagNameNS(SPREADSHEET_NAMESPACE, "row");
+		for (int index = 0; index < rows.getLength(); index++) {
+			Element row = (Element) rows.item(index);
+			if (row.hasAttribute("ht")) row.setAttribute("customHeight", "1");
+		}
+
+		Element root = document.getDocumentElement();
+		Element properties = (Element) document.getElementsByTagNameNS(SPREADSHEET_NAMESPACE, "sheetPr").item(0);
+		if (properties == null) {
+			properties = document.createElementNS(SPREADSHEET_NAMESPACE, "sheetPr");
+			root.insertBefore(properties, root.getFirstChild());
+		}
+		Element fit = (Element) document.getElementsByTagNameNS(SPREADSHEET_NAMESPACE, "pageSetUpPr").item(0);
+		if (fit == null) {
+			fit = document.createElementNS(SPREADSHEET_NAMESPACE, "pageSetUpPr");
+			properties.appendChild(fit);
+		}
+		fit.setAttribute("fitToPage", "1");
+		Element setup = (Element) document.getElementsByTagNameNS(SPREADSHEET_NAMESPACE, "pageSetup").item(0);
+		if (setup == null) {
+			setup = document.createElementNS(SPREADSHEET_NAMESPACE, "pageSetup");
+			Node footer = document.getElementsByTagNameNS(SPREADSHEET_NAMESPACE, "headerFooter").item(0);
+			root.insertBefore(setup, footer);
+		}
+		setup.removeAttribute("scale");
+		setup.setAttribute("fitToWidth", "1");
+		setup.setAttribute("fitToHeight", "1");
 	}
 
 	// 方法：寫入單一報價品項；直接計價保留公式，其餘模式只揭露既有最終金額。

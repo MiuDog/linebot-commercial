@@ -122,6 +122,11 @@ function Save-CustomerSecret {
 	# 外部檔案 API：建立本機 Secret 目錄並以 UTF-8 無 BOM 保存單行內容。
 	[System.IO.Directory]::CreateDirectory($secretDirectory) | Out-Null
 	[System.IO.File]::WriteAllText($secretPath, $Value, [System.Text.UTF8Encoding]::new($false))
+
+	# 外部檔案 API：立即讀回比對，只有實際保存成功才能顯示完成。
+	if ([System.IO.File]::ReadAllText($secretPath) -cne $Value) {
+		throw [System.IO.IOException]::new("Secret 保存後比對失敗。")
+	}
 }
 
 # 方法：詢問一般設定，空白輸入時保留目前值。
@@ -248,6 +253,19 @@ function Test-CustomerConfiguration {
 		$issues.Add((New-ConfigurationIssue "AI API 網址" "AI_API_URL 不是有效的 HTTPS 網址。" "填入供應商提供的 HTTPS API 基底網址，不要填管理後台網址。"))
 	}
 
+	# 各角色端點都需檢查，避免設定精靈接受官網或管理後台網址。
+	foreach ($urlName in @("AI_API_URL", "AI_TEXT_API_URL", "AI_VISION_API_URL", "AI_ESCALATION_API_URL")) {
+		$configuredUrl = $environment[$urlName]
+		if ([string]::IsNullOrWhiteSpace($configuredUrl)) { continue }
+		if ($urlName -ne "AI_API_URL" -and $environment["AI_WORKFLOW_ENABLED"] -ne "true") { continue }
+		$endpoint = $null
+		$validEndpoint = [System.Uri]::TryCreate($configuredUrl, [System.UriKind]::Absolute, [ref]$endpoint)
+		if (-not $validEndpoint -or $endpoint.Scheme -ne "https" -or
+			$endpoint.Host -in @("openai.com", "www.openai.com", "platform.openai.com", "chatgpt.com", "www.chatgpt.com", "chat.openai.com")) {
+			$issues.Add((New-ConfigurationIssue $urlName "不是可用的 HTTPS API 網址，或誤填網站／管理後台。" "OpenAI Platform 使用 https://api.openai.com/v1；其他供應商使用其 API 網址。"))
+		}
+	}
+
 	$secretDirectory = Join-Path $ProjectRoot "secrets"
 	foreach ($definition in Get-RequiredSecretDefinitions $environment) {
 		$secretPath = Join-Path $secretDirectory $definition.Name
@@ -276,7 +294,24 @@ function Show-ConfigurationValidation {
 	)
 
 	if ($Validation.IsValid) {
-		Write-Host "[通過] 設定完整，可安全啟動。" -ForegroundColor Green
+		Write-Host "[通過] 本機設定格式完整；尚未驗證 API 金鑰與模型權限。" -ForegroundColor Green
+		$environment = $Validation.Environment
+		if ($environment["AI_WORKFLOW_ENABLED"] -eq "true") {
+			Write-Host "[AI 路由] Harness 已啟用：圖片 → VISION；文字 → TEXT；驗證修復 → ESCALATION。"
+			$models = @()
+			foreach ($role in @("TEXT", "VISION", "ESCALATION")) {
+				$model = $environment["AI_${role}_MODEL"]
+				if ([string]::IsNullOrWhiteSpace($model)) { $model = $environment["AI_MODEL"] }
+				$models += $model
+				Write-Host "[AI 路由] $role = $model"
+			}
+			if (@($models | Select-Object -Unique).Count -eq 1) {
+				Write-Host "[注意] 三個角色目前使用同一模型；請在首次設定指定不同角色模型。" -ForegroundColor Yellow
+			}
+		}
+		else {
+			Write-Host "[AI 路由] Harness 未啟用，沿用單模型 AI_MODEL。"
+		}
 		return
 	}
 
@@ -356,6 +391,13 @@ function Invoke-ComposeUp {
 	if ($LASTEXITCODE -ne 0) {
 		Write-Host "`n原因：服務未能全部進入健康狀態。" -ForegroundColor Red
 		Write-Host "解法：回到主選單執行「連線與環境診斷」，再執行「查看 App 紀錄」。"
+		return $false
+	}
+
+	# 外部 Docker API：Secret 內容異動不一定觸發 Compose 重建，固定重建 App 以重新載入憑證。
+	& docker compose up -d --no-deps --no-build --force-recreate --wait app
+	if ($LASTEXITCODE -ne 0) {
+		Write-Host "[未完成] App 未能重新載入設定；請執行連線診斷，不能視為新金鑰已生效。" -ForegroundColor Red
 		return $false
 	}
 
@@ -471,13 +513,45 @@ function Invoke-CustomerSetup {
 	Set-CustomerEnvironmentValue $EnvironmentPath "AI_MODEL" $aiModel
 	Set-CustomerEnvironmentValue $EnvironmentPath "TUNNEL_ENABLED" $tunnelEnabled.ToString().ToLowerInvariant()
 
+	if (-not [string]::IsNullOrWhiteSpace($aiApiUrl)) {
+		$workflowEnabled = $environment["AI_WORKFLOW_ENABLED"] -eq "true"
+		$workflowAnswer = Read-Host "啟用 harness 多模型分工？目前：$workflowEnabled（y/n，Enter 保留）"
+		if ($workflowAnswer -match "^[yY]$") { $workflowEnabled = $true }
+		if ($workflowAnswer -match "^[nN]$") { $workflowEnabled = $false }
+		Set-CustomerEnvironmentValue $EnvironmentPath "AI_WORKFLOW_ENABLED" $workflowEnabled.ToString().ToLowerInvariant()
+		if ($workflowEnabled) {
+			$openAiDefaults = @{ TEXT = "gpt-5.6-luna"; VISION = "gpt-5.6-terra"; ESCALATION = "gpt-5.6-sol" }
+			foreach ($role in @("TEXT", "VISION", "ESCALATION")) {
+				$currentModel = $environment["AI_${role}_MODEL"]
+				if ([string]::IsNullOrWhiteSpace($currentModel)) {
+					$currentModel = $aiModel
+					if ($aiApiUrl.TrimEnd('/') -in @("https://api.openai.com/v1", "https://api.openai.com/v1/chat/completions")) {
+						$currentModel = $openAiDefaults[$role]
+					}
+				}
+				$roleModel = Read-CustomerValue "$role 模型（需具備 API 使用權限）" $currentModel
+				$roleUrl = Read-CustomerValue "$role API 網址（空白沿用基底網址）" $environment["AI_${role}_API_URL"]
+				Set-CustomerEnvironmentValue $EnvironmentPath "AI_${role}_MODEL" $roleModel
+				Set-CustomerEnvironmentValue $EnvironmentPath "AI_${role}_API_URL" $roleUrl
+			}
+		}
+	}
+
 	$environment = Read-CustomerEnvironment $EnvironmentPath
 	foreach ($definition in Get-RequiredSecretDefinitions $environment) {
 		$secretPath = Join-Path (Join-Path $ProjectRoot "secrets") $definition.Name
 		if ((Test-Path -LiteralPath $secretPath -PathType Leaf) -and
 			-not [string]::IsNullOrWhiteSpace([System.IO.File]::ReadAllText($secretPath))) {
-			$replace = Read-Host "$($definition.Label) 已設定，是否更換？（y/N）"
-			if ($replace -notmatch "^[yY]$") { continue }
+			$replace = (Read-Host "$($definition.Label) 已設定，是否更換？（y/N）").Trim()
+			if ($replace -eq "" -or $replace -match "^[nN]$") {
+				Write-Host "[保留] $($definition.Label) 未更換。"
+				continue
+			}
+			if ($replace -notmatch "^[yY]$") {
+				Write-Host "[未完成] 更換選項只接受 y 或 n；本欄位尚未修改，請重新執行設定。" -ForegroundColor Red
+				$script:OperationExitCode = 2
+				return
+			}
 		}
 
 		if ($definition.Generated) {
@@ -497,12 +571,22 @@ function Invoke-CustomerSetup {
 
 		$secureValue = Read-Host "輸入 $($definition.Label)（畫面不會顯示內容）" -AsSecureString
 		$value = ConvertFrom-CustomerSecureString $secureValue
+		if ([string]::IsNullOrWhiteSpace($value) -or $value.Length -lt $definition.MinimumLength -or
+			$value -cne $value.Trim() -or $value.Contains("`r") -or $value.Contains("`n")) {
+			Write-Host "[未保存] $($definition.Label) 為空、長度不足或含多行／前後空白；原檔案保留，請重新執行設定。" -ForegroundColor Red
+			$script:OperationExitCode = 2
+			return
+		}
 		Save-CustomerSecret $definition.Name $value
-		Write-Host "[完成] 已保存 $($definition.Label)，內容不會顯示於畫面。" -ForegroundColor Green
+		$value = $null
+		$secureValue.Dispose()
+		Write-Host "[完成] 已寫入並讀回確認 $($definition.Label)：$secretPath（不顯示內容）。" -ForegroundColor Green
 	}
 
 	$validation = Test-CustomerConfiguration
 	Show-ConfigurationValidation $validation
+	if (-not $validation.IsValid) { $script:OperationExitCode = 2; return }
+	Write-Host "設定保存完成。已執行中的容器尚未自動更新；請回主選單啟動服務以套用設定。"
 }
 
 #endregion

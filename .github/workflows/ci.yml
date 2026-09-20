@@ -35,6 +35,23 @@ jobs:
           cache: maven
           check-latest: false
 
+      # 外部工具：Linux 額外驗證正式 PostgreSQL SQL；臨時資料庫僅綁定本機。
+      - name: Start PostgreSQL confirmation tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          docker run -d --name quotation-confirmation-test \
+            -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5432:5432 \
+            postgres:17.11-alpine3.24
+          for attempt in {1..30}; do
+            if docker exec quotation-confirmation-test pg_isready -U postgres; then
+              echo 'TEST_POSTGRES_URL=jdbc:postgresql://127.0.0.1:5432/postgres' >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
       # 外部工具：使用版本庫 Maven Wrapper 執行完整測試、Style gate 與 SBOM 產生。
       - name: Verify on Unix
         if: runner.os != 'Windows'

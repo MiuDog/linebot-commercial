@@ -95,7 +95,7 @@ public class AssetRepository {
 					companyId,
 					asset.filePath()
 				)
-				.update(keys);
+				.update(keys, "id");
 			Number key = keys.getKey();
 			return key == null ? null : key.longValue();
 		}
@@ -117,7 +117,7 @@ public class AssetRepository {
 			asset.fileSize(),
 			asset.createdAt().toString()
 		)
-			.update(keys);
+			.update(keys, "id");
 		Number key = keys.getKey();
 		return key == null ? null : key.longValue();
 	}

@@ -34,6 +34,37 @@ class QuotationConfirmationServiceTest {
 	@Autowired
 	JdbcTemplate jdbcTemplate;
 
+	// 方法：沒有範本時保留草稿並提供明確設定錯誤，不配置正式流水號。
+	@Test
+	@Transactional
+	void rejectsMissingTemplateBeforeAllocatingSequence() {
+		long draftId = insertConfirmedDraft("GENERAL", "範例工程", "範本缺漏測試");
+		jdbcTemplate.update("UPDATE quotation_template SET is_active = 0 WHERE scheme_id = (SELECT id FROM quotation_scheme WHERE code = 'GENERAL')");
+		Integer before = jdbcTemplate.queryForObject("SELECT count(*) FROM quotation_daily_sequence", Integer.class);
+		assertThatThrownBy(() -> service.confirm(command(draftId, "GENERAL", "missing-template-event")))
+			.isInstanceOfSatisfying(QuotationConfirmationException.class, error -> assertThat(error.code()).isEqualTo("QUOTATION_TEMPLATE_NOT_READY"));
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM quotation_daily_sequence", Integer.class)).isEqualTo(before);
+		assertThat(jdbcTemplate.queryForObject("SELECT status FROM quotation_draft WHERE id = ?", String.class, draftId)).isEqualTo("AWAITING_CONFIRMATION");
+	}
+
+	// 方法：正式模式缺少資產包時先中止，不建立報價或產檔工作。
+	@Test
+	@Transactional
+	void rejectsMissingCompanyAssetsWithoutChangingDraft() {
+		long draftId = insertConfirmedDraft("GENERAL", "範例工程", "資產缺漏測試");
+		var assets = org.mockito.Mockito.mock(dev.miudog.linebotcommercial.companyasset.CompanyAssetService.class);
+		org.mockito.Mockito.when(assets.activeSetId()).thenThrow(new IllegalStateException("尚未啟用公司資產版本"));
+		var jobs = org.mockito.Mockito.mock(QuotationGenerationJobRepository.class);
+		var production = new QuotationConfirmationService(jdbcTemplate,
+			new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbcTemplate.getDataSource()), jobs,
+			org.mockito.Mockito.mock(QuotationBusinessRules.class), assets, false);
+		assertThatThrownBy(() -> production.confirm(command(draftId, "GENERAL", "missing-assets-event")))
+			.isInstanceOfSatisfying(QuotationConfirmationException.class, error -> assertThat(error.code()).isEqualTo("QUOTATION_ASSETS_NOT_READY"));
+		org.mockito.Mockito.verifyNoInteractions(jobs);
+		assertThat(jdbcTemplate.queryForObject("SELECT status FROM quotation_draft WHERE id = ?", String.class, draftId)).isEqualTo("AWAITING_CONFIRMATION");
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM quotation WHERE draft_id = ?", Integer.class, draftId)).isZero();
+	}
+
 	// 驗證正式確認後才配置台北當日流水號、日期與不可變價格快照。
 	@Test
 	@Transactional

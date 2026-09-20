@@ -99,7 +99,23 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		String lockedSchemeCode = inputDraft.schemeCode() == null
 			? (csv == null ? QuotationSchemeKeywords.parse(text) : csv.request().schemeCode())
 			: inputDraft.schemeCode();
-		if (lockedSchemeCode == null) return work(inputDraft(inputDraft, ownerId));
+		if (lockedSchemeCode == null) {
+			// 資料庫：選格式前也保存原文，之後可續接解析而不要求使用者重貼。
+			transactions.executeWithoutResult(status -> {
+				QuotationDraftSnapshot current = loadSnapshot(inputDraft.draftId(), ownerId);
+				requireRevision(current, inputDraft.revision());
+				saveMessage(inputDraft.draftId(), messageId, "TEXT", text, null);
+				saveCas(copyScheme(current, null), current.revision());
+			});
+			return work(inputDraft(inputDraft, ownerId));
+		}
+
+		// 本張格式已鎖定時，新的明確報價指令不可靜默併入舊格式。
+		String requestedScheme = text != null && text.strip().startsWith("#報價") ? QuotationSchemeKeywords.parse(text) : null;
+		if (requestedScheme != null && inputDraft.schemeCode() != null && !requestedScheme.equals(inputDraft.schemeCode())) {
+			throw error("DRAFT_SCHEME_CONFLICT", "目前仍有「" + QuotationSchemeKeywords.displayName(inputDraft.schemeCode())
+				+ "」草稿。請先按取消報價，再以 #報價 建立新的格式；既有資料已保留。");
+		}
 
 		if (csv != null && !lockedSchemeCode.equals(csv.request().schemeCode())) {
 			throw error("CSV_SCHEME_CONFLICT", "CSV 格式與目前草稿不同，請先取消草稿再匯入。");
@@ -113,10 +129,8 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		List<AiImageInput> images = csv != null || quotedImageMessageId == null ? List.of() : imageInputs(schemedDraft);
 		QuotationAiParsingService.ParseResult parsed = csv;
 		if (parsed == null) {
-			parsed = parser.workflowEnabled()
-				? parser.parseScoped(text, images, lockedSchemeCode, new QuotationModelWorkflow.Scope(ownerId,
-					schemedDraft.draftId() + ":" + schemedDraft.revision() + ":" + messageId))
-				: parser.parse(text, images, lockedSchemeCode);
+			parsed = parser.parseDraft(withPendingInput(schemedDraft.draftId(), text), images, schemedDraft, new QuotationModelWorkflow.Scope(ownerId,
+				schemedDraft.draftId() + ":" + schemedDraft.revision() + ":" + messageId));
 		}
 		QuotationAiParsingService.ParseResult accepted = parsed;
 		QuotationDraftSnapshot committed = transactions.execute(status -> commitParsedText(
@@ -161,7 +175,6 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 
 	// 方法：套用使用者以按鈕指定的報價格式；已指定過的草稿不可改格式。
 	@Override
-	@Transactional
 	public QuotationDraftWork applyScheme(long draftId, String ownerId, String schemeCode) {
 		if (!QuotationSchemeKeywords.isSupported(schemeCode)) {
 			throw error("INVALID_SCHEME", "不支援的報價格式。");
@@ -170,9 +183,26 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		QuotationDraftSnapshot draft = loadSnapshot(draftId, ownerId);
 		if (draft.schemeCode() != null) return work(draft);
 
-		QuotationDraftSnapshot schemed = copyScheme(draft, schemeCode.trim().toUpperCase(Locale.ROOT));
-		saveCas(schemed, draft.revision());
-		return work(loadSnapshot(draftId, ownerId));
+		QuotationDraftSnapshot schemed = transactions.execute(status -> commitScheme(draft, ownerId, schemeCode.trim().toUpperCase(Locale.ROOT)));
+		if (pendingInput(draftId).isEmpty()) return work(schemed);
+
+		return applyText(ownerId, "pending-scheme-" + draftId + "-" + schemed.revision(), "格式已選擇，請處理尚未解析的報價內容。");
+	}
+
+	// 方法：只取本張草稿尚未解析的文字，避免把歷次已套用資料再當成新輸入。
+	private List<String> pendingInput(long draftId) {
+		// 資料庫：未選格式時的原文以空 AI 回應標示，成功合併才標為已消費。
+		return jdbc.query("""
+			SELECT raw_text FROM quotation_draft_message
+			WHERE draft_id = ? AND message_type = 'TEXT' AND ai_response_json IS NULL AND raw_text IS NOT NULL
+			ORDER BY id
+			""", (row, index) -> row.getString(1), draftId);
+	}
+
+	// 方法：保留首次指令與最新補答順序，只有未解析原文會再次送入模型。
+	private String withPendingInput(long draftId, String text) {
+		List<String> pending = pendingInput(draftId);
+		return pending.isEmpty() ? text : String.join("\n", pending) + "\n" + text;
 	}
 
 	// 方法：複製草稿並只更換報價格式與 revision。
@@ -230,6 +260,8 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		mergeItems(merged.draftId(), parsed.request());
 		saveImageAssessments(merged.draftId(), parsed.request());
 		saveMessage(merged.draftId(), messageId, "TEXT", text, parsed.rawJson());
+		// 資料庫：與草稿合併同一交易標記已解析，失敗時原文仍可重試。
+		jdbc.update("UPDATE quotation_draft_message SET ai_response_json = '{}' WHERE draft_id = ? AND message_type = 'TEXT' AND ai_response_json IS NULL", merged.draftId());
 		return loadSnapshot(merged.draftId(), ownerId);
 	}
 
@@ -761,8 +793,10 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 				item.sourceText(), item.confidence(), item.matchedName(), order++, item.itemCode());
 		}
 
-		// 階段 3：依 clientItemId 合併臨時品項，未提供欄位保留上一輪內容。
+		// 階段 3：依本輪開始前的品項合併，保留同一輸入中明確分列的品項。
+		List<QuotationDraftItem> previousItems = loadItems(draftId);
 		for (QuotationRequestValidationService.CustomItem item : request.customItems()) {
+			String clientItemId = resolveCustomItemId(previousItems, item);
 			int changed = jdbc.update("""
 				UPDATE quotation_draft_item
 				SET item_name_snapshot = COALESCE(?, item_name_snapshot),
@@ -776,7 +810,7 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 				""", extracted(item.itemName()), extracted(item.specification()), extracted(item.quantity()),
 				extracted(item.unit()), extracted(item.unitPrice()), extracted(item.remark()),
 				item.itemName() == null ? null : item.itemName().sourceText(),
-				item.itemName() == null ? null : item.itemName().confidence(), draftId, item.clientItemId());
+				item.itemName() == null ? null : item.itemName().confidence(), draftId, clientItemId);
 			if (changed == 1) continue;
 
 			jdbc.update("""
@@ -784,11 +818,39 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 					draft_id, item_kind, client_item_id, item_name_snapshot, specification_snapshot, quantity,
 					unit_snapshot, unit_price_snapshot, remark_snapshot, source_text, confidence, display_order
 				) VALUES (?, 'CUSTOM', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-				""", draftId, item.clientItemId(), extracted(item.itemName()), extracted(item.specification()), extracted(item.quantity()),
+				""", draftId, clientItemId, extracted(item.itemName()), extracted(item.specification()), extracted(item.quantity()),
 				extracted(item.unit()), extracted(item.unitPrice()), extracted(item.remark()),
 				item.itemName() == null ? null : item.itemName().sourceText(),
 				item.itemName() == null ? null : item.itemName().confidence(), order++);
 		}
+	}
+
+	// 方法：補答的 ID 漂移時只對應唯一同名且規格相容品項，歧義必須回問。
+	private String resolveCustomItemId(List<QuotationDraftItem> previousItems, QuotationRequestValidationService.CustomItem patch) {
+		List<QuotationDraftItem> items = previousItems.stream()
+			.filter(item -> item.kind() == QuotationDraftItemKind.CUSTOM).toList();
+		String name = patch.itemName() == null ? null : patch.itemName().value();
+		for (QuotationDraftItem item : items) {
+			if (!item.itemKey().equals(patch.clientItemId())) continue;
+
+			if (name != null && item.fields().get("itemName") != null && !name.equals(item.fields().get("itemName"))) {
+				throw error("CUSTOM_ITEM_CONFLICT", "品項識別與既有名稱不同，請提供要修改的品項名稱與規格；草稿已保留。");
+			}
+			return item.itemKey();
+		}
+		List<QuotationDraftItem> matches = items.stream()
+			.filter(item -> name != null && name.equals(item.fields().get("itemName")))
+			.filter(item -> compatible(item, "specification", patch.specification()) && compatible(item, "unit", patch.unit()))
+			.toList();
+		if (matches.size() > 1 || name == null) {
+			throw error("CUSTOM_ITEM_CONFLICT", "無法唯一對應補充的品項，請提供品項名稱與規格；草稿已保留。");
+		}
+		return matches.isEmpty() ? patch.clientItemId() : matches.getFirst().itemKey();
+	}
+
+	// 方法：缺值可由續答補齊，明確不同規格或單位則保留為不同品項。
+	private boolean compatible(QuotationDraftItem item, String field, QuotationRequestValidationService.ExtractedString value) {
+		return value == null || item.fields().get(field) == null || value.value().equals(item.fields().get(field));
 	}
 
 	// 方法：保存本輪 AI／OCR 採用欄位的來源訊息、原文及信心證據。
