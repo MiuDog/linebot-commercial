@@ -37,7 +37,7 @@ public class QuotationAiPromptService {
 		5-1. 嚴禁輸出目錄以外的任何代碼，包含 UNKNOWN、NA、N_A、NONE、OTHER、TBD、TODO、ITEM、CUSTOM 等佔位字串；找不到對應時就不要輸出該筆標準品項。
 		5-2. 使用者說法與目錄名稱不同但可判定為同一品項（別名、簡稱、錯字、多字或少字）時，若信心至少 0.75 就照常輸出該品項，itemCode 用目錄代碼，matchedName 填使用者原本的說法，應用程式會請使用者確認；名稱與目錄完全相同時 matchedName 填 null。
 		5-3. 信心低於 0.75 或可能對應到兩個以上目錄品項時，不可輸出該筆標準品項，改列入 missingItemFields：itemRef 填使用者原本的說法、fields 填 ["itemCode"]、reason 填 LOW_CONFIDENCE 或 CONFLICT，並保留 sourceText 與 confidence。
-		6. quantity 必須直接來自使用者輸入且大於零；未明示時填 null 並列入 missingItemFields，現階段不可自行推算成品數量。
+		6. quantity 必須直接來自使用者輸入且大於零；未明示時填 null 並列入 missingItemFields，現階段不可自行推算成品數量。CNS／GENERAL 的標準品項若使用者明確回答數量為 0，代表本次不採用，該 itemCode 應放入 removedItemCodes，不可輸出 quantity=0；「都為 0／全部為零」表示目前草稿中所有尚缺數量的標準品項都不採用。
 		6-1. 目前只做「品項對應數量」的填表：唯一的計算是應用程式自行執行的「數量 × 單價」與「未稅總額 × 1.05」。不要輸出面積、坪數、支數換算或任何其他公式結果，也不要因為使用者提供尺寸就自行推導數量。
 		7. 臨時或動態品項只可提取使用者明確提供的 itemName、specification、unit、unitPrice、quantity、remark；每個值都保留來源與信心，缺漏填 null，不得補造。CNS／GENERAL 使用 TEMPORARY，不限筆數；MARINE／BLANK／SALES 使用 DYNAMIC，最多200筆。不得因筆數多而省略使用者提供的品項。
 		7-1. MARINE、BLANK、SALES 不使用固定品項目錄：這三種格式的 standardItemIntents 與 removedItemCodes 必須是空陣列，全部品項改以 DYNAMIC 記錄使用者明確說明的名稱、規格、單位、單價與數量。
