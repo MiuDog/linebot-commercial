@@ -52,6 +52,28 @@ public final class QuotationSchemeKeywords {
 		return schemeCode != null && KEYWORDS.containsKey(schemeCode.trim().toUpperCase(Locale.ROOT));
 	}
 
+	// 方法：只解析明確的 #報價 指令行，避免說明文字提到其他格式時使指令失效。
+	public static String parseDirective(String text) {
+		if (text == null || text.isBlank()) return null;
+
+		Set<String> matched = new LinkedHashSet<>();
+		for (String line : text.lines().toList()) {
+			String command = line.strip();
+			if (!command.startsWith("#報價")) continue;
+
+			String schemeCode = parse(command);
+			if (schemeCode != null) matched.add(schemeCode);
+		}
+		return matched.size() == 1 ? matched.iterator().next() : null;
+	}
+
+	// 方法：判斷多行文字內是否含有明確報價指令行。
+	public static boolean hasDirective(String text) {
+		if (text == null || text.isBlank()) return false;
+
+		return text.lines().map(String::strip).anyMatch(line -> line.startsWith("#報價"));
+	}
+
 	// 方法：只在使用者原文明確指名單一格式時回傳代碼；未提及或同時提及多種時回傳 null 以便回問。
 	public static String parse(String text) {
 		if (text == null || text.isBlank()) return null;

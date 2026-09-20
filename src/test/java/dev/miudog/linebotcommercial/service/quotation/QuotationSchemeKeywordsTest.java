@@ -25,6 +25,19 @@ class QuotationSchemeKeywordsTest {
 		assertThat(QuotationSchemeKeywords.parse(null)).isNull();
 	}
 
+	// 測試：多行測試內容以指令行為準，後文提到不可套用 CNS 不會抵銷一般架指令。
+	@Test
+	void resolvesDirectiveWithoutMixingExplanatorySchemeMentions() {
+		String testInput = """
+			測試說明
+			#報價 一般架
+			請使用一般架價格，不套用 CNS 主檔。
+			""";
+		assertThat(QuotationSchemeKeywords.hasDirective(testInput)).isTrue();
+		assertThat(QuotationSchemeKeywords.parseDirective(testInput)).isEqualTo("GENERAL");
+		assertThat(QuotationSchemeKeywords.parse(testInput)).isNull();
+	}
+
 	// 測試：格式代碼與顯示名稱供按鈕與驗證共用。
 	@Test
 	void exposesTheFiveSupportedSchemesForButtonsAndValidation() {

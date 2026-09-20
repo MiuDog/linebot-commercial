@@ -460,6 +460,23 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	@Test
+	void rejectsDirectiveConflictBeforeAiWhenBodyMentionsTheExistingScheme() {
+		when(parser.parse("#報價 CNS", List.of(), "CNS"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 CNS");
+		clearInvocations(parser);
+		String generalTest = """
+			#報價 一般架
+			請使用一般架自己的價格，不套用 CNS 主檔。
+			""";
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.applyText("U1", "M2", generalTest))
+			.isInstanceOf(QuotationLineWorkflowException.class)
+			.hasMessageContaining("CNS 架");
+		assertThat(port.load(first.draft().draftId(), "U1").draft()).isEqualTo(first.draft());
+		verifyNoInteractions(parser);
+	}
+
+	@Test
 	void rejectsAbsoluteAndEscapingPendingImagePathsBeforeCallingAi() throws Exception {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
 			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));

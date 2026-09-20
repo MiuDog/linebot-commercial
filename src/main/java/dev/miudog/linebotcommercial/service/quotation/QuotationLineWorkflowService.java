@@ -102,7 +102,7 @@ public class QuotationLineWorkflowService {
 	public boolean isQuotationText(String ownerId, String text) {
 		if (text == null) return false;
 
-		return text.strip().startsWith("#報價") || port.hasActiveDraft(ownerId);
+		return QuotationSchemeKeywords.hasDirective(text) || port.hasActiveDraft(ownerId);
 	}
 
 	// 方法：以事件冪等保護文字補件並產生 LINE 回覆。

@@ -97,7 +97,7 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		QuotationDraftSnapshot inputDraft = includeQuotedImage(base, ownerId, quotedImageMessageId);
 		// 應用服務：報價格式只由使用者指定；尚未指定時不呼叫 AI，改由狀態機要求先選格式。
 		String lockedSchemeCode = inputDraft.schemeCode() == null
-			? (csv == null ? QuotationSchemeKeywords.parse(text) : csv.request().schemeCode())
+			? (csv == null ? requestedScheme(text) : csv.request().schemeCode())
 			: inputDraft.schemeCode();
 		if (lockedSchemeCode == null) {
 			// 資料庫：選格式前也保存原文，之後可續接解析而不要求使用者重貼。
@@ -111,7 +111,7 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		}
 
 		// 本張格式已鎖定時，新的明確報價指令不可靜默併入舊格式。
-		String requestedScheme = text != null && text.strip().startsWith("#報價") ? QuotationSchemeKeywords.parse(text) : null;
+		String requestedScheme = QuotationSchemeKeywords.parseDirective(text);
 		if (requestedScheme != null && inputDraft.schemeCode() != null && !requestedScheme.equals(inputDraft.schemeCode())) {
 			throw error("DRAFT_SCHEME_CONFLICT", "目前仍有「" + QuotationSchemeKeywords.displayName(inputDraft.schemeCode())
 				+ "」草稿。請先按取消報價，再以 #報價 建立新的格式；既有資料已保留。");
@@ -144,6 +144,12 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		if (committed == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
 
 		return work(committed);
+	}
+
+	// 方法：優先採用 #報價 指令行，沒有指令時才沿用單一格式關鍵字解析。
+	private String requestedScheme(String text) {
+		String directiveScheme = QuotationSchemeKeywords.parseDirective(text);
+		return directiveScheme == null ? QuotationSchemeKeywords.parse(text) : directiveScheme;
 	}
 
 	// 方法：讀回尚未指定格式的草稿，讓狀態機以目前實際狀態要求使用者先選格式。

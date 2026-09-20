@@ -36,6 +36,20 @@ class QuotationLineWorkflowServiceTest {
 		service = new QuotationLineWorkflowService(port, receipts, conversation, signer, messages, confirmations);
 	}
 
+	// 方法：整份測試文件只要含有獨立 #報價 指令行，就交由報價流程處理。
+	@Test
+	void recognizesQuotationDirectiveInsideMultilineTestDocument() {
+		String document = """
+			# 一般架測試
+			```text
+			#報價 一般架
+			公司：範例公司
+			```
+			""";
+		assertThat(service.isQuotationText("U1", document)).isTrue();
+		verify(port, never()).hasActiveDraft("U1");
+	}
+
 	@Test
 	void validatesOwnerExpiryAndRevisionBeforeCancelling() {
 		QuotationDraftSnapshot draft = draft(4, QuotationDraftStatus.AWAITING_CONFIRMATION);
