@@ -236,6 +236,7 @@ public class QuotationGenerationJobWorker {
 				.addKeyValue("quotationId", job.quotationId())
 				.addKeyValue("attemptCount", job.attemptCount())
 				.addKeyValue("errorCode", errorCode)
+				.setCause(exception)
 				.log(
 					"event={} quotationId={} attemptCount={} errorCode={}",
 					"quotation_generation_job_failed",
