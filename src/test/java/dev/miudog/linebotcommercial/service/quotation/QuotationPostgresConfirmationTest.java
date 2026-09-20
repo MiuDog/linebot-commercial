@@ -10,6 +10,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,10 +46,11 @@ class QuotationPostgresConfirmationTest {
 			long assetId = jdbc.queryForObject("SELECT id FROM company_asset_set", Long.class);
 			var assets = mock(CompanyAssetService.class);
 			when(assets.activeSetId()).thenReturn(assetId);
+			var jobs = new QuotationGenerationJobRepository(jdbc);
 			var service = new QuotationConfirmationService(
 				jdbc,
 				new DataSourceTransactionManager(source),
-				new QuotationGenerationJobRepository(jdbc),
+				jobs,
 				new QuotationBusinessRules(new BigDecimal("0.05"), 15),
 				assets,
 				false
@@ -78,6 +81,32 @@ class QuotationPostgresConfirmationTest {
 					VALUES (?, 'PDF', 'application/pdf', 'READY')
 					""", result.quotationId());
 				assertThat(deliveries.findSnapshot(result.quotationId()).createdAt()).isNotNull();
+				jdbc.update("""
+					INSERT INTO quotation_delivery_attempt (
+						quotation_id, destination_type, destination_id, delivery_kind, status, attempted_at
+					)
+					VALUES (?, 'LINE_USER', 'U-postgres-stale', 'FINAL', 'SENDING', '2020-01-01 00:00:00')
+					""", result.quotationId());
+				jdbc.update("UPDATE quotation SET status = 'SENDING' WHERE id = ?", result.quotationId());
+				var recovered = deliveries.claimFinal(result.quotationId(), "U-postgres-stale");
+				assertThat(recovered.state()).isEqualTo(QuotationDeliveryClaim.State.READY);
+				assertThat(recovered.attemptCount()).isEqualTo(2);
+				deliveries.markFailed(recovered.attemptId(), "TEST_RECOVERY_COMPLETE");
+				var claim = deliveries.claimFinal(result.quotationId(), "U-postgres-delivery");
+				assertThat(claim.state()).isEqualTo(QuotationDeliveryClaim.State.READY);
+				deliveries.markFailed(claim.attemptId(), "TEST_FAILURE");
+				var retry = deliveries.claimFinal(result.quotationId(), "U-postgres-delivery");
+				assertThat(retry.attemptCount()).isEqualTo(2);
+				deliveries.markSent(retry.attemptId(), "test-provider-message");
+				assertThat(deliveries.claimFinal(result.quotationId(), "U-postgres-delivery").state())
+					.isEqualTo(QuotationDeliveryClaim.State.ALREADY_SENT);
+				var leased = jobs.leaseNext(
+					"postgres-worker",
+					Instant.now(),
+					Duration.ofMinutes(2)
+				);
+				assertThat(leased).isPresent();
+				assertThat(jobs.markDone(leased.orElseThrow().id(), "postgres-worker")).isTrue();
 			}
 			long failedDraft = insertDraft(jdbc, "CNS");
 			assertThatThrownBy(() -> service.confirm(command(failedDraft, "CNS", null))).isInstanceOf(org.springframework.dao.DataAccessException.class);

@@ -322,7 +322,7 @@ public class QuotationConversationService {
 			mergedItems.add(new QuotationDraftItem(item.itemKey(), item.kind(), fields));
 		}
 		if (!remainingKeys.isEmpty()) {
-			throw error("UNKNOWN_ITEM", "找不到要補件的品項：" + String.join("、", remainingKeys));
+			throw error("UNKNOWN_ITEM", "找不到要補件的品項，請提供品項中文名稱與需補充的資料");
 		}
 		return List.copyOf(mergedItems);
 	}

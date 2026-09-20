@@ -118,11 +118,30 @@ public class QuotationLineMessageBuilder {
 	private QuotationLineMessage itemFieldRequest(QuotationConversationDecision decision, String ownerId) {
 		StringBuilder text = new StringBuilder("請補充以下品項資料；可分多次回答，系統只會再問仍缺少的欄位：\n");
 		for (QuotationMissingItemFields missingItem : decision.missingItemFields()) {
-			text.append("• ").append(display(missingItem.itemKey(), 80)).append("：");
+			text.append("• ").append(itemDisplayName(decision.draft(), missingItem.itemKey())).append("：");
 			text.append(missingItem.fields().stream().map(this::label).toList());
 			text.append('\n');
 		}
 		return textMessage(text.toString().stripTrailing(), List.of(cancelAction(decision.draft(), ownerId)));
+	}
+
+	// 方法：對使用者以中文品名辨識缺漏列，無品名時以順序描述且不暴露內部 ID。
+	private String itemDisplayName(QuotationDraftSnapshot draft, String itemKey) {
+		if ("items".equals(itemKey)) return "品項";
+
+		for (int index = 0; index < draft.items().size(); index++) {
+			QuotationDraftItem item = draft.items().get(index);
+			if (!item.itemKey().equals(itemKey)) continue;
+
+			String itemName = item.fields().get("itemName");
+			if (itemName != null && !itemName.isBlank()) return display(itemName, 120);
+
+			String matchedName = item.fields().get("matchedName");
+			if (matchedName != null && !matchedName.isBlank()) return display(matchedName, 120);
+
+			return "第 " + (index + 1) + " 筆品項";
+		}
+		return "品項";
 	}
 
 	// 方法：建立只能由使用者指定報價格式的按鈕訊息，AI 不參與格式判定。
