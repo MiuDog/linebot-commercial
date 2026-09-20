@@ -116,9 +116,7 @@ public class LegacyStorageMigrationRunner implements ApplicationRunner {
 			List<TablePlan> tables = tablePlans(source, target.getMetaData());
 			Map<String, Long> counts = sourceCounts(source, tables);
 			List<FilePlan> files = filePlans(source);
-			if (!execute) {
-				return new MigrationReport("DRY_RUN", "SUCCEEDED", counts, files.size(), 0, List.of());
-			}
+			if (!execute) return new MigrationReport("DRY_RUN", "SUCCEEDED", counts, files.size(), 0, List.of());
 
 			target.setAutoCommit(false);
 			List<String> createdObjects = new ArrayList<>();

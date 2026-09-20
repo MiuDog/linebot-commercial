@@ -72,9 +72,7 @@ public class QuotationAssetArchiveService {
 		List<Candidate> candidates = loadCandidates(quotation.draftId(), confirmation.quotationId());
 		if (candidates.isEmpty()) return new QuotationArchivedAssets(List.of(), null);
 
-		if (!storage.usesLegacyFilesystem()) {
-			return archiveObjects(confirmation, candidates);
-		}
+		if (!storage.usesLegacyFilesystem()) return archiveObjects(confirmation, candidates);
 
 		Path directory = outputDirectories.resolveFormalDirectory(confirmation.folderName());
 		if (candidates.stream().allMatch(Candidate::alreadyArchived)) {
