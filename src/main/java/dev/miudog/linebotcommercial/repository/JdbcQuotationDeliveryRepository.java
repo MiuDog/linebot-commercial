@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -63,9 +64,11 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 	private java.time.Instant parseCreatedAt(Object value) {
 		if (value == null) return null;
 
-		String timestamp = value.toString();
-		if (!timestamp.contains("T")) timestamp = timestamp.replace(' ', 'T') + "Z";
-		return java.time.Instant.parse(timestamp);
+		String timestamp = value.toString().replace(' ', 'T');
+		if (!timestamp.endsWith("Z") && !timestamp.matches(".*[+-]\\d{2}(?::?\\d{2})?$")) {
+			timestamp += "Z";
+		}
+		return OffsetDateTime.parse(timestamp).toInstant();
 	}
 
 	// 方法：以唯一 active delivery 索引取得跨執行緒與跨程序的最終交付權。

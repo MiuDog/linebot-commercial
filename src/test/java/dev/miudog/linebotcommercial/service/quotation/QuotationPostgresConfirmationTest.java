@@ -1,6 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import dev.miudog.linebotcommercial.companyasset.CompanyAssetService;
+import dev.miudog.linebotcommercial.repository.JdbcQuotationDeliveryRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -52,6 +53,7 @@ class QuotationPostgresConfirmationTest {
 				false
 			);
 			var snapshots = new QuotationGenerationSnapshotRepository(jdbc);
+			var deliveries = new JdbcQuotationDeliveryRepository(jdbc);
 			int sequence = 0;
 			for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
 				jdbc.update("""
@@ -70,6 +72,12 @@ class QuotationPostgresConfirmationTest {
 				assertThat(jdbc.queryForObject("SELECT asset_set_id FROM quotation WHERE id = ?", Long.class, result.quotationId())).isEqualTo(assetId);
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM quotation_line WHERE quotation_id = ?", Integer.class, result.quotationId())).isEqualTo(1);
 				assertThat(jdbc.queryForObject("SELECT status FROM quotation_draft WHERE id = ?", String.class, draftId)).isEqualTo("CONFIRMED");
+				jdbc.update("UPDATE quotation SET status = 'READY' WHERE id = ?", result.quotationId());
+				jdbc.update("""
+					INSERT INTO quotation_file (quotation_id, file_kind, content_type, status)
+					VALUES (?, 'PDF', 'application/pdf', 'READY')
+					""", result.quotationId());
+				assertThat(deliveries.findSnapshot(result.quotationId()).createdAt()).isNotNull();
 			}
 			long failedDraft = insertDraft(jdbc, "CNS");
 			assertThatThrownBy(() -> service.confirm(command(failedDraft, "CNS", null))).isInstanceOf(org.springframework.dao.DataAccessException.class);
