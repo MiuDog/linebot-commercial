@@ -210,6 +210,49 @@ class QuotationLineMessageBuilderTest {
 		assertThat(combined).contains("名稱對應", "外牆鷹架", "外部鷹架");
 	}
 
+	// 測試：缺少中文主檔名稱時仍不得以 itemCode 代替顯示名稱。
+	@Test
+	void neverUsesItemCodeAsTheVisibleNameMatchTarget() {
+		QuotationConversationDecision base = decision(
+			QuotationDraftStatus.READY_FOR_PREVIEW,
+			List.of(),
+			List.of(),
+			QuotationNextAction.SHOW_PREVIEW
+		);
+		QuotationDraftSnapshot source = base.draft();
+		QuotationDraftSnapshot withoutMasterName = new QuotationDraftSnapshot(
+			source.draftId(),
+			source.revision(),
+			source.status(),
+			source.schemeCode(),
+			source.baseFields(),
+			List.of(new QuotationDraftItem(
+				"EXTERNAL_SCAFFOLD",
+				QuotationDraftItemKind.STANDARD,
+				Map.of("itemCode", "EXTERNAL_SCAFFOLD", "matchedName", "外牆鷹架")
+			)),
+			source.imageMessageIds(),
+			source.selectedImageMessageId(),
+			false,
+			false,
+			false,
+			null
+		);
+
+		String combined = builder.build(
+			new QuotationConversationDecision(
+				withoutMasterName,
+				List.of(),
+				List.of(),
+				QuotationNextAction.SHOW_PREVIEW
+			),
+			OWNER_ID,
+			calculationResult()
+		).toString();
+
+		assertThat(combined).contains("外牆鷹架", "主檔品項").doesNotContain("EXTERNAL_SCAFFOLD");
+	}
+
 	@Test
 	void buildsImmediateGenerationAcceptedMessageWithQuotationNumber() {
 		QuotationConfirmationResult confirmation = new QuotationConfirmationResult(

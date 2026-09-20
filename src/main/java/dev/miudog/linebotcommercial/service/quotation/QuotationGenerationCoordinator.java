@@ -178,11 +178,7 @@ public class QuotationGenerationCoordinator {
 			return new WorkbookStage(archived, workbook);
 		}
 		catch (RuntimeException exception) {
-			String code = exception instanceof QuotationAssetArchiveException archiveException
-				? archiveException.code()
-				: exception instanceof QuotationGenerationException generationException
-					? generationException.code()
-					: "WORKBOOK_GENERATION_FAILED";
+			String code = workbookErrorCode(exception);
 			try {
 				generations.markFailed(confirmation.quotationId(), code);
 			}
@@ -194,6 +190,19 @@ public class QuotationGenerationCoordinator {
 		finally {
 			assets.cleanupTemporary(archived);
 		}
+	}
+
+	// 方法：沿交易與框架包裝的原因鏈保留最接近失敗來源的穩定錯誤代碼。
+	private String workbookErrorCode(RuntimeException exception) {
+		Throwable cause = exception;
+		for (int depth = 0; cause != null && depth < 20; depth++) {
+			if (cause instanceof QuotationAssetArchiveException archiveException) return archiveException.code();
+
+			if (cause instanceof QuotationGenerationException generationException) return generationException.code();
+
+			cause = cause.getCause();
+		}
+		return "WORKBOOK_GENERATION_FAILED";
 	}
 
 	// 方法：從 PDF 管理例外取得可安全記錄的穩定代碼。

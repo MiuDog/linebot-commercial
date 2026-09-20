@@ -98,6 +98,32 @@ class QuotationGenerationCoordinatorTest {
 		org.mockito.Mockito.verifyNoInteractions(workbooks);
 	}
 
+	// 測試：Spring 交易代理包裝歸檔例外時，仍須保留真正錯誤代碼供背景工作診斷。
+	@Test
+	void preservesAssetArchiveCodeWhenInfrastructureWrapsTheCause() {
+		QuotationConfirmationResult confirmation = confirmation();
+		RuntimeException wrapped = new IllegalStateException(
+			"transaction rolled back",
+			new QuotationAssetArchiveException("ARCHIVE_FAILED", "圖片物件歸檔失敗")
+		);
+		when(assets.archive(confirmation)).thenThrow(wrapped);
+		QuotationGenerationCoordinator coordinator = new QuotationGenerationCoordinator(
+			confirmations,
+			assets,
+			workbooks,
+			generations
+		);
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> coordinator.generateConfirmed(
+			new QuotationConfirmedGenerationCommand(confirmation, calculation(), null, "U1")
+		))
+			.isInstanceOf(QuotationGenerationException.class)
+			.extracting("code")
+			.isEqualTo("ARCHIVE_FAILED");
+		verify(generations).markFailed(confirmation.quotationId(), "ARCHIVE_FAILED");
+		verifyNoInteractions(workbooks);
+	}
+
 	@Test
 	void deliveryFailurePreservesReadyXlsxAndPdfWithoutMarkingGenerationFailed() {
 		QuotationConfirmationResult confirmation = confirmation();

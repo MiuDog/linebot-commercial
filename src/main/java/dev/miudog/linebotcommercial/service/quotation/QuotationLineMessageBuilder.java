@@ -321,7 +321,8 @@ public class QuotationLineMessageBuilder {
 			String matchedName = fields.get("matchedName");
 			if (matchedName == null || matchedName.isBlank()) continue;
 
-			String masterName = fields.get("itemName") == null ? fields.get("itemCode") : fields.get("itemName");
+			String masterName = fields.get("itemName");
+			if (masterName == null || masterName.isBlank()) masterName = "主檔品項";
 			text.append("\n• 您說的「").append(display(matchedName, 100))
 				.append("」已對應主檔品項「").append(display(masterName, 120)).append("」");
 			hasMatchedName = true;
