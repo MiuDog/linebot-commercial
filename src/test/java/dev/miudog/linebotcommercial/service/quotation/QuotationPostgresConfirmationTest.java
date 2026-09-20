@@ -51,6 +51,7 @@ class QuotationPostgresConfirmationTest {
 				assets,
 				false
 			);
+			var snapshots = new QuotationGenerationSnapshotRepository(jdbc);
 			int sequence = 0;
 			for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
 				jdbc.update("""
@@ -61,7 +62,9 @@ class QuotationPostgresConfirmationTest {
 				long draftId = insertDraft(jdbc, scheme);
 				var command = command(draftId, scheme, "test-item");
 				var result = service.confirm(command);
+				var snapshot = snapshots.load(result.quotationId());
 				assertThat(result.sequenceNumber()).isEqualTo(++sequence);
+				assertThat(snapshot.calculation().internalLines().getFirst().calculationMode()).isEqualTo("DIRECT");
 				assertThat(service.confirm(command).quotationId()).isEqualTo(result.quotationId());
 				assertThat(jdbc.queryForObject("SELECT total_amount FROM quotation WHERE id = ?", BigDecimal.class, result.quotationId())).isEqualByComparingTo("210");
 				assertThat(jdbc.queryForObject("SELECT asset_set_id FROM quotation WHERE id = ?", Long.class, result.quotationId())).isEqualTo(assetId);
