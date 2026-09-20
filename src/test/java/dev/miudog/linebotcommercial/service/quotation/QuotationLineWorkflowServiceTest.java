@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -287,6 +288,68 @@ class QuotationLineWorkflowServiceTest {
 
 		verify(port).applyScheme(9, "U1", "CNS");
 		verify(receipts).complete("EV-SCHEME", 9L, false);
+	}
+
+	// 測試：拒絕圖片先保存單一 revision，再保存預覽狀態，避免跨版 CAS 失敗。
+	@Test
+	void persistsImageDeclineBeforePresentingThePreview() {
+		QuotationDraftSnapshot awaitingImage = new QuotationDraftSnapshot(
+			9,
+			4,
+			QuotationDraftStatus.AWAITING_IMAGE,
+			"BLANK",
+			Map.of("companyName", "公司", "workName", "工程", "salesRepresentative", "陳業務"),
+			List.of(new QuotationDraftItem("custom-1", QuotationDraftItemKind.CUSTOM, Map.of(
+				"itemName", "搭設工程",
+				"specification", "一式",
+				"unit", "式",
+				"unitPrice", "100",
+				"quantity", "1",
+				"remark", "實做實算"
+			))),
+			List.of(),
+			null,
+			true,
+			false,
+			false,
+			null
+		);
+		QuotationVerifiedPostback verified = new QuotationVerifiedPostback(
+			9,
+			4,
+			QuotationPostbackAction.DECLINE_IMAGE,
+			Instant.parse("2030-01-01T00:00:00Z")
+		);
+		when(signer.verify(
+			org.mockito.ArgumentMatchers.eq(SIGNED_DATA),
+			org.mockito.ArgumentMatchers.eq("U1"),
+			org.mockito.ArgumentMatchers.any(java.util.function.LongToIntFunction.class)
+		)).thenReturn(verified);
+		when(receipts.claim("EV-DECLINE", 9L, "POSTBACK")).thenReturn(true);
+		when(port.load(9, "U1")).thenReturn(new QuotationDraftWork(awaitingImage, calculation()));
+		service = new QuotationLineWorkflowService(
+			port,
+			receipts,
+			new QuotationConversationService(),
+			signer,
+			messages,
+			confirmations
+		);
+
+		service.handlePostback("EV-DECLINE", "U1", SIGNED_DATA);
+
+		var order = inOrder(port);
+		order.verify(port).load(9, "U1");
+		order.verify(port).save(org.mockito.ArgumentMatchers.argThat(draft ->
+			draft.revision() == 5
+				&& draft.status() == QuotationDraftStatus.READY_FOR_PREVIEW
+				&& draft.imageDeclined()
+		));
+		order.verify(port).save(org.mockito.ArgumentMatchers.argThat(draft ->
+			draft.revision() == 6
+				&& draft.status() == QuotationDraftStatus.AWAITING_CONFIRMATION
+				&& draft.previewPresented()
+		));
 	}
 
 	// 測試：已驗證的候選頁碼只顯示下一頁，不修改草稿版本或候選選取。

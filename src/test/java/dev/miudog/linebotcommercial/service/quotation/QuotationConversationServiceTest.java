@@ -115,6 +115,7 @@ class QuotationConversationServiceTest {
 		QuotationConversationDecision decision = service.applyPatch(asked, decline);
 
 		assertThat(decision.draft().status()).isEqualTo(QuotationDraftStatus.READY_FOR_PREVIEW);
+		assertThat(decision.draft().revision()).isEqualTo(asked.revision() + 1);
 		assertThat(decision.nextAction()).isEqualTo(QuotationNextAction.SHOW_PREVIEW);
 	}
 

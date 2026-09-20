@@ -1,15 +1,21 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import dev.miudog.linebotcommercial.companyasset.CompanyAssetService;
+import dev.miudog.linebotcommercial.config.runtime.CompanyProperties;
 import dev.miudog.linebotcommercial.repository.JdbcQuotationDeliveryRepository;
+import dev.miudog.linebotcommercial.service.FileStorageService;
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
@@ -26,6 +33,7 @@ import static org.mockito.Mockito.when;
  */
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = "jdbc:postgresql:.*")
 class QuotationPostgresConfirmationTest {
+	@TempDir Path temporaryDirectory;
 
 	// 方法：覆蓋五種格式、每日遞增、重複確認與失敗回滾，使用正式 Flyway 結構。
 	@Test
@@ -67,6 +75,7 @@ class QuotationPostgresConfirmationTest {
 				long draftId = insertDraft(jdbc, scheme);
 				var command = command(draftId, scheme, "test-item");
 				var result = service.confirm(command);
+				if ("MARINE".equals(scheme)) assertPostgresImageScoresCanBeArchived(jdbc, draftId, result);
 				var snapshot = snapshots.load(result.quotationId());
 				assertThat(result.sequenceNumber()).isEqualTo(++sequence);
 				assertThat(snapshot.calculation().internalLines().getFirst().calculationMode()).isEqualTo("DIRECT");
@@ -120,6 +129,60 @@ class QuotationPostgresConfirmationTest {
 			// 外部呼叫：只刪除此測試建立、由 UUID 組成的獨立 schema。
 			root.execute("DROP SCHEMA " + schema + " CASCADE");
 		}
+	}
+
+	// 方法：以 PostgreSQL NUMERIC 圖片評分驗證正式圖片歸檔不依賴 JDBC 回傳 Double。
+	private void assertPostgresImageScoresCanBeArchived(
+		JdbcTemplate jdbc,
+		long draftId,
+		QuotationConfirmationResult confirmation
+	) {
+		byte[] image = "marine-image".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		String pendingKey = "staging/pending/postgres-marine.jpg";
+		jdbc.update("""
+			INSERT INTO pending_image (
+				message_id, image_set_id, image_index, image_total, source_type,
+				source_id, uploader_id, staging_path, content_type, file_size, received_at
+			) VALUES ('PG-IMG', 'PG-SET', 1, 1, 'user', 'test-user', 'test-user', ?, 'image/jpeg', ?, ?)
+			""", pendingKey, image.length, Instant.now().toString());
+		jdbc.update("""
+			INSERT INTO quotation_draft_image (
+				draft_id, message_id, candidate_order, distinctiveness_score,
+				quality_score, selection_reason, is_selected
+			) VALUES (?, 'PG-IMG', 0, 0.95, 0.80, 'test', 1)
+			""", draftId);
+
+		ObjectStorage objects = mock(ObjectStorage.class);
+		when(objects.metadata(anyString())).thenAnswer(invocation -> new StoredObject(
+			invocation.getArgument(0),
+			"version-1",
+			"etag-1",
+			"hash-1",
+			image.length,
+			"image/jpeg"
+		));
+		when(objects.get(anyString())).thenReturn(image);
+		var archive = new QuotationAssetArchiveService(
+			jdbc,
+			new FileStorageService(temporaryDirectory.toString(), false, objects),
+			new QuotationOutputDirectoryService(temporaryDirectory.toString()),
+			new CompanyProperties("test")
+		);
+
+		QuotationArchivedAssets archived = archive.archive(confirmation);
+
+		assertThat(archived.assets()).hasSize(1);
+		assertThat(jdbc.queryForObject(
+			"SELECT distinctiveness_score FROM quotation_asset WHERE quotation_id = ?",
+			BigDecimal.class,
+			confirmation.quotationId()
+		)).isEqualByComparingTo("0.95");
+		assertThat(jdbc.queryForObject(
+			"SELECT quality_score FROM quotation_asset WHERE quotation_id = ?",
+			BigDecimal.class,
+			confirmation.quotationId()
+		)).isEqualByComparingTo("0.80");
+		archive.cleanupTemporary(archived);
 	}
 
 	// 方法：建立不涉及真實使用者的待確認草稿。

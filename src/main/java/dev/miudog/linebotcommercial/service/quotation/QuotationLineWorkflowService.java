@@ -280,11 +280,11 @@ public class QuotationLineWorkflowService {
 
 		QuotationDraftWork changedWork = switch (verified.action()) {
 			case CANCEL -> new QuotationDraftWork(conversation.cancel(work.draft()), work.calculation());
-			case DECLINE_IMAGE -> new QuotationDraftWork(
+			case DECLINE_IMAGE -> persistPatch(
 				conversation.applyPatch(
 					work.draft(),
 					new QuotationDraftPatch(Map.of(), Map.of(), List.of(), true, null)
-				).draft(),
+				),
 				work.calculation()
 			);
 			case SELECT_IMAGE -> port.selectImage(
@@ -303,6 +303,15 @@ public class QuotationLineWorkflowService {
 		};
 		List<QuotationLineMessage> result = buildAndPersist(changedWork, ownerId);
 		return completeReply(eventId, ownerId, verified.draftId(), result);
+	}
+
+	// 方法：先保存 postback 造成的草稿修改，再由狀態機建立下一個可見步驟。
+	private QuotationDraftWork persistPatch(
+		QuotationConversationDecision decision,
+		QuotationCalculationResult calculation
+	) {
+		port.save(decision.draft());
+		return new QuotationDraftWork(decision.draft(), calculation);
 	}
 
 	// 方法：將簽章保護的圖片候選頁碼轉成非負整數。
