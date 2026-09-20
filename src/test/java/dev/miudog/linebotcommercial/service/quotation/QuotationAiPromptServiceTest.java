@@ -103,6 +103,7 @@ class QuotationAiPromptServiceTest {
 			.extracting(JsonNode::asString)
 			.containsExactly("EXTERNAL_SCAFFOLD");
 		assertThat(prompt.systemPrompt()).contains("UNKNOWN", "matchedName", "數量 × 單價", "1.05");
+		assertThat(prompt.systemPrompt()).contains("都為 0／全部為零", "removedItemCodes", "不可輸出 quantity=0");
 		assertThat(prompt.systemPrompt()).contains("CNS（CNS 架）", "報價格式一律由使用者指定");
 	}
 

@@ -186,6 +186,20 @@ class QuotationGenerationJobWorkerTest {
 		org.mockito.Mockito.verifyNoInteractions(jobs, snapshots, coordinator);
 	}
 
+	@Test
+	void keepsSafeRootCauseDiagnosticsWithoutCredentialsOrControlCharacters() {
+		QuotationGenerationJobWorker worker = worker();
+		RuntimeException root = new RuntimeException(
+			"token=private-value\nendpoint=http://account:password@example.test/path"
+		);
+		RuntimeException outer = new RuntimeException("outer", root);
+
+		assertThat(worker.rootCause(outer)).isSameAs(root);
+		assertThat(worker.safeRootMessage(root))
+			.contains("token=[redacted]", "http://[redacted]@example.test/path")
+			.doesNotContain("private-value", "account", "password@example", "\n");
+	}
+
 	private QuotationGenerationJobWorker worker() {
 		return worker(null);
 	}

@@ -127,7 +127,27 @@ public class QuotationConversationService {
 			false,
 			null
 		);
-		return review(merged);
+		QuotationConversationDecision reviewed = review(merged);
+		if (reviewed.draft().revision() == merged.revision()) return reviewed;
+
+		// 狀態轉換與本次 patch 同屬一次原子修改，不可額外跨越資料庫 revision。
+		QuotationDraftSnapshot normalized = copy(
+			reviewed.draft(),
+			merged.revision(),
+			reviewed.draft().status(),
+			reviewed.draft().imageMessageIds(),
+			reviewed.draft().selectedImageMessageId(),
+			reviewed.draft().imageQuestionAsked(),
+			reviewed.draft().imageDeclined(),
+			reviewed.draft().previewPresented(),
+			reviewed.draft().confirmationEventId()
+		);
+		return new QuotationConversationDecision(
+			normalized,
+			reviewed.missingBaseFields(),
+			reviewed.missingItemFields(),
+			reviewed.nextAction()
+		);
 	}
 
 	// 方法：記錄船用或空白格式已向使用者詢問圖片。
@@ -322,7 +342,7 @@ public class QuotationConversationService {
 			mergedItems.add(new QuotationDraftItem(item.itemKey(), item.kind(), fields));
 		}
 		if (!remainingKeys.isEmpty()) {
-			throw error("UNKNOWN_ITEM", "找不到要補件的品項：" + String.join("、", remainingKeys));
+			throw error("UNKNOWN_ITEM", "找不到要補件的品項，請提供品項中文名稱與需補充的資料");
 		}
 		return List.copyOf(mergedItems);
 	}

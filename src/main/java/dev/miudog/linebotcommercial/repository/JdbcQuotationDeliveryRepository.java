@@ -5,21 +5,18 @@ import dev.miudog.linebotcommercial.service.quotation.QuotationDeliveryRepositor
 import dev.miudog.linebotcommercial.service.quotation.QuotationDeliverySnapshot;
 import java.math.BigDecimal;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 以 SQLite 保存正式 LINE 交付的宣告、嘗試次數、成功結果及安全錯誤摘要。 */
+/** 以報價資料庫保存正式 LINE 交付的宣告、嘗試次數、成功結果及安全錯誤摘要。 */
 @Repository
 public class JdbcQuotationDeliveryRepository implements QuotationDeliveryRepository {
 
@@ -55,17 +52,19 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 			decimal(row, "subtotal"),
 			decimal(row, "tax_amount"),
 			decimal(row, "total_amount"),
-			parseCreatedAt(row.get("created_at"))
+			parseDatabaseInstant(row.get("created_at"))
 		);
 	}
 
-	// 方法：將 SQLite CURRENT_TIMESTAMP 轉成 UTC Instant，供 LINE 顯示端到端執行時間。
-	private java.time.Instant parseCreatedAt(Object value) {
+	// 方法：將資料庫文字時間轉成 UTC Instant，供顯示與跨資料庫租約判斷共用。
+	private Instant parseDatabaseInstant(Object value) {
 		if (value == null) return null;
 
-		String timestamp = value.toString();
-		if (!timestamp.contains("T")) timestamp = timestamp.replace(' ', 'T') + "Z";
-		return java.time.Instant.parse(timestamp);
+		String timestamp = value.toString().replace(' ', 'T');
+		if (!timestamp.endsWith("Z") && !timestamp.matches(".*[+-]\\d{2}(?::?\\d{2})?$")) {
+			timestamp += "Z";
+		}
+		return OffsetDateTime.parse(timestamp).toInstant();
 	}
 
 	// 方法：以唯一 active delivery 索引取得跨執行緒與跨程序的最終交付權。
@@ -110,42 +109,36 @@ public class JdbcQuotationDeliveryRepository implements QuotationDeliveryReposit
 		}
 	}
 
-	// 方法：將超過五分鐘未完成的 SENDING 嘗試轉為失敗，釋放唯一索引供同 retry key 重送。
+	// 方法：在 Java 解析文字時間，避免 SQLite 與 PostgreSQL 對 TEXT／TIMESTAMP 比較方式不同。
 	private void recoverExpiredLease(long quotationId, String destinationId) {
-		Object leaseCutoff = leaseCutoff();
-		int recovered = jdbc.update("""
-			UPDATE quotation_delivery_attempt
-			SET status = 'FAILED', error_message = 'DELIVERY_LEASE_EXPIRED',
-				completed_at = CURRENT_TIMESTAMP
+		List<Map<String, Object>> activeAttempts = jdbc.queryForList("""
+			SELECT id, attempted_at
+			FROM quotation_delivery_attempt
 			WHERE quotation_id = ?
 			  AND destination_type = 'LINE_USER'
 			  AND destination_id = ?
 			  AND delivery_kind = 'FINAL'
 			  AND status = 'SENDING'
-			  AND attempted_at <= ?
-			""", quotationId, destinationId, leaseCutoff);
+			""", quotationId, destinationId);
+		Instant cutoff = Instant.now().minus(java.time.Duration.ofMinutes(5));
+		int recovered = 0;
+		for (Map<String, Object> attempt : activeAttempts) {
+			Instant attemptedAt = parseDatabaseInstant(attempt.get("attempted_at"));
+			if (attemptedAt != null && attemptedAt.isAfter(cutoff)) continue;
+
+			recovered += jdbc.update("""
+				UPDATE quotation_delivery_attempt
+				SET status = 'FAILED', error_message = 'DELIVERY_LEASE_EXPIRED',
+					completed_at = CURRENT_TIMESTAMP
+				WHERE id = ? AND status = 'SENDING'
+				""", ((Number) attempt.get("id")).longValue());
+		}
 		if (recovered == 0) return;
 
 		jdbc.update(
 			"UPDATE quotation SET status = 'READY' WHERE id = ? AND status = 'SENDING'",
 			quotationId
 		);
-	}
-
-	// 方法：依資料庫驅動提供可正確比較的 UTC 租約截止時間。
-	private Object leaseCutoff() {
-		Instant cutoff = Instant.now().minus(5, java.time.temporal.ChronoUnit.MINUTES);
-		return jdbc.execute((ConnectionCallback<Object>) connection -> {
-			String database = connection.getMetaData().getDatabaseProductName();
-			if (database.toLowerCase(java.util.Locale.ROOT).contains("sqlite")) {
-				return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-					.withZone(ZoneOffset.UTC)
-					.format(cutoff);
-			}
-
-			return Timestamp.from(cutoff);
-
-		});
 	}
 
 	// 方法：將取得發送權的嘗試標記成功，並同步正式報價整體狀態。

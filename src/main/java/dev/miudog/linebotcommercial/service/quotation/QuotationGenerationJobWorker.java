@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -29,6 +30,10 @@ public class QuotationGenerationJobWorker {
 
 	private static final Logger log = LoggerFactory.getLogger(QuotationGenerationJobWorker.class);
 	private static final Duration MAXIMUM_RETRY_DELAY = Duration.ofMinutes(15);
+	private static final Pattern SENSITIVE_VALUE = Pattern.compile(
+		"(?i)(authorization|credential|password|secret|token|api[-_ ]?key)(\\s*[=:]\\s*)\\S+"
+	);
+	private static final Pattern URL_USER_INFO = Pattern.compile("://[^\\s/@:]+:[^\\s/@]+@");
 
 	private final QuotationGenerationJobRepository jobs;
 	private final QuotationGenerationSnapshotRepository snapshots;
@@ -222,6 +227,7 @@ public class QuotationGenerationJobWorker {
 		}
 		catch (RuntimeException exception) {
 			String errorCode = errorCode(exception);
+			Throwable rootCause = rootCause(exception);
 			boolean failed = jobs.markFailed(
 				job.id(),
 				workerId,
@@ -236,6 +242,8 @@ public class QuotationGenerationJobWorker {
 				.addKeyValue("quotationId", job.quotationId())
 				.addKeyValue("attemptCount", job.attemptCount())
 				.addKeyValue("errorCode", errorCode)
+				.addKeyValue("rootErrorType", rootCause.getClass().getSimpleName())
+				.addKeyValue("rootErrorMessage", safeRootMessage(rootCause))
 				.log(
 					"event={} quotationId={} attemptCount={} errorCode={}",
 					"quotation_generation_job_failed",
@@ -310,6 +318,29 @@ public class QuotationGenerationJobWorker {
 			: exception instanceof QuotationAdminException adminException
 				? adminException.code()
 				: "GENERATION_FAILED";
+	}
+
+	// 方法：取得最深層例外，讓正式 JSON 日誌不依賴已關閉的堆疊輸出也能定位根因類型。
+	Throwable rootCause(Throwable exception) {
+		Throwable current = exception;
+		for (int depth = 0; depth < 20; depth++) {
+			Throwable cause = current.getCause();
+			if (cause == null || cause == current) return current;
+
+			current = cause;
+		}
+		return current;
+	}
+
+	// 方法：限制根因摘要長度並移除控制字元，避免外部例外破壞結構化日誌。
+	String safeRootMessage(Throwable rootCause) {
+		String message = rootCause.getMessage();
+		if (message == null || message.isBlank()) return rootCause.getClass().getSimpleName();
+
+		String safe = message.replaceAll("[\\r\\n\\t]+", " ").trim();
+		safe = SENSITIVE_VALUE.matcher(safe).replaceAll("$1$2[redacted]");
+		safe = URL_USER_INFO.matcher(safe).replaceAll("://[redacted]@");
+		return safe.length() <= 300 ? safe : safe.substring(0, 300);
 	}
 
 	// 方法：租約遺失只記錄報價及工作識別，不覆蓋接手工作者的新狀態。

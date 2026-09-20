@@ -72,9 +72,7 @@ public class QuotationAssetArchiveService {
 		List<Candidate> candidates = loadCandidates(quotation.draftId(), confirmation.quotationId());
 		if (candidates.isEmpty()) return new QuotationArchivedAssets(List.of(), null);
 
-		if (!storage.usesLegacyFilesystem()) {
-			return archiveObjects(confirmation, candidates);
-		}
+		if (!storage.usesLegacyFilesystem()) return archiveObjects(confirmation, candidates);
 
 		Path directory = outputDirectories.resolveFormalDirectory(confirmation.folderName());
 		if (candidates.stream().allMatch(Candidate::alreadyArchived)) {
@@ -280,8 +278,8 @@ public class QuotationAssetArchiveService {
 			""".formatted(assetPath), (resultSet, rowNumber) -> new Candidate(
 			resultSet.getString("message_id"),
 			resultSet.getInt("candidate_order"),
-			(Double) resultSet.getObject("distinctiveness_score"),
-			(Double) resultSet.getObject("quality_score"),
+			nullableDouble(resultSet.getObject("distinctiveness_score")),
+			nullableDouble(resultSet.getObject("quality_score")),
 			resultSet.getString("selection_reason"),
 			resultSet.getInt("is_selected") == 1,
 			resultSet.getString("staging_path"),
@@ -300,6 +298,11 @@ public class QuotationAssetArchiveService {
 	// 方法：將 SQLite 可能回傳的 Integer 或 Long 主鍵統一轉成 long。
 	private Long nullableLong(Object value) {
 		return value == null ? null : ((Number) value).longValue();
+	}
+
+	// 方法：將 SQLite 的 Double 與 PostgreSQL 的 BigDecimal 分數統一轉成 double。
+	private Double nullableDouble(Object value) {
+		return value == null ? null : ((Number) value).doubleValue();
 	}
 
 	// 方法：建立資料夾前確認每一張尚未歸檔的原圖都存在且位於 .pending。

@@ -1,6 +1,9 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
+import dev.miudog.linebotcommercial.config.runtime.CompanyProperties;
 import dev.miudog.linebotcommercial.service.FileStorageService;
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -19,6 +22,10 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class QuotationAssetArchiveServiceTest {
 
@@ -178,6 +185,47 @@ class QuotationAssetArchiveServiceTest {
 
 		Path directory = outputDirectories.resolveFormalDirectory(confirmation.folderName());
 		assertThat(directory.resolve(".image-01.archive.json")).doesNotExist();
+	}
+
+	// 測試：正式物件儲存模式可複製待處理原圖、寫入資產關聯並提供選中圖片給 Excel。
+	@Test
+	void archivesSelectedPendingObjectAndPersistsDatabaseLinks() {
+		byte[] image = "IMG1".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		String pendingKey = "staging/pending/one.jpg";
+		jdbc.execute("ALTER TABLE asset ADD COLUMN company_id TEXT NOT NULL DEFAULT 'legacy'");
+		jdbc.execute("ALTER TABLE asset ADD COLUMN object_key TEXT");
+		jdbc.execute("ALTER TABLE asset ADD COLUMN object_version TEXT");
+		jdbc.execute("ALTER TABLE asset ADD COLUMN content_hash TEXT");
+		seedPendingImageRecordOnly("IMG1", pendingKey, true, 0.95, 0.9);
+		ObjectStorage objects = mock(ObjectStorage.class);
+		when(objects.metadata(anyString())).thenAnswer(invocation -> new StoredObject(
+			invocation.getArgument(0),
+			"version-1",
+			"etag-1",
+			"hash-1",
+			image.length,
+			"image/jpeg"
+		));
+		when(objects.get(anyString())).thenReturn(image);
+		service = new QuotationAssetArchiveService(
+			jdbc,
+			new FileStorageService(assetsRoot.toString(), false, objects),
+			outputDirectories,
+			new CompanyProperties("miudog-test")
+		);
+
+		QuotationArchivedAssets archived = service.archive(confirmation);
+
+		assertThat(archived.assets()).hasSize(1);
+		assertThat(archived.selectedImagePath()).isRegularFile().hasBinaryContent(image);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pending_image", Integer.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM asset", Integer.class)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quotation_asset", Integer.class)).isEqualTo(1);
+		verify(objects).copy(org.mockito.ArgumentMatchers.eq(pendingKey), anyString());
+		verify(objects).get(anyString());
+
+		service.cleanupTemporary(archived);
+		assertThat(archived.selectedImagePath()).doesNotExist();
 	}
 
 	private QuotationConfirmationResult seedConfirmedQuotation(String status) {

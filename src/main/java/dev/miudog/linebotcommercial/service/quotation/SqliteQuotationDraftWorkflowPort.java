@@ -97,7 +97,7 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		QuotationDraftSnapshot inputDraft = includeQuotedImage(base, ownerId, quotedImageMessageId);
 		// 應用服務：報價格式只由使用者指定；尚未指定時不呼叫 AI，改由狀態機要求先選格式。
 		String lockedSchemeCode = inputDraft.schemeCode() == null
-			? (csv == null ? QuotationSchemeKeywords.parse(text) : csv.request().schemeCode())
+			? (csv == null ? requestedScheme(text) : csv.request().schemeCode())
 			: inputDraft.schemeCode();
 		if (lockedSchemeCode == null) {
 			// 資料庫：選格式前也保存原文，之後可續接解析而不要求使用者重貼。
@@ -111,7 +111,7 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		}
 
 		// 本張格式已鎖定時，新的明確報價指令不可靜默併入舊格式。
-		String requestedScheme = text != null && text.strip().startsWith("#報價") ? QuotationSchemeKeywords.parse(text) : null;
+		String requestedScheme = QuotationSchemeKeywords.parseDirective(text);
 		if (requestedScheme != null && inputDraft.schemeCode() != null && !requestedScheme.equals(inputDraft.schemeCode())) {
 			throw error("DRAFT_SCHEME_CONFLICT", "目前仍有「" + QuotationSchemeKeywords.displayName(inputDraft.schemeCode())
 				+ "」草稿。請先按取消報價，再以 #報價 建立新的格式；既有資料已保留。");
@@ -125,6 +125,16 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 			? transactions.execute(status -> commitScheme(inputDraft, ownerId, lockedSchemeCode))
 			: inputDraft;
 		if (schemedDraft == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
+
+		if (isBulkZeroReply(text)) {
+			QuotationDraftSnapshot completed = transactions.execute(status -> commitBulkZeroReply(
+				schemedDraft,
+				ownerId,
+				messageId,
+				text
+			));
+			if (completed != null) return work(completed);
+		}
 
 		List<AiImageInput> images = csv != null || quotedImageMessageId == null ? List.of() : imageInputs(schemedDraft);
 		QuotationAiParsingService.ParseResult parsed = csv;
@@ -144,6 +154,12 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 		if (committed == null) throw error("DRAFT_SAVE_FAILED", "無法保存報價草稿");
 
 		return work(committed);
+	}
+
+	// 方法：優先採用 #報價 指令行，沒有指令時才沿用單一格式關鍵字解析。
+	private String requestedScheme(String text) {
+		String directiveScheme = QuotationSchemeKeywords.parseDirective(text);
+		return directiveScheme == null ? QuotationSchemeKeywords.parse(text) : directiveScheme;
 	}
 
 	// 方法：讀回尚未指定格式的草稿，讓狀態機以目前實際狀態要求使用者先選格式。
@@ -203,6 +219,81 @@ public class SqliteQuotationDraftWorkflowPort implements QuotationDraftWorkflowP
 	private String withPendingInput(long draftId, String text) {
 		List<String> pending = pendingInput(draftId);
 		return pending.isEmpty() ? text : String.join("\n", pending) + "\n" + text;
+	}
+
+	// 方法：辨識使用者對目前整批待補數量給出的零值回答。
+	private boolean isBulkZeroReply(String text) {
+		if (text == null || text.isBlank()) return false;
+
+		String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
+			.replaceAll("[\\s，。,.！!？?：:；;]+", "");
+		boolean hasBulkMeaning = List.of("全部", "全都", "所有", "都", "皆", "其餘", "其他", "剩下", "以上")
+			.stream()
+			.anyMatch(normalized::contains);
+		if (!hasBulkMeaning) return false;
+
+		String remainder = normalized;
+		for (String phrase : List.of(
+			"未填的", "未填", "全部", "全都", "所有", "其餘", "其他", "剩下", "以上",
+			"品項", "項目", "數量", "填為", "設為", "設成", "都", "皆", "全", "填", "為", "是"
+		)) {
+			remainder = remainder.replace(phrase, "");
+		}
+		return "0".equals(remainder) || "零".equals(remainder);
+	}
+
+	// 方法：將 CNS／一般架目前只缺數量的標準品項批次標記為不採用。
+	private QuotationDraftSnapshot commitBulkZeroReply(
+		QuotationDraftSnapshot inputDraft,
+		String ownerId,
+		String messageId,
+		String text
+	) {
+		QuotationDraftSnapshot current = loadSnapshot(inputDraft.draftId(), ownerId);
+		requireRevision(current, inputDraft.revision());
+		if (!Set.of("CNS", "GENERAL").contains(current.schemeCode())) return null;
+
+		Map<String, QuotationDraftItem> itemsByKey = new LinkedHashMap<>();
+		for (QuotationDraftItem item : current.items()) itemsByKey.put(item.itemKey(), item);
+
+		QuotationConversationDecision decision = new QuotationConversationService().review(current);
+		List<String> pendingItemCodes = new ArrayList<>();
+		for (QuotationMissingItemFields missing : decision.missingItemFields()) {
+			QuotationDraftItem item = itemsByKey.get(missing.itemKey());
+			if (item == null || item.kind() != QuotationDraftItemKind.STANDARD
+				|| !List.of("quantity").equals(missing.fields())) return null;
+
+			pendingItemCodes.add(item.itemKey());
+		}
+		if (pendingItemCodes.isEmpty()) return null;
+
+		QuotationDraftSnapshot updated = new QuotationDraftSnapshot(
+			current.draftId(),
+			current.revision() + 1,
+			current.status(),
+			current.schemeCode(),
+			current.baseFields(),
+			current.items(),
+			current.imageMessageIds(),
+			current.selectedImageMessageId(),
+			current.imageQuestionAsked(),
+			current.imageDeclined(),
+			false,
+			null
+		);
+		saveCas(updated, current.revision());
+
+		// 資料庫：零值不寫入受正數限制的 quantity，改用既有刪除語意排除計價。
+		for (String itemCode : pendingItemCodes) {
+			jdbc.update("""
+				UPDATE quotation_draft_item
+				SET is_removed = 1, updated_at = CURRENT_TIMESTAMP
+				WHERE draft_id = ? AND item_kind = 'STANDARD'
+					AND item_code_snapshot = ? AND quantity IS NULL
+				""", current.draftId(), itemCode);
+		}
+		saveMessage(current.draftId(), messageId, "TEXT", text, "{\"source\":\"DETERMINISTIC_BULK_ZERO\"}");
+		return loadSnapshot(current.draftId(), ownerId);
 	}
 
 	// 方法：複製草稿並只更換報價格式與 revision。

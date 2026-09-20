@@ -30,6 +30,11 @@
 		<java.version>25</java.version>
 		<cyclonedx.version>2.9.3</cyclonedx.version>
 		<aws.sdk.version>2.54.7</aws.sdk.version>
+		<!-- 安全修補：覆寫 Spring Boot 4.1.0 BOM 中已有修正版的 runtime 依賴。 -->
+		<netty.version>4.2.17.Final</netty.version>
+		<tomcat.version>11.0.25</tomcat.version>
+		<httpcore5.version>5.4.3</httpcore5.version>
+		<postgresql.version>42.7.12</postgresql.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>

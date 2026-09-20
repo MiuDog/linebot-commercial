@@ -201,6 +201,33 @@ class SqliteQuotationDraftWorkflowPortTest {
 		)).isEqualTo(1);
 	}
 
+	// 測試：固定格式續問時「都為 0」代表排除全部尚未填數量的標準品項。
+	@Test
+	void removesEveryPendingStandardItemWhenTheUserAnswersAllAreZero() {
+		when(parser.parse("#報價 CNS", List.of(), "CNS"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(cnsRequestWithPendingQuantities(), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 CNS");
+		clearInvocations(parser);
+
+		QuotationDraftWork completed = port.applyText("U1", "M2", "都為 0");
+
+		assertThat(first.draft().items()).hasSize(3);
+		assertThat(completed.draft().items()).singleElement().satisfies(item -> {
+			assertThat(item.itemKey()).isEqualTo("EXTERNAL_SCAFFOLD");
+			assertThat(item.fields()).containsEntry("quantity", "2");
+		});
+		assertThat(jdbc.queryForObject("""
+			SELECT COUNT(*) FROM quotation_draft_item
+			WHERE draft_id = ? AND is_removed = 1
+				AND item_code_snapshot IN ('DUST_NET', 'WALL_TIE_ROD')
+			""", Integer.class, first.draft().draftId())).isEqualTo(2);
+		assertThat(jdbc.queryForObject("""
+			SELECT COUNT(*) FROM quotation_draft_message
+			WHERE draft_id = ? AND message_id = 'M2' AND ai_response_json IS NOT NULL
+			""", Integer.class, first.draft().draftId())).isEqualTo(1);
+		verifyNoInteractions(parser);
+	}
+
 	@Test
 	void bindsRevisionLookupToTheOwningLineUser() {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
@@ -460,6 +487,23 @@ class SqliteQuotationDraftWorkflowPortTest {
 	}
 
 	@Test
+	void rejectsDirectiveConflictBeforeAiWhenBodyMentionsTheExistingScheme() {
+		when(parser.parse("#報價 CNS", List.of(), "CNS"))
+			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
+		QuotationDraftWork first = port.applyText("U1", "M1", "#報價 CNS");
+		clearInvocations(parser);
+		String generalTest = """
+			#報價 一般架
+			請使用一般架自己的價格，不套用 CNS 主檔。
+			""";
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.applyText("U1", "M2", generalTest))
+			.isInstanceOf(QuotationLineWorkflowException.class)
+			.hasMessageContaining("CNS 架");
+		assertThat(port.load(first.draft().draftId(), "U1").draft()).isEqualTo(first.draft());
+		verifyNoInteractions(parser);
+	}
+
+	@Test
 	void rejectsAbsoluteAndEscapingPendingImagePathsBeforeCallingAi() throws Exception {
 		when(parser.parse("#報價 一般架", List.of(), "GENERAL"))
 			.thenReturn(new QuotationAiParsingService.ParseResult(request("範例工程", "工程A"), "{}"));
@@ -680,6 +724,41 @@ class SqliteQuotationDraftWorkflowPortTest {
 			List.of(),
 			companyName == null ? "REQUEST_BASE_FIELDS" : "SHOW_PREVIEW",
 			List.of()
+		);
+	}
+
+	private QuotationRequestValidationService.ValidatedQuotationRequest cnsRequestWithPendingQuantities() {
+		QuotationRequestValidationService.ValidatedQuotationRequest base = request("範例工程", "工程A");
+		return new QuotationRequestValidationService.ValidatedQuotationRequest(
+			base.schemaVersion(),
+			"CNS",
+			base.schemeConfidence(),
+			base.headerPatch(),
+			List.of(
+				standardItem("EXTERNAL_SCAFFOLD", "外部鷹架", new BigDecimal("2")),
+				standardItem("DUST_NET", "防塵網", null),
+				standardItem("WALL_TIE_ROD", "壁連桿", null)
+			),
+			List.of(),
+			List.of(),
+			List.of(),
+			null,
+			false,
+			List.of(),
+			List.of(),
+			"REQUEST_ITEM_FIELDS",
+			List.of()
+		);
+	}
+
+	private QuotationRequestValidationService.ResolvedItem standardItem(
+		String itemCode,
+		String itemName,
+		BigDecimal quantity
+	) {
+		return new QuotationRequestValidationService.ResolvedItem(
+			itemCode, itemName, "TEST", quantity, "式", BigDecimal.TEN,
+			null, "TEST ONLY", 1, "DIRECT", true, itemName, BigDecimal.ONE
 		);
 	}
 

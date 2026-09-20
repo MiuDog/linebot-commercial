@@ -72,12 +72,31 @@ class QuotationLineMessageBuilderTest {
 	// 方法：所有不完整品項與欄位以單一清單詢問。
 	@Test
 	void buildsOneGroupedItemFieldRequest() {
-		QuotationConversationDecision decision = decision(
+		QuotationDraftSnapshot draft = new QuotationDraftSnapshot(
+			42L,
+			7,
 			QuotationDraftStatus.COLLECTING_ITEMS,
+			"BLANK",
+			Map.of("companyName", "範例公司", "workName", "碼頭工程"),
+			List.of(
+				new QuotationDraftItem("FRAME", QuotationDraftItemKind.STANDARD, Map.of("itemName", "外部鷹架")),
+				new QuotationDraftItem("custom-1", QuotationDraftItemKind.CUSTOM, Map.of("itemName", "特殊材料")),
+				new QuotationDraftItem("internal-99", QuotationDraftItemKind.CUSTOM, Map.of())
+			),
+			List.of(),
+			null,
+			false,
+			false,
+			false,
+			null
+		);
+		QuotationConversationDecision decision = new QuotationConversationDecision(
+			draft,
 			List.of(),
 			List.of(
 				new QuotationMissingItemFields("FRAME", List.of("quantity")),
-				new QuotationMissingItemFields("custom-1", List.of("unit", "unitPrice", "remark"))
+				new QuotationMissingItemFields("custom-1", List.of("unit", "unitPrice", "remark")),
+				new QuotationMissingItemFields("internal-99", List.of("itemName"))
 			),
 			QuotationNextAction.REQUEST_ITEM_FIELDS
 		);
@@ -85,7 +104,9 @@ class QuotationLineMessageBuilderTest {
 		List<QuotationLineMessage> messages = builder.build(decision, OWNER_ID, null);
 
 		assertThat(messages).hasSize(1);
-		assertThat(textOf(messages.getFirst())).contains("FRAME", "數量", "custom-1", "單位", "單價", "備註");
+		assertThat(textOf(messages.getFirst()))
+			.contains("外部鷹架", "數量", "特殊材料", "單位", "單價", "備註", "第 3 筆品項", "品項名稱")
+			.doesNotContain("FRAME", "custom-1", "internal-99");
 		assertThat(actionsOf(messages)).extracting(QuotationVerifiedPostback::action)
 			.containsExactly(QuotationPostbackAction.CANCEL);
 	}
@@ -187,6 +208,49 @@ class QuotationLineMessageBuilderTest {
 		).toString();
 
 		assertThat(combined).contains("名稱對應", "外牆鷹架", "外部鷹架");
+	}
+
+	// 測試：缺少中文主檔名稱時仍不得以 itemCode 代替顯示名稱。
+	@Test
+	void neverUsesItemCodeAsTheVisibleNameMatchTarget() {
+		QuotationConversationDecision base = decision(
+			QuotationDraftStatus.READY_FOR_PREVIEW,
+			List.of(),
+			List.of(),
+			QuotationNextAction.SHOW_PREVIEW
+		);
+		QuotationDraftSnapshot source = base.draft();
+		QuotationDraftSnapshot withoutMasterName = new QuotationDraftSnapshot(
+			source.draftId(),
+			source.revision(),
+			source.status(),
+			source.schemeCode(),
+			source.baseFields(),
+			List.of(new QuotationDraftItem(
+				"EXTERNAL_SCAFFOLD",
+				QuotationDraftItemKind.STANDARD,
+				Map.of("itemCode", "EXTERNAL_SCAFFOLD", "matchedName", "外牆鷹架")
+			)),
+			source.imageMessageIds(),
+			source.selectedImageMessageId(),
+			false,
+			false,
+			false,
+			null
+		);
+
+		String combined = builder.build(
+			new QuotationConversationDecision(
+				withoutMasterName,
+				List.of(),
+				List.of(),
+				QuotationNextAction.SHOW_PREVIEW
+			),
+			OWNER_ID,
+			calculationResult()
+		).toString();
+
+		assertThat(combined).contains("外牆鷹架", "主檔品項").doesNotContain("EXTERNAL_SCAFFOLD");
 	}
 
 	@Test

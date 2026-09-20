@@ -72,8 +72,8 @@ public final class QuotationLineFailureMessageResolver {
 			case "AI_SERVICE_UNAVAILABLE" -> "AI 服務暫時無法連線，請稍後重送報價指令。";
 			case "AI_RESPONSE_INVALID" -> "AI 回傳格式不完整，自動修復未成功（每輪最多5次，仍受預算與期限限制）。請改用CSV或縮小本次輸入。";
 			case "AI_IMAGE_RESPONSE_INVALID" -> "AI 沒有完整評估候選圖片，請重新上傳圖片。";
-			case "AI_MASTER_DATA_VALIDATION_FAILED" -> "AI 辨識結果無法套用品項主檔：" + safeDetail(exception.getMessage())
-				+ "\n請改用品項主檔中的名稱，或補充報價格式與數量。";
+			case "AI_MASTER_DATA_VALIDATION_FAILED" -> "AI 辨識結果無法套用品項主檔。"
+				+ "\n請改用品項主檔中的中文名稱，或補充報價格式與數量。";
 			default -> "報價 AI 處理失敗，請重送一次；若仍失敗請將錯誤代碼提供給管理員。";
 		};
 		return new Failure(code, withCode(message, code));

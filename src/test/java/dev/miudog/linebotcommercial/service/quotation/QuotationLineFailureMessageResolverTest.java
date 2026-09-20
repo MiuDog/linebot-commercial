@@ -33,4 +33,20 @@ class QuotationLineFailureMessageResolverTest {
 			QuotationLineFailureMessageResolver.Operation.POSTBACK);
 		assertThat(conversation.code()).isEqualTo("STALE_DRAFT");
 	}
+
+	// 測試：主檔驗證失敗只指引使用中文品名，不把 AI 或資料庫使用的內部代碼回給使用者。
+	@Test
+	void hidesInternalItemIdentifiersFromMasterDataFailures() {
+		var failure = QuotationLineFailureMessageResolver.resolve(
+			new QuotationAiException(
+				"AI_MASTER_DATA_VALIDATION_FAILED",
+				"標準品項 EXTERNAL_SCAFFOLD 不屬於所選格式 GENERAL"
+			),
+			QuotationLineFailureMessageResolver.Operation.TEXT
+		);
+
+		assertThat(failure.message())
+			.contains("中文名稱", "品項主檔")
+			.doesNotContain("EXTERNAL_SCAFFOLD", "GENERAL");
+	}
 }

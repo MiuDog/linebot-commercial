@@ -191,7 +191,7 @@ class LineWebhookControllerTest {
 	}
 
 	@Test
-	void reportsTheExactMasterDataValidationFailureInsteadOfAGenericAdministratorMessage() throws Exception {
+	void reportsMasterDataValidationWithoutExposingInternalItemIdentifiers() throws Exception {
 		String payload = directTextPayload("EV-VALIDATION", "#報價 CNS 外部鷹架 2");
 		when(quotationWorkflow.isQuotationText("U1", "#報價 CNS 外部鷹架 2")).thenReturn(true);
 		when(quotationWorkflow.handleText(
@@ -209,8 +209,8 @@ class LineWebhookControllerTest {
 
 		verify(lineService).replyText(
 			"reply-token",
-			"AI 辨識結果無法套用品項主檔：標準品項 UNKNOWN 不屬於所選格式 CNS\n"
-				+ "請改用品項主檔中的名稱，或補充報價格式與數量。\n"
+			"AI 辨識結果無法套用品項主檔。\n"
+				+ "請改用品項主檔中的中文名稱，或補充報價格式與數量。\n"
 				+ "錯誤代碼：AI_MASTER_DATA_VALIDATION_FAILED"
 		);
 	}

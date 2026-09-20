@@ -7,12 +7,15 @@ import java.time.LocalDate;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 只由正式不可變快照重建背景產檔命令，不依賴記憶體草稿或 AI 回應內容。
  */
 @Repository
 public class QuotationGenerationSnapshotRepository {
+	private static final ObjectMapper JSON = new ObjectMapper();
 
 	private final JdbcTemplate jdbc;
 
@@ -101,7 +104,7 @@ public class QuotationGenerationSnapshotRepository {
 			SELECT line_number, line_kind, visibility, item_code_snapshot,
 				item_name_snapshot, specification_snapshot, quantity, unit_snapshot,
 				unit_price_snapshot, line_amount, remark_snapshot,
-				COALESCE(json_extract(calculation_detail_json, '$.mode'), 'DIRECT') AS calculation_mode
+				calculation_detail_json
 			FROM quotation_line
 			WHERE quotation_id = ?
 			ORDER BY line_number
@@ -149,10 +152,27 @@ public class QuotationGenerationSnapshotRepository {
 			decimalOrNull(result, "line_amount"),
 			blankIfNull(result.getString("remark_snapshot")),
 			result.getInt("line_number"),
-			required(result.getString("calculation_mode"), "正式計價模式"),
+			calculationMode(result.getString("calculation_detail_json")),
 			origin(lineKind, schemeCode),
 			"CUSTOMER".equals(result.getString("visibility"))
 		);
+	}
+
+	// 方法：在 Java 解析快照 JSON，避免使用 SQLite 與 PostgreSQL 不相容的 JSON SQL 函式。
+	private String calculationMode(String detailJson) {
+		if (detailJson == null || detailJson.isBlank()) return "DIRECT";
+
+		try {
+			JsonNode mode = JSON.readTree(detailJson).path("mode");
+			return mode.isMissingNode() || mode.asString().isBlank() ? "DIRECT" : mode.asString();
+		}
+		catch (RuntimeException exception) {
+			throw new QuotationGenerationException(
+				"INCOMPLETE_GENERATION_SNAPSHOT",
+				"正式報價計價快照格式錯誤",
+				exception
+			);
+		}
 	}
 
 	// 方法：由正式列種類及方案還原固定、臨時或動態來源。

@@ -1,14 +1,23 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import dev.miudog.linebotcommercial.companyasset.CompanyAssetService;
+import dev.miudog.linebotcommercial.config.runtime.CompanyProperties;
+import dev.miudog.linebotcommercial.repository.JdbcQuotationDeliveryRepository;
+import dev.miudog.linebotcommercial.service.FileStorageService;
+import dev.miudog.linebotcommercial.storage.ObjectStorage;
+import dev.miudog.linebotcommercial.storage.StoredObject;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
@@ -23,6 +33,7 @@ import static org.mockito.Mockito.when;
  */
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = "jdbc:postgresql:.*")
 class QuotationPostgresConfirmationTest {
+	@TempDir Path temporaryDirectory;
 
 	// 方法：覆蓋五種格式、每日遞增、重複確認與失敗回滾，使用正式 Flyway 結構。
 	@Test
@@ -43,14 +54,17 @@ class QuotationPostgresConfirmationTest {
 			long assetId = jdbc.queryForObject("SELECT id FROM company_asset_set", Long.class);
 			var assets = mock(CompanyAssetService.class);
 			when(assets.activeSetId()).thenReturn(assetId);
+			var jobs = new QuotationGenerationJobRepository(jdbc);
 			var service = new QuotationConfirmationService(
 				jdbc,
 				new DataSourceTransactionManager(source),
-				new QuotationGenerationJobRepository(jdbc),
+				jobs,
 				new QuotationBusinessRules(new BigDecimal("0.05"), 15),
 				assets,
 				false
 			);
+			var snapshots = new QuotationGenerationSnapshotRepository(jdbc);
+			var deliveries = new JdbcQuotationDeliveryRepository(jdbc);
 			int sequence = 0;
 			for (String scheme : List.of("CNS", "GENERAL", "MARINE", "BLANK", "SALES")) {
 				jdbc.update("""
@@ -61,12 +75,47 @@ class QuotationPostgresConfirmationTest {
 				long draftId = insertDraft(jdbc, scheme);
 				var command = command(draftId, scheme, "test-item");
 				var result = service.confirm(command);
+				if ("MARINE".equals(scheme)) assertPostgresImageScoresCanBeArchived(jdbc, draftId, result);
+				var snapshot = snapshots.load(result.quotationId());
 				assertThat(result.sequenceNumber()).isEqualTo(++sequence);
+				assertThat(snapshot.calculation().internalLines().getFirst().calculationMode()).isEqualTo("DIRECT");
 				assertThat(service.confirm(command).quotationId()).isEqualTo(result.quotationId());
 				assertThat(jdbc.queryForObject("SELECT total_amount FROM quotation WHERE id = ?", BigDecimal.class, result.quotationId())).isEqualByComparingTo("210");
 				assertThat(jdbc.queryForObject("SELECT asset_set_id FROM quotation WHERE id = ?", Long.class, result.quotationId())).isEqualTo(assetId);
 				assertThat(jdbc.queryForObject("SELECT count(*) FROM quotation_line WHERE quotation_id = ?", Integer.class, result.quotationId())).isEqualTo(1);
 				assertThat(jdbc.queryForObject("SELECT status FROM quotation_draft WHERE id = ?", String.class, draftId)).isEqualTo("CONFIRMED");
+				jdbc.update("UPDATE quotation SET status = 'READY' WHERE id = ?", result.quotationId());
+				jdbc.update("""
+					INSERT INTO quotation_file (quotation_id, file_kind, content_type, status)
+					VALUES (?, 'PDF', 'application/pdf', 'READY')
+					""", result.quotationId());
+				assertThat(deliveries.findSnapshot(result.quotationId()).createdAt()).isNotNull();
+				jdbc.update("""
+					INSERT INTO quotation_delivery_attempt (
+						quotation_id, destination_type, destination_id, delivery_kind, status, attempted_at
+					)
+					VALUES (?, 'LINE_USER', 'U-postgres-stale', 'FINAL', 'SENDING', '2020-01-01 00:00:00')
+					""", result.quotationId());
+				jdbc.update("UPDATE quotation SET status = 'SENDING' WHERE id = ?", result.quotationId());
+				var recovered = deliveries.claimFinal(result.quotationId(), "U-postgres-stale");
+				assertThat(recovered.state()).isEqualTo(QuotationDeliveryClaim.State.READY);
+				assertThat(recovered.attemptCount()).isEqualTo(2);
+				deliveries.markFailed(recovered.attemptId(), "TEST_RECOVERY_COMPLETE");
+				var claim = deliveries.claimFinal(result.quotationId(), "U-postgres-delivery");
+				assertThat(claim.state()).isEqualTo(QuotationDeliveryClaim.State.READY);
+				deliveries.markFailed(claim.attemptId(), "TEST_FAILURE");
+				var retry = deliveries.claimFinal(result.quotationId(), "U-postgres-delivery");
+				assertThat(retry.attemptCount()).isEqualTo(2);
+				deliveries.markSent(retry.attemptId(), "test-provider-message");
+				assertThat(deliveries.claimFinal(result.quotationId(), "U-postgres-delivery").state())
+					.isEqualTo(QuotationDeliveryClaim.State.ALREADY_SENT);
+				var leased = jobs.leaseNext(
+					"postgres-worker",
+					Instant.now(),
+					Duration.ofMinutes(2)
+				);
+				assertThat(leased).isPresent();
+				assertThat(jobs.markDone(leased.orElseThrow().id(), "postgres-worker")).isTrue();
 			}
 			long failedDraft = insertDraft(jdbc, "CNS");
 			assertThatThrownBy(() -> service.confirm(command(failedDraft, "CNS", null))).isInstanceOf(org.springframework.dao.DataAccessException.class);
@@ -80,6 +129,60 @@ class QuotationPostgresConfirmationTest {
 			// 外部呼叫：只刪除此測試建立、由 UUID 組成的獨立 schema。
 			root.execute("DROP SCHEMA " + schema + " CASCADE");
 		}
+	}
+
+	// 方法：以 PostgreSQL NUMERIC 圖片評分驗證正式圖片歸檔不依賴 JDBC 回傳 Double。
+	private void assertPostgresImageScoresCanBeArchived(
+		JdbcTemplate jdbc,
+		long draftId,
+		QuotationConfirmationResult confirmation
+	) {
+		byte[] image = "marine-image".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		String pendingKey = "staging/pending/postgres-marine.jpg";
+		jdbc.update("""
+			INSERT INTO pending_image (
+				message_id, image_set_id, image_index, image_total, source_type,
+				source_id, uploader_id, staging_path, content_type, file_size, received_at
+			) VALUES ('PG-IMG', 'PG-SET', 1, 1, 'user', 'test-user', 'test-user', ?, 'image/jpeg', ?, ?)
+			""", pendingKey, image.length, Instant.now().toString());
+		jdbc.update("""
+			INSERT INTO quotation_draft_image (
+				draft_id, message_id, candidate_order, distinctiveness_score,
+				quality_score, selection_reason, is_selected
+			) VALUES (?, 'PG-IMG', 0, 0.95, 0.80, 'test', 1)
+			""", draftId);
+
+		ObjectStorage objects = mock(ObjectStorage.class);
+		when(objects.metadata(anyString())).thenAnswer(invocation -> new StoredObject(
+			invocation.getArgument(0),
+			"version-1",
+			"etag-1",
+			"hash-1",
+			image.length,
+			"image/jpeg"
+		));
+		when(objects.get(anyString())).thenReturn(image);
+		var archive = new QuotationAssetArchiveService(
+			jdbc,
+			new FileStorageService(temporaryDirectory.toString(), false, objects),
+			new QuotationOutputDirectoryService(temporaryDirectory.toString()),
+			new CompanyProperties("test")
+		);
+
+		QuotationArchivedAssets archived = archive.archive(confirmation);
+
+		assertThat(archived.assets()).hasSize(1);
+		assertThat(jdbc.queryForObject(
+			"SELECT distinctiveness_score FROM quotation_asset WHERE quotation_id = ?",
+			BigDecimal.class,
+			confirmation.quotationId()
+		)).isEqualByComparingTo("0.95");
+		assertThat(jdbc.queryForObject(
+			"SELECT quality_score FROM quotation_asset WHERE quotation_id = ?",
+			BigDecimal.class,
+			confirmation.quotationId()
+		)).isEqualByComparingTo("0.80");
+		archive.cleanupTemporary(archived);
 	}
 
 	// 方法：建立不涉及真實使用者的待確認草稿。
