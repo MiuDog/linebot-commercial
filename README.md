@@ -134,6 +134,21 @@ docker compose --profile tunnel down
 
 測試輸入已備妥：[五種報價格式測試套件](docs/examples/quotation-test-pack/README.md)，包含文字腳本、38 份 CSV、6 張合成圖片與 60 項功能案例。可執行 `./mvnw.cmd -q -Dtest=QuotationExamplePackTest test` 驗證範例檔案與預期計價。
 
+正式確認另有 PostgreSQL 回歸測試，涵蓋五種格式配號、快照、重複確認與失敗回滾。Linux CI 自動執行；本機可使用獨立測試容器（不連接正式資料庫、不發送 LINE）：
+
+```powershell
+docker run -d --rm --name quotation-confirmation-test -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1::5432 postgres:17.11-alpine3.24
+# 確認 pg_isready 回報 accepting connections 後再執行測試。
+docker exec quotation-confirmation-test pg_isready -U postgres
+$testPort = (docker port quotation-confirmation-test 5432/tcp).Split(':')[-1]
+$env:TEST_POSTGRES_URL = "jdbc:postgresql://127.0.0.1:$testPort/postgres"
+.\mvnw.cmd '-Dtest=QuotationPostgresConfirmationTest' test
+Remove-Item Env:TEST_POSTGRES_URL
+docker stop quotation-confirmation-test
+```
+
+未設定 `TEST_POSTGRES_URL` 時，此項測試會明確標示跳過，其餘 SQLite 測試照常執行。`QUOTATION_DATABASE_BUSY` 表示暫時性資料庫錯誤；SQL 或其他非暫時性資料存取錯誤回覆 `QUOTATION_DATABASE_ERROR`，應由管理員查閱同次操作日誌。
+
 ```text
 mvnw.cmd clean verify
 docker compose config --quiet

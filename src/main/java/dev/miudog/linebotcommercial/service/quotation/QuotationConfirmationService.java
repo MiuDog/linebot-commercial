@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 在單一 SQLite 交易中配置每日流水號並保存不可變報價快照。
+ * 在單一資料庫交易中配置每日流水號並保存不可變報價快照。
  */
 @Service
 public class QuotationConfirmationService {
@@ -54,7 +54,7 @@ public class QuotationConfirmationService {
 	// 方法：驗證確認意圖，並以冪等交易配置流水號與建立快照。
 	public QuotationConfirmationResult confirm(QuotationConfirmationCommand command) {
 		validateCommand(command);
-		// 外部呼叫：由 Spring 交易管理器在同一 SQLite 交易中完成配號與快照。
+		// 外部呼叫：由 Spring 交易管理器在同一交易中完成配號與快照。
 		QuotationConfirmationResult result = transactions.execute(
 			status -> confirmInTransaction(command)
 		);
@@ -212,7 +212,7 @@ public class QuotationConfirmationService {
 			INSERT INTO quotation_daily_sequence (sequence_date, last_sequence, updated_at)
 			VALUES (?, 1, CURRENT_TIMESTAMP)
 			ON CONFLICT (sequence_date) DO UPDATE SET
-				last_sequence = last_sequence + 1,
+				last_sequence = quotation_daily_sequence.last_sequence + 1,
 				updated_at = CURRENT_TIMESTAMP
 			""", quotationDate.toString());
 		if (changed != 1) throw error("無法配置當日報價流水號");
@@ -342,7 +342,7 @@ public class QuotationConfirmationService {
 		int changed = jdbc.update("""
 			UPDATE quotation_draft
 			SET status = 'CONFIRMED', revision = ?,
-				confirmed_at = COALESCE(confirmed_at, CURRENT_TIMESTAMP),
+				confirmed_at = COALESCE(confirmed_at, CAST(CURRENT_TIMESTAMP AS TEXT)),
 				updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND status = 'AWAITING_CONFIRMATION' AND revision = ?
 			""", confirmedRevision, draftId, confirmedRevision - 1);

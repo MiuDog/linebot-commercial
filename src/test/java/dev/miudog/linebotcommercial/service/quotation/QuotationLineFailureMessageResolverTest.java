@@ -6,6 +6,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class QuotationLineFailureMessageResolverTest {
 
+	// 方法：只有暫時性鎖定可以提示重試，SQL 語法錯誤不可誤報為忙碌或洩漏 SQL。
+	@Test
+	void distinguishesTransientLocksFromInvalidSql() {
+		var locked = QuotationLineFailureMessageResolver.resolve(
+			new org.springframework.dao.CannotAcquireLockException("lock unavailable"),
+			QuotationLineFailureMessageResolver.Operation.POSTBACK);
+		assertThat(locked.code()).isEqualTo("QUOTATION_DATABASE_BUSY");
+		var invalid = QuotationLineFailureMessageResolver.resolve(
+			new org.springframework.jdbc.BadSqlGrammarException("confirm", "private SQL", new java.sql.SQLException("ambiguous column")),
+			QuotationLineFailureMessageResolver.Operation.POSTBACK);
+		assertThat(invalid.code()).isEqualTo("QUOTATION_DATABASE_ERROR");
+		assertThat(invalid.message()).contains("管理員").doesNotContain("忙碌", "稍後重試", "private SQL", "ambiguous");
+	}
+
 	// 方法：確認與對話領域錯誤保留可行動代碼，不再被誤報為內部錯誤。
 	@Test
 	void preservesExpectedConfirmationAndConversationErrors() {

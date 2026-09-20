@@ -1,6 +1,7 @@
 package dev.miudog.linebotcommercial.service.quotation;
 
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 
 /**
  * 將 LINE 報價流程例外轉成可行動、不洩漏內部資訊的穩定錯誤回覆。
@@ -27,10 +28,17 @@ public final class QuotationLineFailureMessageResolver {
 			);
 		}
 
-		if (exception instanceof DataAccessException) {
+		if (exception instanceof TransientDataAccessException) {
 			return new Failure(
 				"QUOTATION_DATABASE_BUSY",
 				withCode("報價資料庫目前忙碌，資料尚未遺失，請稍後重試。", "QUOTATION_DATABASE_BUSY")
+			);
+		}
+
+		if (exception instanceof DataAccessException) {
+			return new Failure(
+				"QUOTATION_DATABASE_ERROR",
+				withCode("報價資料處理失敗，請將錯誤代碼提供給管理員檢查。", "QUOTATION_DATABASE_ERROR")
 			);
 		}
 
